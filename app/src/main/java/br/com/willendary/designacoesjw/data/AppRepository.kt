@@ -20,30 +20,46 @@ class AppRepository(context: Context) {
 
     fun saveBrothers(items: List<Brother>) {
         val a = JSONArray()
-        items.forEach { b -> a.put(JSONObject().apply {
-            put("id", b.id); put("name", b.name); put("phone", b.phone); put("active", b.active)
-            put("privileges", JSONArray(b.privileges.toList()))
-        }) }
+        items.forEach { b ->
+            a.put(JSONObject().apply {
+                put("id", b.id); put("name", b.name); put("phone", b.phone)
+                put("active", b.active); put("privileges", JSONArray(b.privileges.toList()))
+            })
+        }
         prefs.edit().putString("brothers", a.toString()).apply()
     }
 
     fun loadPrivileges(): List<Privilege> {
         val a = JSONArray(prefs.getString("privileges", "[]"))
-        return List(a.length()) { i -> val o = a.getJSONObject(i); Privilege(o.getLong("id"), o.getString("name"), o.optInt("quantity", 1)) }
+        return List(a.length()) { i ->
+            val o = a.getJSONObject(i)
+            Privilege(o.getLong("id"), o.getString("name"), o.optInt("quantity", 1).coerceAtLeast(1), o.optBoolean("active", true))
+        }
     }
 
     fun savePrivileges(items: List<Privilege>) {
         val a = JSONArray()
-        items.forEach { p -> a.put(JSONObject().apply { put("id", p.id); put("name", p.name); put("quantity", p.quantity) }) }
+        items.forEach { p ->
+            a.put(JSONObject().apply {
+                put("id", p.id); put("name", p.name); put("quantity", p.quantity); put("active", p.active)
+            })
+        }
         prefs.edit().putString("privileges", a.toString()).apply()
     }
 
     fun loadMeetings(): List<Meeting> {
         val a = JSONArray(prefs.getString("meetings", "[]"))
         return List(a.length()) { i ->
-            val o = a.getJSONObject(i); val aa = o.optJSONArray("assignments") ?: JSONArray()
-            val list = List(aa.length()) { j -> val x = aa.getJSONObject(j); Assignment(x.getLong("privilegeId"), x.getLong("brotherId")) }
-            Meeting(o.getLong("id"), o.getString("date"), o.getString("type"), list)
+            val o = a.getJSONObject(i)
+            val aa = o.optJSONArray("assignments") ?: JSONArray()
+            val assignments = List(aa.length()) { j ->
+                val x = aa.getJSONObject(j)
+                Assignment(x.getLong("privilegeId"), x.getLong("brotherId"))
+            }
+            val blocked = mutableSetOf<Long>()
+            val ba = o.optJSONArray("blockedBrotherIds") ?: JSONArray()
+            for (j in 0 until ba.length()) blocked += ba.getLong(j)
+            Meeting(o.getLong("id"), o.getString("date"), o.getString("type"), assignments, blocked)
         }
     }
 
@@ -51,8 +67,15 @@ class AppRepository(context: Context) {
         val a = JSONArray()
         items.forEach { m ->
             val aa = JSONArray()
-            m.assignments.forEach { x -> aa.put(JSONObject().apply { put("privilegeId", x.privilegeId); put("brotherId", x.brotherId) }) }
-            a.put(JSONObject().apply { put("id", m.id); put("date", m.date); put("type", m.type); put("assignments", aa) })
+            m.assignments.forEach { x ->
+                aa.put(JSONObject().apply {
+                    put("privilegeId", x.privilegeId); put("brotherId", x.brotherId)
+                })
+            }
+            a.put(JSONObject().apply {
+                put("id", m.id); put("date", m.date); put("type", m.type)
+                put("assignments", aa); put("blockedBrotherIds", JSONArray(m.blockedBrotherIds.toList()))
+            })
         }
         prefs.edit().putString("meetings", a.toString()).apply()
     }
