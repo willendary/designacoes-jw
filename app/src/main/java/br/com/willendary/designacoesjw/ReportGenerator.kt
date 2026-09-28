@@ -13,15 +13,13 @@ import java.io.FileOutputStream
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import java.util.zip.ZipEntry
-import java.util.zip.ZipOutputStream
 
 object ReportGenerator {
     fun sharePdf(context: Context, month: YearMonth, meetings: List<Meeting>, brothers: List<Brother>, privileges: List<Privilege>) =
         share(context, generatePdf(context, month, meetings, brothers, privileges), "application/pdf")
 
     fun shareDocx(context: Context, month: YearMonth, meetings: List<Meeting>, brothers: List<Brother>, privileges: List<Privilege>) =
-        share(context, generateDocx(context, month, meetings, brothers, privileges), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        share(context, generateDoc(context, month, meetings, brothers, privileges), "application/msword")
 
     private fun generatePdf(context: Context, month: YearMonth, meetings: List<Meeting>, brothers: List<Brother>, privileges: List<Privilege>): File {
         val dir = File(context.cacheDir, "reports").apply { mkdirs() }
@@ -95,7 +93,7 @@ object ReportGenerator {
         val sortedMeetings = meetings.sortedBy { parseDate(it.date) }
 
         val html = buildString {
-            append("<html><head><meta charset="UTF-8"><style>")
+            append("<html><head><meta charset='UTF-8'><style>")
             append("@page { size: landscape; margin: 1cm; }")
             append("body { font-family: Arial, sans-serif; }")
             append("h1 { text-align:center; font-size:20pt; }")
