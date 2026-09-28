@@ -15,7 +15,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val prefs = getSharedPreferences("designacoes_jw", MODE_PRIVATE)
         setContent {
-            var themeIndex by remember { mutableIntStateOf(prefs.getInt("theme_index", 0)) }
+            val themeIndexState = remember { mutableIntStateOf(prefs.getInt("theme_index", 0)) }
+            val themeIndex = themeIndexState.intValue
             val schemes = listOf(
                 lightColorScheme(primary = Color(0xFF1565C0), secondary = Color(0xFF42A5F5)),
                 lightColorScheme(primary = Color(0xFF2E7D32), secondary = Color(0xFF66BB6A)),
@@ -28,8 +29,8 @@ class MainActivity : ComponentActivity() {
                     App(
                         themeIndex = themeIndex,
                         onThemeChange = { newIndex ->
-                            themeIndex = newIndex.coerceIn(0, schemes.lastIndex)
-                            prefs.edit().putInt("theme_index", themeIndex).apply()
+                            themeIndexState.intValue = newIndex.coerceIn(0, schemes.lastIndex)
+                            prefs.edit().putInt("theme_index", themeIndexState.intValue).apply()
                         }
                     )
                 }
