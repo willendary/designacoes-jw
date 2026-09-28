@@ -4,6 +4,8 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
+        android:icon="@drawable/ic_logo"
+        android:roundIcon="@drawable/ic_logo"
         android:theme="@style/Theme.DesignacoesJW"
         android:label="Designações JW"
         android:allowBackup="true"
