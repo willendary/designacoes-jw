@@ -24,7 +24,7 @@ object ReportGenerator {
     private fun generatePdf(context: Context, month: YearMonth, meetings: List<Meeting>, brothers: List<Brother>, privileges: List<Privilege>): File {
         val dir = File(context.cacheDir, "reports").apply { mkdirs() }
         val file = File(dir, "designacoes-${month.year}-${month.monthValue.toString().padStart(2, '0')}.pdf")
-        val activePrivileges = privileges.filter { it.active }.sortedBy { it.id }
+        val activePrivileges = privileges.filter { it.active }.sortedBy { it.name.lowercase(Locale.getDefault()) }
         val sortedMeetings = meetings.sortedBy { parseDate(it.date) }
         val pdf = PdfDocument()
         val pageWidth = 842
@@ -69,7 +69,7 @@ object ReportGenerator {
             }
             var x = margin
             canvas.drawRect(x, y, x + dateWidth, y + rowHeight, linePaint)
-            canvas.drawText(meeting.date, x + 5f, y + 21f, cellPaint)
+            drawWrapped(canvas, dateWithWeekday(meeting.date), x + 5f, y + 12f, dateWidth - 10f, cellPaint, 9f, 2)
             x += dateWidth
             activePrivileges.forEach { privilege ->
                 canvas.drawRect(x, y, x + privilegeWidth, y + rowHeight, linePaint)
@@ -107,7 +107,7 @@ object ReportGenerator {
             activePrivileges.forEach { privilege -> append("<th>${xmlEscape(privilege.name)}</th>") }
             append("</tr>")
             sortedMeetings.forEach { meeting ->
-                append("<tr><td>${xmlEscape(meeting.date)}</td>")
+                append("<tr><td>${xmlEscape(dateWithWeekday(meeting.date)).replace("\n", "<br>")}</td>")
                 activePrivileges.forEach { privilege ->
                     val names = meeting.assignments.filter { it.privilegeId == privilege.id }
                         .mapNotNull { a -> brothers.find { it.id == a.brotherId }?.name }
@@ -148,6 +148,14 @@ object ReportGenerator {
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }, "Compartilhar relatório"))
+    }
+
+    private fun dateWithWeekday(value: String): String {
+        val date = parseDate(value)
+        if (date == java.time.LocalDate.MIN) return value
+        val weekday = date.dayOfWeek.getDisplayName(java.time.format.TextStyle.FULL, Locale("pt", "BR"))
+            .replaceFirstChar { it.uppercase(Locale("pt", "BR")) }
+        return value + "\n" + weekday
     }
 
     private fun parseDate(value: String) = runCatching {
