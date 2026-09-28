@@ -27,8 +27,8 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return activeUser() && (
-        profile().data.role == 'admin' ||
+      return signedIn() && (
+        (exists(userPath(request.auth.uid)) && profile().data.role == 'admin') ||
         (exists(accessPath()) && get(accessPath()).data.bootstrapUid == request.auth.uid)
       );
     }
