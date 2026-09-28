@@ -31,6 +31,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import br.com.willendary.designacoesjw.data.Brother
 import br.com.willendary.designacoesjw.data.Meeting
 import br.com.willendary.designacoesjw.data.Privilege
+import br.com.willendary.designacoesjw.data.AppPermissions
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -288,7 +289,7 @@ private fun HomeScreen(vm: AppViewModel) {
                     if (monthMeetings.isNotEmpty()) showRegenerateConfirm = true
                     else selectedMeetingId = vm.generateMonth(month).firstOrNull()?.id
                 },
-                Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth(),
                 contentPadding = PaddingValues(vertical = 14.dp)
             ) {
                 Text(if (monthMeetings.isEmpty()) "Gerar designações do mês" else "Regenerar designações do mês")
