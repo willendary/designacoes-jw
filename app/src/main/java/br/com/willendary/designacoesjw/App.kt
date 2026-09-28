@@ -507,7 +507,39 @@ private fun PrivilegesScreen(vm: AppViewModel) {
                             style = MaterialTheme.typography.bodySmall
                         )
                         Text("Irmãos autorizados", style = MaterialTheme.typography.labelLarge)
-                        filteredBrothers.forEach { brother -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(brother.name); Checkbox(privilege.id in brother.privileges, { vm.togglePrivilege(brother.id, privilege.id) }) } }
+                        filteredBrothers.forEach { brother ->
+                            val directAuthorization = privilege.id in brother.privileges
+                            val inheritedFromSentinel = !directAuthorization &&
+                                privilege.name.trim().lowercase(Locale.getDefault()) in setOf("leitor do livro", "leitor livro") &&
+                                vm.privileges.value.any { p ->
+                                    p.name.trim().lowercase(Locale.getDefault()) in setOf("leitor da sentinela", "leitor sentinela") &&
+                                        p.id in brother.privileges
+                                }
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(brother.name)
+                                    if (inheritedFromSentinel) {
+                                        Text(
+                                            "Autorizado automaticamente por ser Leitor da Sentinela",
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    }
+                                }
+                                Checkbox(
+                                    checked = directAuthorization || inheritedFromSentinel,
+                                    onCheckedChange = {
+                                        if (!inheritedFromSentinel) {
+                                            vm.togglePrivilege(brother.id, privilege.id)
+                                        }
+                                    },
+                                    enabled = !inheritedFromSentinel
+                                )
+                            }
+                        }
                         if (filteredBrothers.isEmpty()) Text("Nenhum irmão encontrado.", style = MaterialTheme.typography.bodySmall)
                     }
                 }
