@@ -104,10 +104,10 @@ object ReportGenerator {
             append("</style></head><body>")
             append("<h1>DESIGNAÇÕES — ${monthLabel(month)}</h1>")
             append("<table><tr><th>Data</th>")
-            activePrivileges.forEach { privilege -> append("<th>${htmlEscape(privilege.name)}</th>") }
+            activePrivileges.forEach { privilege -> append("<th>${xmlEscape(privilege.name)}</th>") }
             append("</tr>")
             sortedMeetings.forEach { meeting ->
-                append("<tr><td>${htmlEscape(meeting.date)}</td>")
+                append("<tr><td>${xmlEscape(meeting.date)}</td>")
                 activePrivileges.forEach { privilege ->
                     val names = meeting.assignments.filter { it.privilegeId == privilege.id }
                         .mapNotNull { a -> brothers.find { it.id == a.brotherId }?.name }
