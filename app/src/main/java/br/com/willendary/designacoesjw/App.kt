@@ -203,6 +203,22 @@ private fun HomeScreen(vm: AppViewModel) {
 
         if (monthMeetings.isNotEmpty()) {
             item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Relatório do mês", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text("Gere uma tabela com as datas nas linhas e os privilégios nas colunas.", style = MaterialTheme.typography.bodySmall)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = { ReportGenerator.sharePdf(context, month, monthMeetings, vm.brothers.value, vm.privileges.value) },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("PDF") }
+                        OutlinedButton(
+                            onClick = { ReportGenerator.shareDocx(context, month, monthMeetings, vm.brothers.value, vm.privileges.value) },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Word") }
+                    }
+                }
+            }
+            item {
                 Text("Reuniões de ${monthName}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             }
             items(monthMeetings, key = { it.id }) { meeting ->
@@ -211,7 +227,7 @@ private fun HomeScreen(vm: AppViewModel) {
                 }
             }
             monthMeetings.find { it.id == selectedMeetingId }?.let { selected ->
-                item { MeetingResult(vm, selected, LocalContext.current) {} }
+                item { MeetingResult(vm, selected, context) {} }
             }
         } else {
             item {
