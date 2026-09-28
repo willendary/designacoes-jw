@@ -17,6 +17,8 @@ import br.com.willendary.designacoesjw.data.Privilege
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.time.YearMonth
+import java.time.format.TextStyle
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -80,47 +82,184 @@ fun App(vm: AppViewModel = viewModel()) {
 
 @Composable
 private fun HomeScreen(vm: AppViewModel) {
-    val context = LocalContext.current
-    val formatter = remember { SimpleDateFormat("dd/MM/yyyy", Locale("pt", "BR")) }
-    var date by remember { mutableStateOf(formatter.format(Date())) }
-    var type by remember { mutableStateOf("Reunião") }
-    var selectedId by remember { mutableStateOf<Long?>(null) }
-    var blocked by remember { mutableStateOf(setOf<Long>()) }
-    var showBlocks by remember { mutableStateOf(false) }
-    var replaceTarget by remember { mutableStateOf<Triple<Long, Long, Long>?>(null) }
-    val generated = vm.meetings.value.find { it.id == selectedId }
-    val activeBrothers = vm.brothers.value.filter { it.active }
+    var month by remember { mutableStateOf(YearMonth.now()) }
+    var selectedMeetingId by remember { mutableStateOf<Long?>(null) }
+    var showRegenerateConfirm by remember { mutableStateOf(false) }
 
-    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Painel", style = MaterialTheme.typography.headlineSmall)
-        Text("${activeBrothers.size} irmãos ativos • ${vm.privileges.value.count { it.active }} privilégios ativos")
-        OutlinedTextField(date, { date = it }, label = { Text("Data da reunião") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(type, { type = it }, label = { Text("Tipo da reunião") }, modifier = Modifier.fillMaxWidth())
-        OutlinedButton({ showBlocks = true }, Modifier.fillMaxWidth()) { Text("Indisponíveis: ${blocked.size}") }
-        Button({
-            val meeting = vm.generateMeeting(date, type, blocked)
-            selectedId = meeting.id
-        }, Modifier.fillMaxWidth()) { Text("Gerar designações") }
+    val monthMeetings = vm.meetings.value.filter {
+        runCatching {
+            val p = it.date.split("/")
+            p.size == 3 && p[1].toInt() == month.monthValue && p[2].toInt() == month.year
+        }.getOrDefault(false)
+    }.sortedBy { it.date }
 
-        generated?.let { MeetingResult(vm, it, context) { replaceTarget = it } }
+    val monthName = month.month.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))
+        .replaceFirstChar { it.uppercase() }
+
+    LazyColumn(
+        Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = PaddingValues(top = 14.dp, bottom = 24.dp)
+    ) {
+        item {
+            Card(
+                Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+            ) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Planejamento mensal", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Text("Configure os dias de reunião e gere todas as designações do mês.")
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        FilledTonalButton({ month = month.minusMonths(1); selectedMeetingId = null }) { Text("‹") }
+                        Column(
+                            Modifier.weight(1f),
+                            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+                        ) {
+                            Text(monthName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Text(month.year.toString(), style = MaterialTheme.typography.labelMedium)
+                        }
+                        FilledTonalButton({ month = month.plusMonths(1); selectedMeetingId = null }) { Text("›") }
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Dias de reunião", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Escolha exatamente dois dias da semana.", style = MaterialTheme.typography.bodySmall)
+                    weekdays.chunked(2).forEach { row ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            row.forEach { (day, label) ->
+                                val selected = day.value == vm.schedule.value.firstDay || day.value == vm.schedule.value.secondDay
+                                FilterChip(
+                                    selected = selected,
+                                    onClick = {
+                                        if (!selected) {
+                                            vm.setMeetingDays(vm.schedule.value.secondDay, day.value)
+                                        }
+                                    },
+                                    label = { Text(label) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            if (row.size == 1) Spacer(Modifier.weight(1f))
+                        }
+                    }
+                    Text(
+                        "Reuniões: ${dayLabel(vm.schedule.value.firstDay)} e ${dayLabel(vm.schedule.value.secondDay)}",
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                }
+            }
+        }
+
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SummaryCard("Irmãos", vm.brothers.value.count { it.active }.toString(), Modifier.weight(1f))
+                SummaryCard("Privilégios", vm.privileges.value.count { it.active }.toString(), Modifier.weight(1f))
+                SummaryCard("Reuniões", monthMeetings.size.toString(), Modifier.weight(1f))
+            }
+        }
+
+        item {
+            Button(
+                onClick = {
+                    if (monthMeetings.isNotEmpty()) showRegenerateConfirm = true
+                    else selectedMeetingId = vm.generateMonth(month).firstOrNull()?.id
+                },
+                Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(vertical = 14.dp)
+            ) {
+                Text(if (monthMeetings.isEmpty()) "Gerar designações do mês" else "Regenerar designações do mês")
+            }
+        }
+
+        if (monthMeetings.isNotEmpty()) {
+            item {
+                Text("Reuniões de ${monthName}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            }
+            items(monthMeetings, key = { it.id }) { meeting ->
+                MeetingSummaryCard(vm, meeting, meeting.id == selectedMeetingId) {
+                    selectedMeetingId = meeting.id
+                }
+            }
+            monthMeetings.find { it.id == selectedMeetingId }?.let { selected ->
+                item { MeetingResult(vm, selected, LocalContext.current) {} }
+            }
+        } else {
+            item {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Pronto para começar?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("Depois de cadastrar irmãos e privilégios, gere o mês inteiro com um toque.")
+                    }
+                }
+            }
+        }
     }
 
-    if (showBlocks) {
-        BlockBrothersDialog(activeBrothers, blocked,
-            { id -> blocked = if (id in blocked) blocked - id else blocked + id },
-            { showBlocks = false })
-    }
-
-    replaceTarget?.let { target ->
-        val meeting = vm.meetings.value.find { it.id == target.first }
-        ReplaceDialog(
-            candidates = meeting?.let { vm.candidatesFor(it, target.second, target.third) }.orEmpty(),
-            onSelect = { newId ->
-                vm.replaceAssignment(target.first, target.second, target.third, newId)
-                replaceTarget = null
+    if (showRegenerateConfirm) {
+        AlertDialog(
+            onDismissRequest = { showRegenerateConfirm = false },
+            title = { Text("Regenerar o mês?") },
+            text = { Text("As ${monthMeetings.size} reuniões de ${monthName} serão substituídas.") },
+            confirmButton = {
+                TextButton({
+                    vm.deleteMonth(month)
+                    selectedMeetingId = vm.generateMonth(month).firstOrNull()?.id
+                    showRegenerateConfirm = false
+                }) { Text("Regenerar") }
             },
-            onDismiss = { replaceTarget = null }
+            dismissButton = { TextButton({ showRegenerateConfirm = false }) { Text("Cancelar") } }
         )
+    }
+}
+
+private fun dayLabel(value: Int): String =
+    weekdays.firstOrNull { it.first.value == value }?.second ?: "—"
+
+@Composable
+private fun SummaryCard(title: String, value: String, modifier: Modifier = Modifier) {
+    Card(modifier) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text(title, style = MaterialTheme.typography.labelMedium)
+        }
+    }
+}
+
+@Composable
+private fun MeetingSummaryCard(
+    vm: AppViewModel,
+    meeting: Meeting,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val missing = vm.missingAssignments(meeting)
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) MaterialTheme.colorScheme.secondaryContainer
+            else MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Column {
+                    Text(meeting.date, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("${meeting.assignments.size} designação(ões)")
+                }
+                TextButton(onClick) { Text(if (selected) "Selecionada" else "Ver") }
+            }
+            if (missing.isNotEmpty()) {
+                Text(
+                    "⚠ ${missing.size} privilégio(s) sem candidatos suficientes",
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+        }
     }
 }
 
