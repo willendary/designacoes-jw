@@ -5,7 +5,8 @@ data class Brother(
     val name: String,
     val phone: String = "",
     val privileges: Set<Long> = emptySet(),
-    val active: Boolean = true
+    val active: Boolean = true,
+    val allowedDays: Set<Int> = emptySet()
 )
 
 data class Privilege(
@@ -29,6 +30,6 @@ data class Meeting(
 )
 
 data class MeetingSchedule(
-    val firstDay: Int = 2,
-    val secondDay: Int = 5
+    val firstDay: Int = 3,
+    val secondDay: Int = 6
 )
