@@ -27,3 +27,8 @@ data class Meeting(
     val assignments: List<Assignment> = emptyList(),
     val blockedBrotherIds: Set<Long> = emptySet()
 )
+
+data class MeetingSchedule(
+    val firstDay: Int = 2,
+    val secondDay: Int = 5
+)
