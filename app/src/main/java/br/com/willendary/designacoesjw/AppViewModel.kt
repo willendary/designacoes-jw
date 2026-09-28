@@ -5,7 +5,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.AndroidViewModel
 import br.com.willendary.designacoesjw.data.*
 import java.text.SimpleDateFormat
-import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -74,18 +73,27 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             (0 until yearMonth.lengthOfMonth()).map { first.plusDays(it.toLong()) }
         }.filter { it.dayOfWeek.value in days }.sorted()
 
-        val generated = dates.map { date ->
-            generateMeetingInternal(date, "Reunião", emptySet())
+        val generated = mutableListOf<Meeting>()
+        var historyMeetings = meetings.value
+        dates.forEach { date ->
+            val meeting = generateMeetingInternal(date, "Reunião", emptySet(), historyMeetings)
+            generated += meeting
+            historyMeetings = historyMeetings + meeting
         }
-        meetings.value = meetings.value + generated
+        meetings.value = historyMeetings
         repo.saveMeetings(meetings.value)
         return generated
     }
 
-    private fun generateMeetingInternal(date: LocalDate, type: String, blocked: Set<Long>): Meeting {
+    private fun generateMeetingInternal(
+        date: LocalDate,
+        type: String,
+        blocked: Set<Long>,
+        historySource: List<Meeting>
+    ): Meeting {
         val activePrivileges = privileges.value.filter { it.active }
         val activeBrothers = brothers.value.filter { it.active && it.id !in blocked }
-        val history = meetings.value.flatMap { it.assignments }
+        val history = historySource.flatMap { it.assignments }
             .groupingBy { it.brotherId to it.privilegeId }.eachCount()
         val result = mutableListOf<Assignment>()
         val used = mutableSetOf<Long>()
