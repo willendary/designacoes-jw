@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Work
+import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
@@ -93,20 +94,18 @@ fun App(
         },
         bottomBar = {
             NavigationBar {
-                listOf("Configurações", "Histórico", "Irmãos", "Início", "Privilégios").forEachIndexed { i, label ->
-                    NavigationBarItem(tab == i, { tab = i }, icon = {
-                        Icon(
-                            when (i) {
-                                0 -> Icons.Filled.Settings
-                                1 -> Icons.Filled.History
-                                2 -> Icons.Filled.Groups
-                                3 -> Icons.Filled.Home
-                                else -> Icons.Filled.Work
-                            },
-                            contentDescription = label
-                        )
-                    },
-                    label = { Text(label) })
+                val navItems = buildList {
+                    if (vm.can(AppPermissions.MANAGE_SETTINGS)) add(Triple(0, "Configurações", Icons.Filled.Settings))
+                    add(Triple(1, "Histórico", Icons.Filled.History))
+                    if (vm.can(AppPermissions.MANAGE_BROTHERS)) add(Triple(2, "Irmãos", Icons.Filled.Groups))
+                    add(Triple(3, "Início", Icons.Filled.Home))
+                    if (vm.can(AppPermissions.MANAGE_PRIVILEGES)) add(Triple(4, "Privilégios", Icons.Filled.Work))
+                    if (vm.can(AppPermissions.MANAGE_USERS)) add(Triple(5, "Usuários", Icons.Filled.AdminPanelSettings))
+                }
+                navItems.forEach { (key, label, icon) ->
+                    NavigationBarItem(tab == key, { tab = key }, icon = {
+                        Icon(icon, contentDescription = label)
+                    }, label = { Text(label) })
                 }
             }
         }
@@ -117,7 +116,8 @@ fun App(
                 1 -> HistoryScreen(vm)
                 2 -> BrothersScreen(vm)
                 3 -> HomeScreen(vm)
-                else -> PrivilegesScreen(vm)
+                4 -> PrivilegesScreen(vm)
+                5 -> UserManagementScreen(vm)
             }
         }
     }
@@ -280,6 +280,7 @@ private fun HomeScreen(vm: AppViewModel) {
 
         item {
             Button(
+                enabled = vm.can(AppPermissions.GENERATE_ASSIGNMENTS),
                 onClick = {
                     if (monthMeetings.isNotEmpty()) showRegenerateConfirm = true
                     else selectedMeetingId = vm.generateMonth(month).firstOrNull()?.id
@@ -298,10 +299,12 @@ private fun HomeScreen(vm: AppViewModel) {
                     Text("Gere uma tabela com as datas nas linhas e os privilégios nas colunas.", style = MaterialTheme.typography.bodySmall)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(
+                            enabled = vm.can(AppPermissions.EXPORT_REPORTS),
                             onClick = { ReportGenerator.sharePdf(context, month, monthMeetings, vm.brothers.value, vm.privileges.value) },
                             modifier = Modifier.weight(1f)
                         ) { Text("PDF") }
                         OutlinedButton(
+                            enabled = vm.can(AppPermissions.EXPORT_REPORTS),
                             onClick = { ReportGenerator.shareDocx(context, month, monthMeetings, vm.brothers.value, vm.privileges.value) },
                             modifier = Modifier.weight(1f)
                         ) { Text("Word") }
