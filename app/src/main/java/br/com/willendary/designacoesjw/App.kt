@@ -53,7 +53,8 @@ private val weekdays = listOf(
 fun App(
     vm: AppViewModel = viewModel(),
     themeIndex: Int = 0,
-    onThemeChange: (Int) -> Unit = {}
+    onThemeChange: (Int) -> Unit = {},
+    onSignOut: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -112,7 +113,7 @@ fun App(
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
             when (tab) {
-                0 -> SettingsScreen(themeIndex, onThemeChange)
+                0 -> SettingsScreen(themeIndex, onThemeChange, onSignOut)
                 1 -> HistoryScreen(vm)
                 2 -> BrothersScreen(vm)
                 3 -> HomeScreen(vm)
@@ -685,7 +686,7 @@ private fun HistoryScreen(vm: AppViewModel) {
 }
 
 @Composable
-private fun SettingsScreen(themeIndex: Int, onThemeChange: (Int) -> Unit) {
+private fun SettingsScreen(themeIndex: Int, onThemeChange: (Int) -> Unit, onSignOut: () -> Unit) {
     val themes = listOf(
         "Azul" to androidx.compose.ui.graphics.Color(0xFF1565C0),
         "Verde" to androidx.compose.ui.graphics.Color(0xFF2E7D32),
@@ -714,6 +715,15 @@ private fun SettingsScreen(themeIndex: Int, onThemeChange: (Int) -> Unit) {
                             RadioButton(selected = themeIndex == index, onClick = { onThemeChange(index) })
                         }
                     }
+                }
+            }
+        }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Conta", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Sua sessão é protegida pelo Firebase Authentication.", style = MaterialTheme.typography.bodyMedium)
+                    OutlinedButton(onClick = onSignOut, modifier = Modifier.fillMaxWidth()) { Text("Sair da conta") }
                 }
             }
         }
