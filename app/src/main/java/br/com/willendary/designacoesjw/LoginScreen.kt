@@ -39,7 +39,9 @@ fun LoginScreen() {
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var showRegister by remember { mutableStateOf(false) }
-    var showReset by remember { mutableStateOf(false) }
+    val prefs = remember { context.getSharedPreferences("designacoes_jw", android.content.Context.MODE_PRIVATE) }
+    var pendingEmailLink by remember { mutableStateOf(prefs.getString("pending_email_link", null)) }
+    val inviteMode = pendingEmailLink?.let { auth.isSignInWithEmailLink(it) } == true
 
     fun firebaseErrorMessage(t: Throwable): String = when {
         t.message?.contains("INVALID_LOGIN_CREDENTIALS", true) == true ->
@@ -80,7 +82,11 @@ fun LoginScreen() {
                 )
                 Text("Designações JW", style = MaterialTheme.typography.headlineMedium)
                 Text(
-                    if (showRegister) "Crie sua conta" else "Entre para continuar",
+                    when {
+                        inviteMode -> "Aceite o convite da congregação"
+                        showRegister -> "Crie sua conta"
+                        else -> "Entre para continuar"
+                    },
                     style = MaterialTheme.typography.titleMedium
                 )
 
@@ -92,26 +98,53 @@ fun LoginScreen() {
                     label = { Text("E-mail") },
                     leadingIcon = { Icon(Icons.Filled.Email, null) }
                 )
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    label = { Text("Senha") },
-                    leadingIcon = { Icon(Icons.Filled.Lock, null) },
-                    visualTransformation = PasswordVisualTransformation()
-                )
+                if (!inviteMode) {
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = { Text("Senha") },
+                        leadingIcon = { Icon(Icons.Filled.Lock, null) },
+                        visualTransformation = PasswordVisualTransformation()
+                    )
+                }
 
                 error?.let {
                     Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
 
                 Button(
-                    enabled = !loading && email.isNotBlank() && password.isNotBlank(),
+                    enabled = !loading && email.isNotBlank() && (inviteMode || password.isNotBlank()),
                     modifier = Modifier.fillMaxWidth(),
                     onClick = {
                         runAuth {
-                            if (showRegister) {
+                            if (inviteMode && pendingEmailLink != null) {
+                                auth.signInWithEmailLink(email, pendingEmailLink!!)
+                                    .addOnCompleteListener { task ->
+                                        loading = false
+                                        if (task.isSuccessful) {
+                                            val uid = task.result?.user?.uid
+                                            val inviteId = runCatching {
+                                                val outer = android.net.Uri.parse(pendingEmailLink!!)
+                                                val continueUrl = outer.getQueryParameter("continueUrl")
+                                                android.net.Uri.parse(continueUrl ?: "").getQueryParameter("inviteId")
+                                            }.getOrNull()
+                                            if (uid != null && !inviteId.isNullOrBlank()) {
+                                                UserAccessRepository().claimInvitation(inviteId, uid, email) { claimError ->
+                                                    if (claimError != null) error = claimError
+                                                    prefs.edit().remove("pending_email_link").apply()
+                                                    pendingEmailLink = null
+                                                }
+                                            } else {
+                                                prefs.edit().remove("pending_email_link").apply()
+                                                pendingEmailLink = null
+                                            }
+                                        } else {
+                                            error = firebaseErrorMessage(task.exception ?: Exception())
+                                        }
+                                    }
+                            } else if (showRegister) {
                                 auth.createUserWithEmailAndPassword(email, password)
                                     .addOnCompleteListener { task ->
                                         loading = false
@@ -129,10 +162,10 @@ fun LoginScreen() {
                 ) {
                     Icon(Icons.Filled.Login, null)
                     Spacer(Modifier.width(8.dp))
-                    Text(if (showRegister) "Criar conta" else "Entrar")
+                    Text(if (inviteMode) "Aceitar convite" else if (showRegister) "Criar conta" else "Entrar")
                 }
 
-                OutlinedButton(
+                if (!inviteMode) OutlinedButton(
                     enabled = !loading,
                     modifier = Modifier.fillMaxWidth(),
                     onClick = {
@@ -183,7 +216,7 @@ fun LoginScreen() {
                     Text("Continuar com Google")
                 }
 
-                if (!showRegister) {
+                if (!inviteMode && !showRegister) {
                     TextButton(
                         enabled = !loading && email.isNotBlank(),
                         onClick = {
@@ -202,7 +235,7 @@ fun LoginScreen() {
                     ) { Text("Esqueci minha senha") }
                 }
 
-                TextButton(enabled = !loading, onClick = {
+                if (!inviteMode) TextButton(enabled = !loading, onClick = {
                     showRegister = !showRegister
                     error = null
                 }) {
