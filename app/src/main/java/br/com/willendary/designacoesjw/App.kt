@@ -36,7 +36,11 @@ private val weekdays = listOf(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun App(vm: AppViewModel = viewModel()) {
+fun App(
+    vm: AppViewModel = viewModel(),
+    themeIndex: Int = 0,
+    onThemeChange: (Int) -> Unit = {}
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }
@@ -53,23 +57,24 @@ fun App(vm: AppViewModel = viewModel()) {
         refreshUpdate()
     }
 
-    var tab by remember { mutableIntStateOf(0) }
+    var tab by remember { mutableIntStateOf(3) }
     Scaffold(
         topBar = { TopAppBar(title = { Text("Designações JW") }) },
         bottomBar = {
             NavigationBar {
-                listOf("Início", "Irmãos", "Privilégios", "Histórico").forEachIndexed { i, label ->
-                    NavigationBarItem(tab == i, { tab = i }, icon = { Text(listOf("⌂", "●", "✓", "▣")[i]) }, label = { Text(label) })
+                listOf("Configurações", "Histórico", "Irmãos", "Início", "Privilégios").forEachIndexed { i, label ->
+                    NavigationBarItem(tab == i, { tab = i }, icon = { Text(listOf("⚙", "▣", "●", "⌂", "✓")[i]) }, label = { Text(label) })
                 }
             }
         }
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
             when (tab) {
-                0 -> HomeScreen(vm)
-                1 -> BrothersScreen(vm)
-                2 -> PrivilegesScreen(vm)
-                else -> HistoryScreen(vm)
+                0 -> SettingsScreen(themeIndex, onThemeChange)
+                1 -> HistoryScreen(vm)
+                2 -> BrothersScreen(vm)
+                3 -> HomeScreen(vm)
+                else -> PrivilegesScreen(vm)
             }
         }
     }
@@ -398,7 +403,7 @@ private fun BrothersScreen(vm: AppViewModel) {
     var editing by remember { mutableStateOf<Brother?>(null) }
     var deleting by remember { mutableStateOf<Brother?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
-    val filtered = vm.brothers.value.filter { it.name.contains(search.trim(), ignoreCase = true) }
+    val filtered = vm.brothers.value.filter { it.name.contains(search.trim(), ignoreCase = true) }.sortedBy { it.name.lowercase(Locale.getDefault()) }
     Column(Modifier.padding(20.dp)) {
         Text("Irmãos", style = MaterialTheme.typography.headlineSmall)
         OutlinedTextField(name, { name = it }, label = { Text("Nome") }, modifier = Modifier.fillMaxWidth())
@@ -446,9 +451,18 @@ private fun PrivilegesScreen(vm: AppViewModel) {
     var editing by remember { mutableStateOf<Privilege?>(null) }
     var deleting by remember { mutableStateOf<Privilege?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
-    val filteredBrothers = vm.brothers.value.filter { it.name.contains(searchBrother.trim(), ignoreCase = true) }
+    var panelScale by remember { mutableFloatStateOf(1f) }
+    val filteredBrothers = vm.brothers.value.filter { it.name.contains(searchBrother.trim(), ignoreCase = true) }.sortedBy { it.name.lowercase(Locale.getDefault()) }
     Column(Modifier.padding(20.dp)) {
-        Text("Privilégios", style = MaterialTheme.typography.headlineSmall)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Text("Privilégios", style = MaterialTheme.typography.headlineSmall)
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text("Painéis", style = MaterialTheme.typography.labelMedium)
+                TextButton({ panelScale = (panelScale - 0.1f).coerceAtLeast(0.8f) }) { Text("−") }
+                Text("${(panelScale * 100).toInt()}%")
+                TextButton({ panelScale = (panelScale + 0.1f).coerceAtMost(1.4f) }) { Text("+") }
+            }
+        }
         OutlinedTextField(name, { name = it }, label = { Text("Nome") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(quantity, { quantity = it.filter(Char::isDigit) }, label = { Text("Quantidade necessária") }, modifier = Modifier.fillMaxWidth())
         Button({ error = vm.addPrivilege(name, quantity.toIntOrNull() ?: 1); if (error == null) { name = ""; quantity = "1" } }) { Text("Adicionar privilégio") }
@@ -456,8 +470,8 @@ private fun PrivilegesScreen(vm: AppViewModel) {
         OutlinedTextField(searchBrother, { searchBrother = it }, label = { Text("Buscar irmão para autorizar") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(vm.privileges.value, key = { it.id }) { privilege ->
-                Card(Modifier.fillMaxWidth()) {
+            items(vm.privileges.value.sortedBy { it.name.lowercase(Locale.getDefault()) }, key = { it.id }) { privilege ->
+                Card(Modifier.fillMaxWidth().heightIn(min = (145f * panelScale).dp)) {
                     Column(Modifier.padding(12.dp)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Column(Modifier.weight(1f)) { Text(privilege.name, style = MaterialTheme.typography.titleMedium); Text("Necessários: " + privilege.quantity + " • " + if (privilege.active) "Ativo" else "Inativo") }
@@ -467,6 +481,31 @@ private fun PrivilegesScreen(vm: AppViewModel) {
                                 TextButton({ vm.setPrivilegeActive(privilege.id, !privilege.active) }) { Text(if (privilege.active) "Desativar" else "Ativar") }
                             }
                         }
+                        Text("Dias permitidos para este privilégio", style = MaterialTheme.typography.labelLarge)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf(vm.schedule.value.firstDay, vm.schedule.value.secondDay).distinct().forEach { day ->
+                                FilterChip(
+                                    selected = day in privilege.allowedDays,
+                                    onClick = {
+                                        val newDays = privilege.allowedDays.toMutableSet().also { set ->
+                                            if (!set.add(day)) set.remove(day)
+                                        }
+                                        vm.setPrivilegeAllowedDays(privilege.id, newDays)
+                                    },
+                                    label = { Text(dayLabel(day).take(3).replaceFirstChar { it.uppercase() }) }
+                                )
+                            }
+                            FilterChip(
+                                selected = privilege.allowedDays.isEmpty(),
+                                onClick = { vm.setPrivilegeAllowedDays(privilege.id, emptySet()) },
+                                label = { Text("Todos") }
+                            )
+                        }
+                        Text(
+                            if (privilege.allowedDays.isEmpty()) "Permitido em qualquer dia de reunião"
+                            else "Permitido: " + privilege.allowedDays.sorted().joinToString(" e ") { dayLabel(it) },
+                            style = MaterialTheme.typography.bodySmall
+                        )
                         Text("Irmãos autorizados", style = MaterialTheme.typography.labelLarge)
                         filteredBrothers.forEach { brother -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(brother.name); Checkbox(privilege.id in brother.privileges, { vm.togglePrivilege(brother.id, privilege.id) }) } }
                         if (filteredBrothers.isEmpty()) Text("Nenhum irmão encontrado.", style = MaterialTheme.typography.bodySmall)
@@ -487,7 +526,7 @@ private fun HistoryScreen(vm: AppViewModel) {
             Text("Histórico", style = MaterialTheme.typography.headlineSmall)
             Text("${vm.meetings.value.size} reunião(ões) registrada(s)")
         }
-        items(vm.meetings.value.reversed(), key = { it.id }) { meeting ->
+        items(vm.meetings.value.sortedByDescending { parseDateForSort(it.date) }, key = { it.id }) { meeting ->
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
                     Text("${meeting.type} — ${meeting.date}", style = MaterialTheme.typography.titleMedium)
@@ -512,6 +551,51 @@ private fun HistoryScreen(vm: AppViewModel) {
         )
     }
 }
+
+@Composable
+private fun SettingsScreen(themeIndex: Int, onThemeChange: (Int) -> Unit) {
+    val themes = listOf(
+        "Azul" to androidx.compose.ui.graphics.Color(0xFF1565C0),
+        "Verde" to androidx.compose.ui.graphics.Color(0xFF2E7D32),
+        "Roxo" to androidx.compose.ui.graphics.Color(0xFF6A1B9A),
+        "Laranja" to androidx.compose.ui.graphics.Color(0xFFEF6C00),
+        "Vinho" to androidx.compose.ui.graphics.Color(0xFF8E244D)
+    )
+    LazyColumn(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Text("Configurações", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text("Personalize a aparência do aplicativo.", style = MaterialTheme.typography.bodyMedium)
+        }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Cor do aplicativo", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    themes.forEachIndexed { index, item ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Surface(Modifier.size(28.dp), shape = MaterialTheme.shapes.small, color = item.second) {}
+                                Text(item.first)
+                            }
+                            RadioButton(selected = themeIndex == index, onClick = { onThemeChange(index) })
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Regras de leitura", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Na tela Privilégios, marque os dias permitidos. Assim, um Leitor do livro pode ficar somente na quarta, enquanto um Leitor da Sentinela pode ficar somente no sábado.")
+                }
+            }
+        }
+    }
+}
+
+private fun parseDateForSort(value: String): java.time.LocalDate = runCatching {
+    java.time.LocalDate.parse(value, java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+}.getOrElse { java.time.LocalDate.MIN }
 
 @Composable
 private fun BlockBrothersDialog(
