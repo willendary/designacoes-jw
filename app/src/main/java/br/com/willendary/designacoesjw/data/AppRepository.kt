@@ -79,4 +79,18 @@ class AppRepository(context: Context) {
         }
         prefs.edit().putString("meetings", a.toString()).apply()
     }
+
+    fun loadSchedule(): MeetingSchedule {
+        return MeetingSchedule(
+            prefs.getInt("schedule_first_day", 2),
+            prefs.getInt("schedule_second_day", 5)
+        )
+    }
+
+    fun saveSchedule(schedule: MeetingSchedule) {
+        prefs.edit()
+            .putInt("schedule_first_day", schedule.firstDay)
+            .putInt("schedule_second_day", schedule.secondDay)
+            .apply()
+    }
 }
