@@ -125,28 +125,53 @@ private fun HomeScreen(vm: AppViewModel) {
         }
 
         item {
+            var firstExpanded by remember { mutableStateOf(false) }
+            var secondExpanded by remember { mutableStateOf(false) }
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Dias de reunião", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text("Escolha exatamente dois dias da semana.", style = MaterialTheme.typography.bodySmall)
-                    weekdays.chunked(2).forEach { row ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            row.forEach { (day, label) ->
-                                val selected = day.value == vm.schedule.value.firstDay || day.value == vm.schedule.value.secondDay
-                                FilterChip(
-                                    selected = selected,
+                    Text("Escolha os dois dias da semana em que há reunião.", style = MaterialTheme.typography.bodySmall)
+
+                    Text("Primeiro dia", style = MaterialTheme.typography.labelLarge)
+                    Box {
+                        OutlinedButton({ firstExpanded = true }, Modifier.fillMaxWidth()) {
+                            Text(dayLabel(vm.schedule.value.firstDay))
+                        }
+                        DropdownMenu(expanded = firstExpanded, onDismissRequest = { firstExpanded = false }) {
+                            weekdays.forEach { (day, label) ->
+                                DropdownMenuItem(
+                                    text = { Text(label) },
                                     onClick = {
-                                        if (!selected) {
-                                            vm.setMeetingDays(vm.schedule.value.secondDay, day.value)
+                                        if (day.value != vm.schedule.value.secondDay) {
+                                            vm.setMeetingDays(day.value, vm.schedule.value.secondDay)
                                         }
-                                    },
-                                    label = { Text(label) },
-                                    modifier = Modifier.weight(1f)
+                                        firstExpanded = false
+                                    }
                                 )
                             }
-                            if (row.size == 1) Spacer(Modifier.weight(1f))
                         }
                     }
+
+                    Text("Segundo dia", style = MaterialTheme.typography.labelLarge)
+                    Box {
+                        OutlinedButton({ secondExpanded = true }, Modifier.fillMaxWidth()) {
+                            Text(dayLabel(vm.schedule.value.secondDay))
+                        }
+                        DropdownMenu(expanded = secondExpanded, onDismissRequest = { secondExpanded = false }) {
+                            weekdays.forEach { (day, label) ->
+                                DropdownMenuItem(
+                                    text = { Text(label) },
+                                    onClick = {
+                                        if (day.value != vm.schedule.value.firstDay) {
+                                            vm.setMeetingDays(vm.schedule.value.firstDay, day.value)
+                                        }
+                                        secondExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
                     Text(
                         "Reuniões: ${dayLabel(vm.schedule.value.firstDay)} e ${dayLabel(vm.schedule.value.secondDay)}",
                         style = MaterialTheme.typography.labelLarge
