@@ -24,6 +24,7 @@ import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
+import br.com.willendary.designacoesjw.data.UserAccessRepository
 import kotlinx.coroutines.launch
 
 @Composable
