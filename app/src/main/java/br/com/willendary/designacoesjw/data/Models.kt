@@ -5,15 +5,15 @@ data class Brother(
     val name: String,
     val phone: String = "",
     val privileges: Set<Long> = emptySet(),
-    val active: Boolean = true,
-    val allowedDays: Set<Int> = emptySet()
+    val active: Boolean = true
 )
 
 data class Privilege(
     val id: Long,
     val name: String,
     val quantity: Int = 1,
-    val active: Boolean = true
+    val active: Boolean = true,
+    val allowedDays: Set<Int> = emptySet()
 )
 
 data class Assignment(
