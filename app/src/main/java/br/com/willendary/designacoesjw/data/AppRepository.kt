@@ -33,7 +33,7 @@ class AppRepository(context: Context) {
         val a = JSONArray(prefs.getString("privileges", "[]"))
         return List(a.length()) { i ->
             val o = a.getJSONObject(i)
-            Privilege(o.getLong("id"), o.getString("name"), o.optInt("quantity", 1).coerceAtLeast(1), o.optBoolean("active", true))
+            Privilege(o.getLong("id"), o.getString("name"), o.optInt("quantity", 1).coerceAtLeast(1), o.optBoolean("active", true), loadIntSet(o.optJSONArray("allowedDays")) )
         }
     }
 
@@ -41,7 +41,7 @@ class AppRepository(context: Context) {
         val a = JSONArray()
         items.forEach { p ->
             a.put(JSONObject().apply {
-                put("id", p.id); put("name", p.name); put("quantity", p.quantity); put("active", p.active)
+                put("id", p.id); put("name", p.name); put("quantity", p.quantity); put("active", p.active); put("allowedDays", JSONArray(p.allowedDays.toList()))
             })
         }
         prefs.edit().putString("privileges", a.toString()).apply()
@@ -80,10 +80,17 @@ class AppRepository(context: Context) {
         prefs.edit().putString("meetings", a.toString()).apply()
     }
 
+    private fun loadIntSet(array: JSONArray?): Set<Int> {
+        if (array == null) return emptySet()
+        val result = mutableSetOf<Int>()
+        for (i in 0 until array.length()) result += array.getInt(i)
+        return result
+    }
+
     fun loadSchedule(): MeetingSchedule {
         return MeetingSchedule(
-            prefs.getInt("schedule_first_day", 2),
-            prefs.getInt("schedule_second_day", 5)
+            prefs.getInt("schedule_first_day", 3),
+            prefs.getInt("schedule_second_day", 6)
         )
     }
 
