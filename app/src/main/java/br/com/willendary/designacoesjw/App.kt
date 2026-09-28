@@ -375,15 +375,24 @@ private fun MeetingResult(
 private fun BrothersScreen(vm: AppViewModel) {
     var name by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
+    var search by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<Brother?>(null) }
+    var deleting by remember { mutableStateOf<Brother?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val filtered = vm.brothers.value.filter { it.name.contains(search.trim(), ignoreCase = true) }
     Column(Modifier.padding(20.dp)) {
         Text("Irmãos", style = MaterialTheme.typography.headlineSmall)
         OutlinedTextField(name, { name = it }, label = { Text("Nome") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(phone, { phone = it }, label = { Text("WhatsApp (somente números)") }, modifier = Modifier.fillMaxWidth())
-        Button({ vm.addBrother(name, phone); name = ""; phone = "" }) { Text("Adicionar irmão") }
+        Button({
+            error = vm.addBrother(name, phone)
+            if (error == null) { name = ""; phone = "" }
+        }) { Text("Adicionar irmão") }
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(search, { search = it }, label = { Text("Buscar irmão") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(vm.brothers.value, key = { it.id }) { brother ->
+            items(filtered, key = { it.id }) { brother ->
                 Card(Modifier.fillMaxWidth()) {
                     Row(Modifier.padding(12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(Modifier.weight(1f)) {
@@ -393,64 +402,64 @@ private fun BrothersScreen(vm: AppViewModel) {
                         }
                         Column {
                             TextButton({ editing = brother }) { Text("Editar") }
-                            TextButton({ vm.setBrotherActive(brother.id, !brother.active) }) {
-                                Text(if (brother.active) "Desativar" else "Ativar")
-                            }
+                            TextButton({ deleting = brother }) { Text("Excluir") }
+                            TextButton({ vm.setBrotherActive(brother.id, !brother.active) }) { Text(if (brother.active) "Desativar" else "Ativar") }
                         }
                     }
                 }
             }
         }
     }
-    editing?.let { brother ->
-        EditBrotherDialog(brother, { n, p -> vm.updateBrother(brother.id, n, p); editing = null }, { editing = null })
+    error?.let { message -> AlertDialog(onDismissRequest = { error = null }, title = { Text("Não foi possível salvar") }, text = { Text(message) }, confirmButton = { TextButton({ error = null }) { Text("OK") } }) }
+    editing?.let { brother -> EditBrotherDialog(brother, { n, p -> error = vm.updateBrother(brother.id, n, p); if (error == null) editing = null }, { editing = null }) }
+    deleting?.let { brother ->
+        AlertDialog(onDismissRequest = { deleting = null }, title = { Text("Excluir irmão?") },
+            text = { Text("O irmão " + brother.name + " será removido do cadastro. As designações já registradas no histórico serão mantidas.") },
+            confirmButton = { TextButton({ vm.deleteBrother(brother.id); deleting = null }) { Text("Excluir") } },
+            dismissButton = { TextButton({ deleting = null }) { Text("Cancelar") } })
     }
 }
-
 @Composable
 private fun PrivilegesScreen(vm: AppViewModel) {
     var name by remember { mutableStateOf("") }
     var quantity by remember { mutableStateOf("1") }
+    var searchBrother by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<Privilege?>(null) }
+    var deleting by remember { mutableStateOf<Privilege?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val filteredBrothers = vm.brothers.value.filter { it.name.contains(searchBrother.trim(), ignoreCase = true) }
     Column(Modifier.padding(20.dp)) {
         Text("Privilégios", style = MaterialTheme.typography.headlineSmall)
         OutlinedTextField(name, { name = it }, label = { Text("Nome") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(quantity, { quantity = it.filter(Char::isDigit) }, label = { Text("Quantidade necessária") }, modifier = Modifier.fillMaxWidth())
-        Button({ vm.addPrivilege(name, quantity.toIntOrNull() ?: 1); name = ""; quantity = "1" }) { Text("Adicionar privilégio") }
+        Button({ error = vm.addPrivilege(name, quantity.toIntOrNull() ?: 1); if (error == null) { name = ""; quantity = "1" } }) { Text("Adicionar privilégio") }
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(searchBrother, { searchBrother = it }, label = { Text("Buscar irmão para autorizar") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(vm.privileges.value, key = { it.id }) { privilege ->
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Column(Modifier.weight(1f)) {
-                                Text(privilege.name, style = MaterialTheme.typography.titleMedium)
-                                Text("Necessários: ${privilege.quantity} • ${if (privilege.active) "Ativo" else "Inativo"}")
-                            }
+                            Column(Modifier.weight(1f)) { Text(privilege.name, style = MaterialTheme.typography.titleMedium); Text("Necessários: " + privilege.quantity + " • " + if (privilege.active) "Ativo" else "Inativo") }
                             Column {
                                 TextButton({ editing = privilege }) { Text("Editar") }
-                                TextButton({ vm.setPrivilegeActive(privilege.id, !privilege.active) }) {
-                                    Text(if (privilege.active) "Desativar" else "Ativar")
-                                }
+                                TextButton({ deleting = privilege }) { Text("Excluir") }
+                                TextButton({ vm.setPrivilegeActive(privilege.id, !privilege.active) }) { Text(if (privilege.active) "Desativar" else "Ativar") }
                             }
                         }
                         Text("Irmãos autorizados", style = MaterialTheme.typography.labelLarge)
-                        vm.brothers.value.forEach { brother ->
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(brother.name)
-                                Checkbox(privilege.id in brother.privileges, { vm.togglePrivilege(brother.id, privilege.id) })
-                            }
-                        }
+                        filteredBrothers.forEach { brother -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(brother.name); Checkbox(privilege.id in brother.privileges, { vm.togglePrivilege(brother.id, privilege.id) }) } }
+                        if (filteredBrothers.isEmpty()) Text("Nenhum irmão encontrado.", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
         }
     }
-    editing?.let { privilege ->
-        EditPrivilegeDialog(privilege, { n, q -> vm.updatePrivilege(privilege.id, n, q); editing = null }, { editing = null })
-    }
+    error?.let { message -> AlertDialog(onDismissRequest = { error = null }, title = { Text("Não foi possível salvar") }, text = { Text(message) }, confirmButton = { TextButton({ error = null }) { Text("OK") } }) }
+    editing?.let { privilege -> EditPrivilegeDialog(privilege, { n, q -> error = vm.updatePrivilege(privilege.id, n, q); if (error == null) editing = null }, { editing = null }) }
+    deleting?.let { privilege -> AlertDialog(onDismissRequest = { deleting = null }, title = { Text("Excluir privilégio?") }, text = { Text("O privilégio " + privilege.name + " será removido do cadastro e deixará de estar autorizado para os irmãos.") }, confirmButton = { TextButton({ vm.deletePrivilege(privilege.id); deleting = null }) { Text("Excluir") } }, dismissButton = { TextButton({ deleting = null }) { Text("Cancelar") } }) }
 }
-
 @Composable
 private fun HistoryScreen(vm: AppViewModel) {
     var confirmDelete by remember { mutableStateOf<Meeting?>(null) }
@@ -511,24 +520,17 @@ private fun BlockBrothersDialog(
 }
 
 @Composable
-private fun ReplaceDialog(
-    candidates: List<Brother>,
-    onSelect: (Long) -> Unit,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Trocar designação") },
-        text = {
-            Column {
-                if (candidates.isEmpty()) Text("Não há outro irmão autorizado e disponível.")
-                candidates.forEach { brother ->
-                    TextButton({ onSelect(brother.id) }, Modifier.fillMaxWidth()) { Text(brother.name) }
-                }
-            }
-        },
-        confirmButton = { TextButton(onDismiss) { Text("Cancelar") } }
-    )
+private fun ReplaceDialog(candidates: List<Brother>, onSelect: (Long) -> Unit, onDismiss: () -> Unit) {
+    var search by remember { mutableStateOf("") }
+    val filtered = candidates.filter { it.name.contains(search.trim(), ignoreCase = true) }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text("Trocar designação") },
+        text = { Column {
+            OutlinedTextField(search, { search = it }, label = { Text("Buscar irmão") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(8.dp))
+            if (filtered.isEmpty()) Text("Não há outro irmão autorizado e disponível.")
+            filtered.forEach { brother -> TextButton({ onSelect(brother.id) }, Modifier.fillMaxWidth()) { Text(brother.name) } }
+        } },
+        confirmButton = { TextButton(onDismiss) { Text("Cancelar") } })
 }
 
 @Composable
