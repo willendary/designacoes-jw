@@ -18,9 +18,20 @@ import br.com.willendary.designacoesjw.data.Privilege
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.time.DayOfWeek
 import java.time.YearMonth
 import java.time.format.TextStyle
 import kotlinx.coroutines.launch
+
+private val weekdays = listOf(
+    DayOfWeek.MONDAY to "Segunda-feira",
+    DayOfWeek.TUESDAY to "Terça-feira",
+    DayOfWeek.WEDNESDAY to "Quarta-feira",
+    DayOfWeek.THURSDAY to "Quinta-feira",
+    DayOfWeek.FRIDAY to "Sexta-feira",
+    DayOfWeek.SATURDAY to "Sábado",
+    DayOfWeek.SUNDAY to "Domingo"
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
