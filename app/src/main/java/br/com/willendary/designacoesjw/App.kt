@@ -8,6 +8,18 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.Image
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Work
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -81,7 +93,19 @@ fun App(
         bottomBar = {
             NavigationBar {
                 listOf("Configurações", "Histórico", "Irmãos", "Início", "Privilégios").forEachIndexed { i, label ->
-                    NavigationBarItem(tab == i, { tab = i }, icon = { Text(listOf("⚙", "▣", "●", "⌂", "✓")[i]) }, label = { Text(label) })
+                    NavigationBarItem(tab == i, { tab = i }, icon = {
+                        Icon(
+                            when (i) {
+                                0 -> Icons.Filled.Settings
+                                1 -> Icons.Filled.History
+                                2 -> Icons.Filled.Groups
+                                3 -> Icons.Filled.Home
+                                else -> Icons.Filled.Work
+                            },
+                            contentDescription = label
+                        )
+                    },
+                    label = { Text(label) })
                 }
             }
         }
@@ -167,8 +191,13 @@ private fun HomeScreen(vm: AppViewModel) {
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
             ) {
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Planejamento mensal", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    Text("Configure os dias de reunião e gere todas as designações do mês.")
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Icon(Icons.Filled.CalendarMonth, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Column {
+                            Text("Planejamento mensal", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                            Text("Organize reuniões e designações em um só lugar.")
+                        }
+                    }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         FilledTonalButton({ month = month.minusMonths(1); selectedMeetingId = null }) { Text("‹") }
                         Column(
@@ -279,7 +308,10 @@ private fun HomeScreen(vm: AppViewModel) {
                 }
             }
             item {
-                Text("Reuniões de ${monthName}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Filled.CalendarMonth, contentDescription = null)
+                    Text("Reuniões de ${monthName}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                }
             }
             items(monthMeetings, key = { it.id }) { meeting ->
                 MeetingSummaryCard(vm, meeting, meeting.id == selectedMeetingId) {
@@ -350,6 +382,11 @@ private fun MeetingSummaryCard(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column {
                     Text(meeting.date, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        meeting.type,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                     Text("${meeting.assignments.size} designação(ões)")
                 }
                 TextButton(onClick) { Text(if (selected) "Selecionada" else "Ver") }
@@ -369,7 +406,7 @@ private fun MeetingResult(vm: AppViewModel, meeting: Meeting, context: android.c
     val missing = vm.missingAssignments(meeting)
     var replaceTarget by remember { mutableStateOf<Triple<Long, Long, Long>?>(null) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Designações", style = MaterialTheme.typography.titleLarge)
+        Text("Designações", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         if (missing.isNotEmpty()) {
             Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp)) {
                 Text("Atenção: faltaram candidatos para:")
@@ -381,8 +418,11 @@ private fun MeetingResult(vm: AppViewModel, meeting: Meeting, context: android.c
             val privilege = vm.privileges.value.find { it.id == assignment.privilegeId }
             Card(Modifier.fillMaxWidth()) {
                 Row(Modifier.padding(12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Column(Modifier.weight(1f)) { Text(privilege?.name ?: "Privilégio", style = MaterialTheme.typography.titleMedium); Text(brother?.name ?: "Irmão") }
-                    TextButton({ replaceTarget = Triple(meeting.id, assignment.privilegeId, assignment.brotherId) }) { Text("Trocar") }
+                    Column(Modifier.weight(1f)) { Text(privilege?.name ?: "Privilégio", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        Text(brother?.name ?: "Irmão", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
+                    IconButton({ replaceTarget = Triple(meeting.id, assignment.privilegeId, assignment.brotherId) }) {
+                        Icon(Icons.Filled.SwapHoriz, contentDescription = "Trocar")
+                    }
                 }
             }
         }
@@ -423,28 +463,44 @@ private fun BrothersScreen(vm: AppViewModel) {
     var error by remember { mutableStateOf<String?>(null) }
     val filtered = vm.brothers.value.filter { it.name.contains(search.trim(), ignoreCase = true) }.sortedBy { it.name.lowercase(Locale.getDefault()) }
     Column(Modifier.padding(20.dp)) {
-        Text("Irmãos", style = MaterialTheme.typography.headlineSmall)
-        OutlinedTextField(name, { name = it }, label = { Text("Nome") }, modifier = Modifier.fillMaxWidth())
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(Icons.Filled.Groups, contentDescription = null)
+            Text("Irmãos", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        }
+        Text("${filtered.size} cadastro(s) encontrado(s)", style = MaterialTheme.typography.bodySmall)
+        OutlinedTextField(name, { name = it }, label = { Text("Nome") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
         OutlinedTextField(phone, { phone = it }, label = { Text("WhatsApp (somente números)") }, modifier = Modifier.fillMaxWidth())
         Button({
             error = vm.addBrother(name, phone)
             if (error == null) { name = ""; phone = "" }
-        }) { Text("Adicionar irmão") }
+        }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Filled.Add, contentDescription = null)
+            Spacer(Modifier.width(6.dp))
+            Text("Adicionar irmão")
+        }
         Spacer(Modifier.height(8.dp))
-        OutlinedTextField(search, { search = it }, label = { Text("Buscar irmão") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(
+            search, { search = it },
+            label = { Text("Buscar irmão") },
+            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
         Spacer(Modifier.height(8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items(filtered, key = { it.id }) { brother ->
                 Card(Modifier.fillMaxWidth()) {
                     Row(Modifier.padding(12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(Modifier.weight(1f)) {
-                            Text(brother.name, style = MaterialTheme.typography.titleMedium)
-                            Text(if (brother.phone.isBlank()) "Sem WhatsApp" else brother.phone)
-                            Text(if (brother.active) "Ativo" else "Inativo")
+                            Text(brother.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                AssistChip(onClick = {}, enabled = false, label = { Text(if (brother.active) "Ativo" else "Inativo") })
+                                if (brother.phone.isNotBlank()) AssistChip(onClick = {}, enabled = false, label = { Text("WhatsApp") })
+                            }
                         }
                         Column {
-                            TextButton({ editing = brother }) { Text("Editar") }
-                            TextButton({ deleting = brother }) { Text("Excluir") }
+                            IconButton({ editing = brother }) { Icon(Icons.Filled.Edit, contentDescription = "Editar") }
+                            IconButton({ deleting = brother }) { Icon(Icons.Filled.Delete, contentDescription = "Excluir") }
                             TextButton({ vm.setBrotherActive(brother.id, !brother.active) }) { Text(if (brother.active) "Desativar" else "Ativar") }
                         }
                     }
@@ -473,7 +529,10 @@ private fun PrivilegesScreen(vm: AppViewModel) {
     val filteredBrothers = vm.brothers.value.filter { it.name.contains(searchBrother.trim(), ignoreCase = true) }.sortedBy { it.name.lowercase(Locale.getDefault()) }
     Column(Modifier.padding(20.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            Text("Privilégios", style = MaterialTheme.typography.headlineSmall)
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(Icons.Filled.Work, contentDescription = null)
+            Text("Privilégios", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        }
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Text("Painéis", style = MaterialTheme.typography.labelMedium)
                 TextButton({ panelScale = (panelScale - 0.1f).coerceAtLeast(0.8f) }) { Text("−") }
@@ -485,7 +544,13 @@ private fun PrivilegesScreen(vm: AppViewModel) {
         OutlinedTextField(quantity, { quantity = it.filter(Char::isDigit) }, label = { Text("Quantidade necessária") }, modifier = Modifier.fillMaxWidth())
         Button({ error = vm.addPrivilege(name, quantity.toIntOrNull() ?: 1); if (error == null) { name = ""; quantity = "1" } }) { Text("Adicionar privilégio") }
         Spacer(Modifier.height(8.dp))
-        OutlinedTextField(searchBrother, { searchBrother = it }, label = { Text("Buscar irmão para autorizar") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(
+            searchBrother, { searchBrother = it },
+            label = { Text("Buscar irmão para autorizar") },
+            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
         Spacer(Modifier.height(8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(vm.privileges.value.sortedBy { it.name.lowercase(Locale.getDefault()) }, key = { it.id }) { privilege ->
@@ -524,7 +589,20 @@ private fun PrivilegesScreen(vm: AppViewModel) {
                             else "Permitido: " + privilege.allowedDays.sorted().joinToString(" e ") { dayLabel(it) },
                             style = MaterialTheme.typography.bodySmall
                         )
-                        Text("Irmãos autorizados", style = MaterialTheme.typography.labelLarge)
+                        if (privilege.name.trim().lowercase(Locale.getDefault()) in setOf("leitor do livro", "leitor livro", "leitor da sentinela", "leitor sentinela")) {
+                            AssistChip(
+                                onClick = {},
+                                enabled = false,
+                                label = {
+                                    Text(
+                                        if (privilege.name.trim().lowercase(Locale.getDefault()) in setOf("leitor da sentinela", "leitor sentinela"))
+                                            "Leitor da Sentinela → também pode ler o Livro"
+                                        else "Leitor do Livro"
+                                    )
+                                }
+                            )
+                        }
+                        Text("Irmãos autorizados", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                         filteredBrothers.forEach { brother ->
                             val directAuthorization = privilege.id in brother.privileges
                             val inheritedFromSentinel = !directAuthorization &&
@@ -573,13 +651,17 @@ private fun HistoryScreen(vm: AppViewModel) {
     var confirmDelete by remember { mutableStateOf<Meeting?>(null) }
     LazyColumn(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
-            Text("Histórico", style = MaterialTheme.typography.headlineSmall)
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Filled.History, contentDescription = null)
+                Text("Histórico", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            }
             Text("${vm.meetings.value.size} reunião(ões) registrada(s)")
         }
         items(vm.meetings.value.sortedByDescending { parseDateForSort(it.date) }, key = { it.id }) { meeting ->
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
-                    Text("${meeting.type} — ${meeting.date}", style = MaterialTheme.typography.titleMedium)
+                    Text(meeting.date, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(meeting.type, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                     Text("${meeting.assignments.size} designação(ões)")
                     meeting.assignments.forEach { a ->
                         val brother = vm.brothers.value.find { it.id == a.brotherId }
@@ -613,7 +695,10 @@ private fun SettingsScreen(themeIndex: Int, onThemeChange: (Int) -> Unit) {
     )
     LazyColumn(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
-            Text("Configurações", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Filled.Settings, contentDescription = null)
+                Text("Configurações", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            }
             Text("Personalize a aparência do aplicativo.", style = MaterialTheme.typography.bodyMedium)
         }
         item {
