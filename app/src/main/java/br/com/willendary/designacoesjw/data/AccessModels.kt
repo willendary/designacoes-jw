@@ -6,7 +6,8 @@ data class UserProfile(
     val name: String = "",
     val role: String = "viewer",
     val permissions: Set<String> = emptySet(),
-    val active: Boolean = true
+    val active: Boolean = true,
+    val invitationId: String = ""
 )
 
 data class Invitation(
