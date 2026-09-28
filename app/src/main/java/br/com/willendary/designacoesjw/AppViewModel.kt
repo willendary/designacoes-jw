@@ -5,7 +5,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.AndroidViewModel
 import br.com.willendary.designacoesjw.data.*
 import java.text.SimpleDateFormat
-import java.util.Date
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.YearMonth
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.random.Random
 
@@ -14,6 +17,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var brothers = mutableStateOf(repo.loadBrothers()); private set
     var privileges = mutableStateOf(repo.loadPrivileges()); private set
     var meetings = mutableStateOf(repo.loadMeetings()); private set
+    var schedule = mutableStateOf(repo.loadSchedule()); private set
+
+    fun setMeetingDays(first: Int, second: Int) {
+        if (first == second) return
+        schedule.value = MeetingSchedule(first, second)
+        repo.saveSchedule(schedule.value)
+    }
 
     fun addBrother(name: String, phone: String) {
         if (name.isBlank()) return
@@ -58,7 +68,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         repo.saveBrothers(brothers.value)
     }
 
-    fun generateMeeting(date: String, type: String, blocked: Set<Long>): Meeting {
+    fun generateMonth(yearMonth: YearMonth): List<Meeting> {
+        val days = listOf(schedule.value.firstDay, schedule.value.secondDay)
+        val dates = yearMonth.atDay(1).let { first ->
+            (0 until yearMonth.lengthOfMonth()).map { first.plusDays(it.toLong()) }
+        }.filter { it.dayOfWeek.value in days }.sorted()
+
+        val generated = dates.map { date ->
+            generateMeetingInternal(date, "Reunião", emptySet())
+        }
+        meetings.value = meetings.value + generated
+        repo.saveMeetings(meetings.value)
+        return generated
+    }
+
+    private fun generateMeetingInternal(date: LocalDate, type: String, blocked: Set<Long>): Meeting {
         val activePrivileges = privileges.value.filter { it.active }
         val activeBrothers = brothers.value.filter { it.active && it.id !in blocked }
         val history = meetings.value.flatMap { it.assignments }
@@ -80,10 +104,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
 
-        val meeting = Meeting(nextId(), date.trim(), type.trim().ifBlank { "Reunião" }, result, blocked)
-        meetings.value = meetings.value + meeting
-        repo.saveMeetings(meetings.value)
-        return meeting
+        return Meeting(nextId(), date.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), type, result, blocked)
     }
 
     fun replaceAssignment(meetingId: Long, privilegeId: Long, oldBrotherId: Long, newBrotherId: Long) {
@@ -102,6 +123,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         repo.saveMeetings(meetings.value)
     }
 
+    fun deleteMonth(yearMonth: YearMonth) {
+        val prefix = yearMonth.format(DateTimeFormatter.ofPattern("MM/yyyy"))
+        meetings.value = meetings.value.filterNot {
+            it.date.endsWith("/$prefix")
+        }
+        repo.saveMeetings(meetings.value)
+    }
+
     fun candidatesFor(meeting: Meeting, privilegeId: Long, currentBrotherId: Long): List<Brother> {
         val used = meeting.assignments.filter { it.brotherId != currentBrotherId }.map { it.brotherId }.toSet()
         return brothers.value.filter {
@@ -112,7 +141,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun missingAssignments(meeting: Meeting): List<Privilege> =
         privileges.value.filter { p -> p.active && meeting.assignments.count { it.privilegeId == p.id } < p.quantity }
 
-    private fun lastAssignmentDate(brotherId: Long, privilegeId: Long): Date? {
+    private fun lastAssignmentDate(brotherId: Long, privilegeId: Long): java.util.Date? {
         val formatter = SimpleDateFormat("dd/MM/yyyy", Locale("pt", "BR"))
         return meetings.value
             .filter { it.assignments.any { a -> a.brotherId == brotherId && a.privilegeId == privilegeId } }
