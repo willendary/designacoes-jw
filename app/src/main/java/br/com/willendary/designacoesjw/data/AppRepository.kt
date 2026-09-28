@@ -44,6 +44,14 @@ class AppRepository(context: Context) {
                 return@addSnapshotListener
             }
             val items = snapshot?.documents?.mapNotNull(::brotherFromDocument) ?: emptyList()
+            if (items.isEmpty()) {
+                val local = loadBrothers()
+                if (local.isNotEmpty()) {
+                    saveBrothers(local)
+                    onBrothers(local)
+                    return@addSnapshotListener
+                }
+            }
             saveBrothersLocal(items)
             onBrothers(items)
         }
@@ -54,6 +62,14 @@ class AppRepository(context: Context) {
                 return@addSnapshotListener
             }
             val items = snapshot?.documents?.mapNotNull(::privilegeFromDocument) ?: emptyList()
+            if (items.isEmpty()) {
+                val local = loadPrivileges()
+                if (local.isNotEmpty()) {
+                    savePrivileges(local)
+                    onPrivileges(local)
+                    return@addSnapshotListener
+                }
+            }
             savePrivilegesLocal(items)
             onPrivileges(items)
         }
@@ -64,6 +80,14 @@ class AppRepository(context: Context) {
                 return@addSnapshotListener
             }
             val items = snapshot?.documents?.mapNotNull(::meetingFromDocument) ?: emptyList()
+            if (items.isEmpty()) {
+                val local = loadMeetings()
+                if (local.isNotEmpty()) {
+                    saveMeetings(local)
+                    onMeetings(local)
+                    return@addSnapshotListener
+                }
+            }
             saveMeetingsLocal(items)
             onMeetings(items)
         }
@@ -73,7 +97,15 @@ class AppRepository(context: Context) {
                 onError(error.localizedMessage ?: "Erro ao sincronizar configurações.")
                 return@addSnapshotListener
             }
-            val data = snapshot?.data ?: return@addSnapshotListener
+            val data = snapshot?.data
+            if (data == null) {
+                val local = loadSchedule()
+                if (local != MeetingSchedule()) {
+                    saveSchedule(local)
+                    onSchedule(local)
+                }
+                return@addSnapshotListener
+            }
             val schedule = MeetingSchedule(
                 (data["firstDay"] as? Number)?.toInt() ?: 3,
                 (data["secondDay"] as? Number)?.toInt() ?: 6
