@@ -19,27 +19,67 @@ class UserAccessRepository {
         onError: (String) -> Unit = {}
     ) {
         profileListener?.remove()
-        profileListener = users.document(uid).addSnapshotListener { snapshot, error ->
-            if (error != null) {
-                onError(error.localizedMessage ?: "Não foi possível carregar as permissões da conta.")
-                return@addSnapshotListener
-            }
-            if (snapshot != null && snapshot.exists()) {
-                onProfile(fromUser(snapshot.data ?: emptyMap(), uid))
-                return@addSnapshotListener
-            }
+        val access = firestore.collection("workspaces").document("designacoes-jw").collection("settings").document("access")
+        access.get().addOnSuccessListener { accessSnapshot ->
+            val bootstrapUid = accessSnapshot.data?.get("bootstrapUid")?.toString().orEmpty()
+            val isBootstrapAdmin = bootstrapUid == uid
 
-            // Novas contas começam como visualizador. A promoção para administrador
-            // deve ser feita por um administrador existente ou pelo bootstrap inicial.
-            val profile = UserProfile(
-                uid = uid,
-                email = email,
-                name = "",
-                role = "viewer",
-                permissions = setOf(AppPermissions.VIEW_ASSIGNMENTS, AppPermissions.EXPORT_REPORTS)
-            )
-            users.document(uid).set(toMap(profile), SetOptions.merge())
-            onProfile(profile)
+            profileListener = users.document(uid).addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    onError(error.localizedMessage ?: "Não foi possível carregar as permissões da conta.")
+                    return@addSnapshotListener
+                }
+
+                if (isBootstrapAdmin) {
+                    val profile = UserProfile(
+                        uid = uid,
+                        email = email,
+                        name = snapshot?.data?.get("name")?.toString() ?: "",
+                        role = "admin",
+                        permissions = AppPermissions.all,
+                        active = true
+                    )
+                    users.document(uid).set(toMap(profile), SetOptions.merge())
+                    onProfile(profile)
+                    return@addSnapshotListener
+                }
+
+                if (snapshot != null && snapshot.exists()) {
+                    onProfile(fromUser(snapshot.data ?: emptyMap(), uid))
+                    return@addSnapshotListener
+                }
+
+                val profile = UserProfile(
+                    uid = uid,
+                    email = email,
+                    name = "",
+                    role = "viewer",
+                    permissions = setOf(AppPermissions.VIEW_ASSIGNMENTS, AppPermissions.EXPORT_REPORTS)
+                )
+                users.document(uid).set(toMap(profile), SetOptions.merge())
+                onProfile(profile)
+            }
+        }.addOnFailureListener {
+            // Sem documento de bootstrap, segue o fluxo normal de criação do perfil.
+            profileListener = users.document(uid).addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    onError(error.localizedMessage ?: "Não foi possível carregar as permissões da conta.")
+                    return@addSnapshotListener
+                }
+                if (snapshot != null && snapshot.exists()) {
+                    onProfile(fromUser(snapshot.data ?: emptyMap(), uid))
+                    return@addSnapshotListener
+                }
+                val profile = UserProfile(
+                    uid = uid,
+                    email = email,
+                    name = "",
+                    role = "viewer",
+                    permissions = setOf(AppPermissions.VIEW_ASSIGNMENTS, AppPermissions.EXPORT_REPORTS)
+                )
+                users.document(uid).set(toMap(profile), SetOptions.merge())
+                onProfile(profile)
+            }
         }
     }
 
