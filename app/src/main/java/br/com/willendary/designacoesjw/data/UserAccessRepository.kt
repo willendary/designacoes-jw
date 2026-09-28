@@ -92,6 +92,50 @@ class UserAccessRepository {
             .addOnFailureListener { onResult(null, it.localizedMessage ?: "Não foi possível criar o convite.") }
     }
 
+    fun claimInvitation(invitationId: String, uid: String, email: String, onResult: (String?) -> Unit = {}) {
+        invitations.document(invitationId).get()
+            .addOnSuccessListener { snapshot ->
+                if (!snapshot.exists()) {
+                    onResult("Convite não encontrado ou expirado.")
+                    return@addOnSuccessListener
+                }
+                val data = snapshot.data ?: run {
+                    onResult("Convite inválido.")
+                    return@addOnSuccessListener
+                }
+                val invitedEmail = data["email"]?.toString()?.trim()?.lowercase()
+                if (invitedEmail != email.trim().lowercase()) {
+                    onResult("O e-mail desta conta não corresponde ao convite.")
+                    return@addOnSuccessListener
+                }
+                if (data["status"]?.toString() != "pending") {
+                    onResult("Este convite já foi utilizado.")
+                    return@addOnSuccessListener
+                }
+
+                val permissions = (data["permissions"] as? List<*>)?.mapNotNull { it?.toString() }?.toSet() ?: emptySet()
+                val profile = UserProfile(
+                    uid = uid,
+                    email = email.trim().lowercase(),
+                    name = data["name"]?.toString() ?: "",
+                    role = "custom",
+                    permissions = permissions,
+                    active = true
+                )
+                val batch = firestore.batch()
+                batch.set(users.document(uid), toMap(profile), SetOptions.merge())
+                batch.update(invitations.document(invitationId), mapOf(
+                    "status" to "accepted",
+                    "acceptedBy" to uid,
+                    "acceptedAt" to System.currentTimeMillis()
+                ))
+                batch.commit()
+                    .addOnSuccessListener { onResult(null) }
+                    .addOnFailureListener { onResult(it.localizedMessage ?: "Não foi possível aceitar o convite.") }
+            }
+            .addOnFailureListener { onResult(it.localizedMessage ?: "Não foi possível validar o convite.") }
+    }
+
     fun updateUser(profile: UserProfile, onResult: (String?) -> Unit) {
         users.document(profile.uid).set(toMap(profile), SetOptions.merge())
             .addOnSuccessListener { onResult(null) }
