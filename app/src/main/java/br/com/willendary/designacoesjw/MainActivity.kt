@@ -7,8 +7,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
+import com.google.firebase.auth.FirebaseAuth
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -26,7 +26,7 @@ class MainActivity : ComponentActivity() {
             )
             MaterialTheme(colorScheme = schemes[themeIndex.coerceIn(0, schemes.lastIndex)]) {
                 Surface {
-                    App(
+                    FirebaseAuthGate(
                         themeIndex = themeIndex,
                         onThemeChange = { newIndex ->
                             themeIndexState.intValue = newIndex.coerceIn(0, schemes.lastIndex)
@@ -36,5 +36,33 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun FirebaseAuthGate(
+    themeIndex: Int,
+    onThemeChange: (Int) -> Unit
+) {
+    val auth = remember { FirebaseAuth.getInstance() }
+    var user by remember { mutableStateOf(auth.currentUser) }
+
+    DisposableEffect(auth) {
+        val listener = FirebaseAuth.AuthStateListener { user = it.currentUser }
+        auth.addAuthStateListener(listener)
+        onDispose { auth.removeAuthStateListener(listener) }
+    }
+
+    if (user == null) {
+        LoginScreen()
+    } else {
+        App(
+            themeIndex = themeIndex,
+            onThemeChange = onThemeChange,
+            onSignOut = {
+                auth.signOut()
+                user = null
+            }
+        )
     }
 }

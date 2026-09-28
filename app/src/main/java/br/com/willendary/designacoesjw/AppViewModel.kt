@@ -18,6 +18,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var meetings = mutableStateOf(repo.loadMeetings()); private set
     var schedule = mutableStateOf(repo.loadSchedule()); private set
 
+    init {
+        repo.startCloudSync(
+            onBrothers = { brothers.value = it },
+            onPrivileges = { privileges.value = it },
+            onMeetings = { meetings.value = it },
+            onSchedule = { schedule.value = it }
+        )
+    }
+
+    override fun onCleared() {
+        repo.closeCloudSync()
+        super.onCleared()
+    }
+
     fun setMeetingDays(first: Int, second: Int) {
         if (first == second) return
         schedule.value = MeetingSchedule(first, second)
