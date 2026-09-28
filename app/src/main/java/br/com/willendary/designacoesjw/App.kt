@@ -2,6 +2,7 @@ package br.com.willendary.designacoesjw
 
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -85,9 +86,26 @@ fun App(vm: AppViewModel = viewModel()) {
                     updating = true
                     availableUpdate = null
                     scope.launch {
-                        val ok = UpdateManager.downloadAndInstall(context, update)
+                        val result = UpdateManager.downloadAndInstall(context, update)
                         updating = false
-                        if (!ok) refreshUpdate()
+                        when (result) {
+                            UpdateInstallResult.STARTED -> Unit
+                            UpdateInstallResult.NEED_PERMISSION -> {
+                                Toast.makeText(
+                                    context,
+                                    "Permita a instalação de apps desconhecidos para concluir a atualização. Depois, abra o aplicativo novamente.",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                            UpdateInstallResult.FAILED -> {
+                                availableUpdate = update
+                                Toast.makeText(
+                                    context,
+                                    "Não foi possível iniciar a instalação. Tente novamente.",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        }
                     }
                 }) { Text(if (updating) "Baixando..." else "Atualizar") }
             },
