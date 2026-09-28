@@ -318,59 +318,54 @@ private fun MeetingSummaryCard(
 }
 
 @Composable
-private fun MeetingResult(
-    vm: AppViewModel,
-    meeting: Meeting,
-    context: android.content.Context,
-    onReplace: (Triple<Long, Long, Long>) -> Unit
-) {
+private fun MeetingResult(vm: AppViewModel, meeting: Meeting, context: android.content.Context, onReplace: (Triple<Long, Long, Long>) -> Unit) {
     val missing = vm.missingAssignments(meeting)
-    Text("Designações", style = MaterialTheme.typography.titleLarge)
-    if (missing.isNotEmpty()) {
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(12.dp)) {
+    var replaceTarget by remember { mutableStateOf<Triple<Long, Long, Long>?>(null) }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Designações", style = MaterialTheme.typography.titleLarge)
+        if (missing.isNotEmpty()) {
+            Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp)) {
                 Text("Atenção: faltaram candidatos para:")
-                missing.forEach { Text("• ${it.name} (${it.quantity} necessário(s))") }
-            }
+                missing.forEach { Text("• " + it.name + " (" + it.quantity + " necessário(s))") }
+            } }
         }
-    }
-    meeting.assignments.forEach { assignment ->
-        val brother = vm.brothers.value.find { it.id == assignment.brotherId }
-        val privilege = vm.privileges.value.find { it.id == assignment.privilegeId }
-        Card(Modifier.fillMaxWidth()) {
-            Row(Modifier.padding(12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Column(Modifier.weight(1f)) {
-                    Text(privilege?.name ?: "Privilégio", style = MaterialTheme.typography.titleMedium)
-                    Text(brother?.name ?: "Irmão")
+        meeting.assignments.forEach { assignment ->
+            val brother = vm.brothers.value.find { it.id == assignment.brotherId }
+            val privilege = vm.privileges.value.find { it.id == assignment.privilegeId }
+            Card(Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column(Modifier.weight(1f)) { Text(privilege?.name ?: "Privilégio", style = MaterialTheme.typography.titleMedium); Text(brother?.name ?: "Irmão") }
+                    TextButton({ replaceTarget = Triple(meeting.id, assignment.privilegeId, assignment.brotherId) }) { Text("Trocar") }
                 }
-                TextButton({ onReplace(Triple(meeting.id, assignment.privilegeId, assignment.brotherId)) }) { Text("Trocar") }
+            }
+        }
+        Button({
+            val msg = buildString {
+                append("Designações — " + meeting.type + " em " + meeting.date + "\n\n")
+                meeting.assignments.forEach { a ->
+                    val b = vm.brothers.value.find { it.id == a.brotherId }
+                    val p = vm.privileges.value.find { it.id == a.privilegeId }
+                    append((p?.name ?: "Privilégio") + ": " + (b?.name ?: "Irmão") + "\n")
+                }
+                if (missing.isNotEmpty()) append("\n⚠ Faltaram candidatos para: " + missing.joinToString { it.name })
+            }
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/?text=" + Uri.encode(msg))))
+        }, Modifier.fillMaxWidth()) { Text("Compartilhar no WhatsApp") }
+        meeting.assignments.mapNotNull { a -> vm.brothers.value.find { it.id == a.brotherId } }.distinctBy { it.id }.forEach { brother ->
+            if (brother.phone.isNotBlank()) {
+                OutlinedButton({
+                    val phone = brother.phone.filter(Char::isDigit)
+                    val msg = "Olá, " + brother.name + "! Você foi designado para a reunião de " + meeting.date + ". Por favor, confirme o recebimento da designação."
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/" + phone + "?text=" + Uri.encode(msg))))
+                }, Modifier.fillMaxWidth()) { Text("Enviar para " + brother.name) }
             }
         }
     }
-    Button({
-        val msg = buildString {
-            append("Designações — ${meeting.type} em ${meeting.date}\n\n")
-            meeting.assignments.forEach { a ->
-                val b = vm.brothers.value.find { it.id == a.brotherId }
-                val p = vm.privileges.value.find { it.id == a.privilegeId }
-                append("${p?.name}: ${b?.name}\n")
-            }
-            if (missing.isNotEmpty()) append("\n⚠ Faltaram candidatos para: ${missing.joinToString { it.name }}")
-        }
-        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/?text=${Uri.encode(msg)}")))
-    }, Modifier.fillMaxWidth()) { Text("Compartilhar no WhatsApp") }
-
-    meeting.assignments.mapNotNull { a -> vm.brothers.value.find { it.id == a.brotherId } }.distinctBy { it.id }.forEach { brother ->
-        if (brother.phone.isNotBlank()) {
-            OutlinedButton({
-                val phone = brother.phone.filter(Char::isDigit)
-                val msg = "Olá, ${brother.name}! Você foi designado para a reunião de ${meeting.date}. Por favor, confirme o recebimento da designação."
-                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/${phone}?text=${Uri.encode(msg)}")))
-            }, Modifier.fillMaxWidth()) { Text("Enviar para ${brother.name}") }
-        }
+    replaceTarget?.let { target ->
+        val candidates = vm.candidatesFor(meeting, target.second, target.third)
+        ReplaceDialog(candidates, { newId -> vm.replaceAssignment(target.first, target.second, target.third, newId); replaceTarget = null }, { replaceTarget = null })
     }
 }
-
 @Composable
 private fun BrothersScreen(vm: AppViewModel) {
     var name by remember { mutableStateOf("") }
