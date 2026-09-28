@@ -82,6 +82,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         repo.savePrivileges(privileges.value)
     }
 
+    fun setPrivilegeAllowedDays(id: Long, days: Set<Int>) {
+        privileges.value = privileges.value.map { if (it.id == id) it.copy(allowedDays = days) else it }
+        repo.savePrivileges(privileges.value)
+    }
+
     fun togglePrivilege(brotherId: Long, privilegeId: Long) {
         brothers.value = brothers.value.map {
             if (it.id != brotherId) it else it.copy(
@@ -122,7 +127,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val result = mutableListOf<Assignment>()
         val used = mutableSetOf<Long>()
 
-        activePrivileges.sortedBy { it.id }.forEach { privilege ->
+        activePrivileges.sortedBy { it.name.lowercase(Locale.getDefault()) }.forEach { privilege ->
             val candidates = activeBrothers
                 .filter { it.id !in used && privilege.id in it.privileges }
                 .sortedWith(
