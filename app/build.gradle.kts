@@ -29,7 +29,7 @@ android {
 
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2025.01.00"))
-    implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
+    implementation(platform("com.google.firebase:firebase-bom:34.6.0"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
     implementation("androidx.credentials:credentials:1.3.0")
