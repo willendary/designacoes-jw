@@ -24,15 +24,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         repo.saveSchedule(schedule.value)
     }
 
-    fun addBrother(name: String, phone: String) {
-        if (name.isBlank()) return
+    fun addBrother(name: String, phone: String): String? {
+        val normalized = normalizeName(name)
+        if (normalized.isBlank()) return "Informe o nome do irmão."
+        if (brothers.value.any { normalizeName(it.name) == normalized }) return "Já existe um irmão cadastrado com esse nome."
         brothers.value = brothers.value + Brother(nextId(), name.trim(), phone.trim())
         repo.saveBrothers(brothers.value)
+        return null
     }
 
-    fun updateBrother(id: Long, name: String, phone: String) {
-        if (name.isBlank()) return
+    fun updateBrother(id: Long, name: String, phone: String): String? {
+        val normalized = normalizeName(name)
+        if (normalized.isBlank()) return "Informe o nome do irmão."
+        if (brothers.value.any { it.id != id && normalizeName(it.name) == normalized }) return "Já existe outro irmão cadastrado com esse nome."
         brothers.value = brothers.value.map { if (it.id == id) it.copy(name = name.trim(), phone = phone.trim()) else it }
+        repo.saveBrothers(brothers.value)
+        return null
+    }
+
+    fun deleteBrother(id: Long) {
+        brothers.value = brothers.value.filterNot { it.id == id }
         repo.saveBrothers(brothers.value)
     }
 
@@ -41,16 +52,29 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         repo.saveBrothers(brothers.value)
     }
 
-    fun addPrivilege(name: String, quantity: Int) {
-        if (name.isBlank()) return
+    fun addPrivilege(name: String, quantity: Int): String? {
+        val normalized = normalizeName(name)
+        if (normalized.isBlank()) return "Informe o nome do privilégio."
+        if (privileges.value.any { normalizeName(it.name) == normalized }) return "Já existe um privilégio cadastrado com esse nome."
         privileges.value = privileges.value + Privilege(nextId(), name.trim(), quantity.coerceAtLeast(1))
         repo.savePrivileges(privileges.value)
+        return null
     }
 
-    fun updatePrivilege(id: Long, name: String, quantity: Int) {
-        if (name.isBlank()) return
+    fun updatePrivilege(id: Long, name: String, quantity: Int): String? {
+        val normalized = normalizeName(name)
+        if (normalized.isBlank()) return "Informe o nome do privilégio."
+        if (privileges.value.any { it.id != id && normalizeName(it.name) == normalized }) return "Já existe outro privilégio cadastrado com esse nome."
         privileges.value = privileges.value.map { if (it.id == id) it.copy(name = name.trim(), quantity = quantity.coerceAtLeast(1)) else it }
         repo.savePrivileges(privileges.value)
+        return null
+    }
+
+    fun deletePrivilege(id: Long) {
+        privileges.value = privileges.value.filterNot { it.id == id }
+        repo.savePrivileges(privileges.value)
+        brothers.value = brothers.value.map { it.copy(privileges = it.privileges - id) }
+        repo.saveBrothers(brothers.value)
     }
 
     fun setPrivilegeActive(id: Long, active: Boolean) {
@@ -156,6 +180,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             .mapNotNull { formatter.parse(it.date) }
             .maxOrNull()
     }
+
+    private fun normalizeName(value: String): String =
+        java.text.Normalizer.normalize(value.trim(), java.text.Normalizer.Form.NFD)
+            .replace("\\p{InCombiningDiacriticalMarks}+".toRegex(), "")
+            .lowercase(Locale.getDefault())
 
     private fun nextId(): Long = System.currentTimeMillis() * 1000L + Random.nextLong(1000)
 }
