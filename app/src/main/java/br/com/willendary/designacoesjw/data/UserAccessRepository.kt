@@ -120,7 +120,8 @@ class UserAccessRepository {
                     name = data["name"]?.toString() ?: "",
                     role = "custom",
                     permissions = permissions,
-                    active = true
+                    active = true,
+                    invitationId = invitationId
                 )
                 val batch = firestore.batch()
                 batch.set(users.document(uid), toMap(profile), SetOptions.merge())
@@ -168,7 +169,8 @@ class UserAccessRepository {
             name = data["name"]?.toString() ?: "",
             role = data["role"]?.toString() ?: "viewer",
             permissions = (data["permissions"] as? List<*>)?.mapNotNull { it?.toString() }?.toSet() ?: emptySet(),
-            active = data["active"] as? Boolean ?: true
+            active = data["active"] as? Boolean ?: true,
+            invitationId = data["invitationId"]?.toString() ?: ""
         )
     }
 
@@ -177,7 +179,8 @@ class UserAccessRepository {
         "name" to profile.name,
         "role" to profile.role,
         "permissions" to profile.permissions.toList(),
-        "active" to profile.active
+        "active" to profile.active,
+        "invitationId" to profile.invitationId
     )
 
     private fun toMap(invitation: Invitation) = mapOf(
