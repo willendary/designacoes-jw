@@ -17,10 +17,22 @@ import br.com.willendary.designacoesjw.data.Privilege
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun App(vm: AppViewModel = viewModel()) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }
+    var checkingUpdate by remember { mutableStateOf(true) }
+    var updating by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        availableUpdate = UpdateManager.check(context)
+        checkingUpdate = false
+    }
+
     var tab by remember { mutableIntStateOf(0) }
     Scaffold(
         topBar = { TopAppBar(title = { Text("Designações JW") }) },
@@ -40,6 +52,29 @@ fun App(vm: AppViewModel = viewModel()) {
                 else -> HistoryScreen(vm)
             }
         }
+    }
+    availableUpdate?.let { update ->
+        AlertDialog(
+            onDismissRequest = { if (!updating) availableUpdate = null },
+            title = { Text("Atualização disponível") },
+            text = {
+                Text(if (updating) "Baixando a versão " + update.versionName + "..."
+                     else "A versão " + update.versionName + " do Designações JW está disponível.")
+            },
+            confirmButton = {
+                TextButton(enabled = !updating, onClick = {
+                    updating = true
+                    scope.launch {
+                        val ok = UpdateManager.downloadAndInstall(context, update)
+                        updating = false
+                        if (!ok) availableUpdate = null
+                    }
+                }) { Text(if (updating) "Baixando..." else "Atualizar") }
+            },
+            dismissButton = {
+                if (!updating) TextButton({ availableUpdate = null }) { Text("Agora não") }
+            }
+        )
     }
 }
 
