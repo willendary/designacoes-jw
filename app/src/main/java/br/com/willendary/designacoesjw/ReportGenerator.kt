@@ -88,71 +88,40 @@ object ReportGenerator {
         return file
     }
 
-    private fun generateDocx(context: Context, month: YearMonth, meetings: List<Meeting>, brothers: List<Brother>, privileges: List<Privilege>): File {
+    private fun generateDoc(context: Context, month: YearMonth, meetings: List<Meeting>, brothers: List<Brother>, privileges: List<Privilege>): File {
         val dir = File(context.cacheDir, "reports").apply { mkdirs() }
-        val file = File(dir, "designacoes-${month.year}-${month.monthValue.toString().padStart(2, '0')}.docx")
+        val file = File(dir, "designacoes-${month.year}-${month.monthValue.toString().padStart(2, '0')}.doc")
         val activePrivileges = privileges.filter { it.active }.sortedBy { it.id }
         val sortedMeetings = meetings.sortedBy { parseDate(it.date) }
-        val widths = buildList { add(1300); repeat(activePrivileges.size) { add(900) } }
 
-        val body = buildString {
-            append(paragraph("DESIGNAÇÕES — ${monthLabel(month)}", true, 28))
-            append(paragraph("Relatório mensal de designações", false, 20))
-            append("<w:tbl><w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/><w:tblLayout w:type=\"fixed\"/></w:tblPr>")
-            append("<w:tr>")
-            append(cell("Data", widths[0], true))
-            activePrivileges.forEachIndexed { index, privilege -> append(cell(privilege.name, widths[index + 1], true)) }
-            append("</w:tr>")
+        val html = buildString {
+            append("<html><head><meta charset="UTF-8"><style>")
+            append("@page { size: landscape; margin: 1cm; }")
+            append("body { font-family: Arial, sans-serif; }")
+            append("h1 { text-align:center; font-size:20pt; }")
+            append("table { width:100%; border-collapse:collapse; table-layout:fixed; }")
+            append("th,td { border:1px solid #777; padding:6px; text-align:center; vertical-align:middle; font-size:10pt; }")
+            append("th { font-weight:bold; background:#eeeeee; }")
+            append("th:first-child,td:first-child { width:90px; }")
+            append("</style></head><body>")
+            append("<h1>DESIGNAÇÕES — ${monthLabel(month)}</h1>")
+            append("<table><tr><th>Data</th>")
+            activePrivileges.forEach { privilege -> append("<th>${htmlEscape(privilege.name)}</th>") }
+            append("</tr>")
             sortedMeetings.forEach { meeting ->
-                append("<w:tr>")
-                append(cell(meeting.date, widths[0], false))
-                activePrivileges.forEachIndexed { index, privilege ->
+                append("<tr><td>${htmlEscape(meeting.date)}</td>")
+                activePrivileges.forEach { privilege ->
                     val names = meeting.assignments.filter { it.privilegeId == privilege.id }
                         .mapNotNull { a -> brothers.find { it.id == a.brotherId }?.name }
-                    append(cell(if (names.isEmpty()) "—" else names.joinToString("\n"), widths[index + 1], false))
+                    val value = if (names.isEmpty()) "—" else names.joinToString("<br>")
+                    append("<td>$value</td>")
                 }
-                append("</w:tr>")
+                append("</tr>")
             }
-            append("</w:tbl>")
+            append("</table></body></html>")
         }
-
-        val documentXml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>$body
-<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"/></w:sectPr>
-</w:body></w:document>"""
-        val styles = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:rPr><w:sz w:val="20"/></w:rPr></w:style></w:styles>"""
-
-        ZipOutputStream(FileOutputStream(file)).use { zip ->
-            addEntry(zip, "[Content_Types].xml", contentTypes())
-            addEntry(zip, "_rels/.rels", rels())
-            addEntry(zip, "word/document.xml", documentXml)
-            addEntry(zip, "word/styles.xml", styles)
-            addEntry(zip, "word/_rels/document.xml.rels", documentRels())
-        }
+        file.writeText(html, Charsets.UTF_8)
         return file
-    }
-
-    private fun paragraph(text: String, bold: Boolean, size: Int): String {
-        val weight = if (bold) "<w:b/>" else ""
-        return "<w:p><w:pPr><w:jc w:val=\"center\"/></w:pPr><w:r><w:rPr>$weight<w:sz w:val=\"$size\"/></w:rPr><w:t>${xmlEscape(text)}</w:t></w:r></w:p>"
-    }
-
-    private fun cell(text: String, width: Int, bold: Boolean): String {
-        val weight = if (bold) "<w:b/>" else ""
-        val paragraphs = text.split("\n").joinToString("") {
-            "<w:p><w:r><w:rPr>$weight</w:rPr><w:t xml:space=\"preserve\">${xmlEscape(it)}</w:t></w:r></w:p>"
-        }
-        return "<w:tc><w:tcPr><w:tcW w:w=\"$width\" w:type=\"dxa\"/></w:tcPr>$paragraphs</w:tc>"
-    }
-
-    private fun contentTypes() = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>"""
-    private fun rels() = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>"""
-    private fun documentRels() = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>"""
-
-    private fun addEntry(zip: ZipOutputStream, name: String, content: String) {
-        zip.putNextEntry(ZipEntry(name))
-        zip.write(content.toByteArray(Charsets.UTF_8))
-        zip.closeEntry()
     }
 
     private fun drawWrapped(canvas: android.graphics.Canvas, text: String, x: Float, startY: Float, width: Float, paint: Paint, lineHeight: Float, maxLines: Int) {
