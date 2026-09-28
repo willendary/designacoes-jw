@@ -7,6 +7,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.activity.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -42,9 +45,25 @@ fun App(vm: AppViewModel = viewModel()) {
     var checkingUpdate by remember { mutableStateOf(true) }
     var updating by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
+    suspend fun refreshUpdate() {
+        checkingUpdate = true
         availableUpdate = UpdateManager.check(context)
         checkingUpdate = false
+    }
+
+    LaunchedEffect(Unit) {
+        refreshUpdate()
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && !updating) {
+                scope.launch { refreshUpdate() }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     var tab by remember { mutableIntStateOf(0) }
@@ -78,10 +97,11 @@ fun App(vm: AppViewModel = viewModel()) {
             confirmButton = {
                 TextButton(enabled = !updating, onClick = {
                     updating = true
+                    availableUpdate = null
                     scope.launch {
                         val ok = UpdateManager.downloadAndInstall(context, update)
                         updating = false
-                        if (!ok) availableUpdate = null
+                        if (!ok) refreshUpdate()
                     }
                 }) { Text(if (updating) "Baixando..." else "Atualizar") }
             },
