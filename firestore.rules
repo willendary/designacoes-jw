@@ -41,7 +41,7 @@ service cloud.firestore {
       allow get: if signedIn() && (request.auth.uid == userId || isAdmin());
       allow list: if isAdmin();
 
-      allow create: if signedIn() && request.auth.uid == userId && (
+      allow create: if isAdmin() || (signedIn() && request.auth.uid == userId && (
         (
           request.resource.data.role == 'viewer' &&
           request.resource.data.permissions.hasAll(['view_assignments', 'export_reports']) &&
