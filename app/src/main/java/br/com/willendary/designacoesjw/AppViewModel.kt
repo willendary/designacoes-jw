@@ -120,7 +120,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         blocked: Set<Long>,
         historySource: List<Meeting>
     ): Meeting {
-        val activePrivileges = privileges.value.filter { it.active }
+        val activePrivileges = privileges.value.filter { it.active && (it.allowedDays.isEmpty() || date.dayOfWeek.value in it.allowedDays) }
         val activeBrothers = brothers.value.filter { it.active && it.id !in blocked }
         val history = historySource.flatMap { it.assignments }
             .groupingBy { it.brotherId to it.privilegeId }.eachCount()
@@ -171,12 +171,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun candidatesFor(meeting: Meeting, privilegeId: Long, currentBrotherId: Long): List<Brother> {
         val used = meeting.assignments.filter { it.brotherId != currentBrotherId }.map { it.brotherId }.toSet()
         return brothers.value.filter {
-            it.active && it.id !in meeting.blockedBrotherIds && it.id !in used && privilegeId in it.privileges
+            it.active && it.id !in meeting.blockedBrotherIds && it.id !in used && privilegeId in it.privileges && (privileges.value.firstOrNull { p -> p.id == privilegeId }?.allowedDays.isNullOrEmpty() || parseMeetingDay(meeting.date) in (privileges.value.firstOrNull { p -> p.id == privilegeId }?.allowedDays ?: emptySet()))
         }.sortedBy { it.name.lowercase(Locale.getDefault()) }
     }
 
     fun missingAssignments(meeting: Meeting): List<Privilege> =
-        privileges.value.filter { p -> p.active && meeting.assignments.count { it.privilegeId == p.id } < p.quantity }
+        privileges.value.filter { p ->
+            p.active &&
+            (p.allowedDays.isEmpty() || parseMeetingDay(meeting.date) in p.allowedDays) &&
+            meeting.assignments.count { it.privilegeId == p.id } < p.quantity
+        }
+
+    private fun parseMeetingDay(value: String): Int = runCatching {
+        LocalDate.parse(value, DateTimeFormatter.ofPattern("dd/MM/yyyy")).dayOfWeek.value
+    }.getOrDefault(0)
 
     private fun lastAssignmentDate(brotherId: Long, privilegeId: Long): java.util.Date? {
         val formatter = SimpleDateFormat("dd/MM/yyyy", Locale("pt", "BR"))
