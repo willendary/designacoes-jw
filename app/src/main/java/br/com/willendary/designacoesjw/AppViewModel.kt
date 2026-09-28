@@ -129,7 +129,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
         activePrivileges.sortedBy { it.name.lowercase(Locale.getDefault()) }.forEach { privilege ->
             val candidates = activeBrothers
-                .filter { it.id !in used && privilege.id in it.privileges }
+                .filter { it.id !in used && isBrotherAuthorizedForPrivilege(it, privilege) }
                 .sortedWith(
                     compareBy<Brother> { history[it.id to privilege.id] ?: 0 }
                         .thenBy { lastAssignmentDate(it.id, privilege.id)?.time ?: 0L }
@@ -170,8 +170,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun candidatesFor(meeting: Meeting, privilegeId: Long, currentBrotherId: Long): List<Brother> {
         val used = meeting.assignments.filter { it.brotherId != currentBrotherId }.map { it.brotherId }.toSet()
+        val privilege = privileges.value.firstOrNull { it.id == privilegeId } ?: return emptyList()
         return brothers.value.filter {
-            it.active && it.id !in meeting.blockedBrotherIds && it.id !in used && privilegeId in it.privileges && (privileges.value.firstOrNull { p -> p.id == privilegeId }?.allowedDays.isNullOrEmpty() || parseMeetingDay(meeting.date) in (privileges.value.firstOrNull { p -> p.id == privilegeId }?.allowedDays ?: emptySet()))
+            it.active &&
+            it.id !in meeting.blockedBrotherIds &&
+            it.id !in used &&
+            isBrotherAuthorizedForPrivilege(it, privilege) &&
+            (privilege.allowedDays.isEmpty() || parseMeetingDay(meeting.date) in privilege.allowedDays)
         }.sortedBy { it.name.lowercase(Locale.getDefault()) }
     }
 
@@ -181,6 +186,38 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             (p.allowedDays.isEmpty() || parseMeetingDay(meeting.date) in p.allowedDays) &&
             meeting.assignments.count { it.privilegeId == p.id } < p.quantity
         }
+
+    /** 
+     * Regras de capacidade entre privilégios:
+     * - Leitor da Sentinela também pode ser Leitor do Livro.
+     * - Leitor do Livro não pode, por isso, ser considerado Leitor da Sentinela.
+     *
+     * A autorização direta continua sendo armazenada no cadastro do irmão.
+     * A herança é calculada apenas no momento de verificar a elegibilidade.
+     */
+    private fun isBrotherAuthorizedForPrivilege(brother: Brother, privilege: Privilege): Boolean {
+        if (privilege.id in brother.privileges) return true
+
+        val privilegeName = normalizeName(privilege.name)
+        val bookPrivilege = privileges.value.firstOrNull { isBookReaderPrivilege(it) }
+        val sentinelPrivilege = privileges.value.firstOrNull { isSentinelReaderPrivilege(it) }
+
+        return bookPrivilege?.id == privilege.id &&
+            sentinelPrivilege != null &&
+            sentinelPrivilege.id in brother.privileges
+    }
+
+    private fun isBookReaderPrivilege(privilege: Privilege): Boolean =
+        normalizeName(privilege.name) in setOf(
+            "leitor do livro",
+            "leitor livro"
+        )
+
+    private fun isSentinelReaderPrivilege(privilege: Privilege): Boolean =
+        normalizeName(privilege.name) in setOf(
+            "leitor da sentinela",
+            "leitor sentinela"
+        )
 
     private fun parseMeetingDay(value: String): Int = runCatching {
         LocalDate.parse(value, DateTimeFormatter.ofPattern("dd/MM/yyyy")).dayOfWeek.value
