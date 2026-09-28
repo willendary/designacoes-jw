@@ -53,7 +53,7 @@ service cloud.firestore {
           get(/databases/$(database)/documents/workspaces/designacoes-jw/invitations/$(request.resource.data.invitationId)).data.email == request.auth.token.email &&
           get(/databases/$(database)/documents/workspaces/designacoes-jw/invitations/$(request.resource.data.invitationId)).data.status == 'pending'
         )
-      );
+      ));
 
       allow update: if isAdmin() ||
         (signedIn() && request.auth.uid == userId &&
