@@ -25,7 +25,7 @@ object ReportGenerator {
 
     private fun generatePdf(context: Context, month: YearMonth, meetings: List<Meeting>, brothers: List<Brother>, privileges: List<Privilege>): File {
         val dir = File(context.cacheDir, "reports").apply { mkdirs() }
-        val file = File(dir, "designacoes-\${month.year}-\${month.monthValue.toString().padStart(2, '0')}.pdf")
+        val file = File(dir, "designacoes-${month.year}-${month.monthValue.toString().padStart(2, '0')}.pdf")
         val activePrivileges = privileges.filter { it.active }.sortedBy { it.id }
         val sortedMeetings = meetings.sortedBy { parseDate(it.date) }
         val pdf = PdfDocument()
@@ -45,7 +45,7 @@ object ReportGenerator {
         var y = margin
 
         fun drawHeader() {
-            canvas.drawText("DESIGNAÇÕES — \${monthLabel(month)}", margin, y + 20f, titlePaint)
+            canvas.drawText("DESIGNAÇÕES — ${monthLabel(month)}", margin, y + 20f, titlePaint)
             y += 48f
             var x = margin
             canvas.drawRect(x, y, x + dateWidth, y + rowHeight, linePaint)
@@ -90,13 +90,13 @@ object ReportGenerator {
 
     private fun generateDocx(context: Context, month: YearMonth, meetings: List<Meeting>, brothers: List<Brother>, privileges: List<Privilege>): File {
         val dir = File(context.cacheDir, "reports").apply { mkdirs() }
-        val file = File(dir, "designacoes-\${month.year}-\${month.monthValue.toString().padStart(2, '0')}.docx")
+        val file = File(dir, "designacoes-${month.year}-${month.monthValue.toString().padStart(2, '0')}.docx")
         val activePrivileges = privileges.filter { it.active }.sortedBy { it.id }
         val sortedMeetings = meetings.sortedBy { parseDate(it.date) }
         val widths = buildList { add(1300); repeat(activePrivileges.size) { add(900) } }
 
         val body = buildString {
-            append(paragraph("DESIGNAÇÕES — \${monthLabel(month)}", true, 28))
+            append(paragraph("DESIGNAÇÕES — ${monthLabel(month)}", true, 28))
             append(paragraph("Relatório mensal de designações", false, 20))
             append("<w:tbl><w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/><w:tblLayout w:type=\"fixed\"/></w:tblPr>")
             append("<w:tr>")
@@ -134,13 +134,13 @@ object ReportGenerator {
 
     private fun paragraph(text: String, bold: Boolean, size: Int): String {
         val weight = if (bold) "<w:b/>" else ""
-        return "<w:p><w:pPr><w:jc w:val=\"center\"/></w:pPr><w:r><w:rPr>$weight<w:sz w:val=\"$size\"/></w:rPr><w:t>\${xmlEscape(text)}</w:t></w:r></w:p>"
+        return "<w:p><w:pPr><w:jc w:val=\"center\"/></w:pPr><w:r><w:rPr>$weight<w:sz w:val=\"$size\"/></w:rPr><w:t>${xmlEscape(text)}</w:t></w:r></w:p>"
     }
 
     private fun cell(text: String, width: Int, bold: Boolean): String {
         val weight = if (bold) "<w:b/>" else ""
         val paragraphs = text.split("\n").joinToString("") {
-            "<w:p><w:r><w:rPr>$weight</w:rPr><w:t xml:space=\"preserve\">\${xmlEscape(it)}</w:t></w:r></w:p>"
+            "<w:p><w:r><w:rPr>$weight</w:rPr><w:t xml:space=\"preserve\">${xmlEscape(it)}</w:t></w:r></w:p>"
         }
         return "<w:tc><w:tcPr><w:tcW w:w=\"$width\" w:type=\"dxa\"/></w:tcPr>$paragraphs</w:tc>"
     }
@@ -188,7 +188,7 @@ object ReportGenerator {
     }.getOrNull() ?: java.time.LocalDate.MIN
 
     private fun monthLabel(month: YearMonth): String =
-        month.month.getDisplayName(java.time.format.TextStyle.FULL, Locale("pt", "BR")).uppercase(Locale("pt", "BR")) + " \${month.year}"
+        month.month.getDisplayName(java.time.format.TextStyle.FULL, Locale("pt", "BR")).uppercase(Locale("pt", "BR")) + " ${month.year}"
 
     private fun xmlEscape(value: String): String =
         value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&apos;")
