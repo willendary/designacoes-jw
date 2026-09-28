@@ -198,7 +198,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun isBrotherAuthorizedForPrivilege(brother: Brother, privilege: Privilege): Boolean {
         if (privilege.id in brother.privileges) return true
 
-        val privilegeName = normalizeName(privilege.name)
         val bookPrivilege = privileges.value.firstOrNull { isBookReaderPrivilege(it) }
         val sentinelPrivilege = privileges.value.firstOrNull { isSentinelReaderPrivilege(it) }
 
