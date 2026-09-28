@@ -4,6 +4,8 @@ import android.app.Application
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.AndroidViewModel
 import br.com.willendary.designacoesjw.data.*
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.ListenerRegistration
 import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.time.YearMonth
@@ -13,12 +15,37 @@ import kotlin.random.Random
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = AppRepository(app)
+    private val accessRepo = UserAccessRepository()
+    private var usersListener: ListenerRegistration? = null
+    var currentUserProfile = mutableStateOf<UserProfile?>(null); private set
+    var users = mutableStateOf<List<UserProfile>>(emptyList()); private set
+    var invitations = mutableStateOf<List<Invitation>>(emptyList()); private set
     var brothers = mutableStateOf(repo.loadBrothers()); private set
     var privileges = mutableStateOf(repo.loadPrivileges()); private set
     var meetings = mutableStateOf(repo.loadMeetings()); private set
     var schedule = mutableStateOf(repo.loadSchedule()); private set
 
     init {
+        FirebaseAuth.getInstance().currentUser?.let { user ->
+            accessRepo.observeCurrentUser(
+                uid = user.uid,
+                email = user.email.orEmpty(),
+                onProfile = { profile ->
+                    currentUserProfile.value = profile
+                    if (profile.permissions.contains(AppPermissions.MANAGE_USERS) || profile.role == "admin") {
+                        usersListener?.remove()
+                        usersListener = accessRepo.observeAllUsers(
+                            onUsers = { users.value = it.sortedBy { u -> u.email.lowercase() } },
+                            onError = {}
+                        )
+                        accessRepo.observeInvitations(
+                            onInvitations = { invitations.value = it.sortedByDescending { i -> i.createdAt } },
+                            onError = {}
+                        )
+                    }
+                }
+            )
+        }
         repo.startCloudSync(
             onBrothers = { brothers.value = it },
             onPrivileges = { privileges.value = it },
@@ -29,7 +56,31 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     override fun onCleared() {
         repo.closeCloudSync()
+        usersListener?.remove()
+        accessRepo.close()
         super.onCleared()
+    }
+
+    fun can(permission: String): Boolean {
+        val profile = currentUserProfile.value ?: return false
+        return profile.active && (profile.role == "admin" || permission in profile.permissions)
+    }
+
+    fun createInvitation(email: String, name: String, permissions: Set<String>, onResult: (Invitation?, String?) -> Unit) {
+        val user = FirebaseAuth.getInstance().currentUser
+        if (user == null || !can(AppPermissions.MANAGE_USERS)) {
+            onResult(null, "Você não tem permissão para convidar usuários.")
+            return
+        }
+        accessRepo.saveInvitation(email, name, permissions, user.uid, onResult)
+    }
+
+    fun updateUser(profile: UserProfile, onResult: (String?) -> Unit) {
+        if (!can(AppPermissions.MANAGE_USERS)) {
+            onResult("Você não tem permissão para alterar usuários.")
+            return
+        }
+        accessRepo.updateUser(profile, onResult)
     }
 
     fun setMeetingDays(first: Int, second: Int) {

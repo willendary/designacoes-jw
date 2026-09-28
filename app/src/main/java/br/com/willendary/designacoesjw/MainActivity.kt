@@ -1,6 +1,7 @@
 package br.com.willendary.designacoesjw
 
 import android.os.Bundle
+import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
@@ -13,6 +14,7 @@ import com.google.firebase.auth.FirebaseAuth
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        captureEmailLink(intent)
         val prefs = getSharedPreferences("designacoes_jw", MODE_PRIVATE)
         setContent {
             val themeIndexState = remember { mutableIntStateOf(prefs.getInt("theme_index", 0)) }
@@ -35,6 +37,22 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        captureEmailLink(intent)
+    }
+
+    private fun captureEmailLink(intent: Intent?) {
+        val link = intent?.data?.toString() ?: return
+        val auth = FirebaseAuth.getInstance()
+        if (auth.isSignInWithEmailLink(link)) {
+            getSharedPreferences("designacoes_jw", MODE_PRIVATE)
+                .edit()
+                .putString("pending_email_link", link)
+                .apply()
         }
     }
 }

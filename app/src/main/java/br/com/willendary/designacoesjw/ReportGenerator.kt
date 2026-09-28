@@ -154,6 +154,7 @@ object ReportGenerator {
         val date = parseDate(value)
         if (date == java.time.LocalDate.MIN) return value
         val weekday = date.dayOfWeek.getDisplayName(java.time.format.TextStyle.FULL, Locale("pt", "BR"))
+            .removeSuffix("-feira")
             .replaceFirstChar { it.uppercase(Locale("pt", "BR")) }
         return value + "\n" + weekday
     }

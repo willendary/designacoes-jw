@@ -1,0 +1,234 @@
+package br.com.willendary.designacoesjw.data
+
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.SetOptions
+import java.util.UUID
+
+class UserAccessRepository {
+    private val firestore = FirebaseFirestore.getInstance()
+    private val users = firestore.collection("users")
+    private val invitations = firestore.collection("workspaces").document("designacoes-jw").collection("invitations")
+    private var profileListener: ListenerRegistration? = null
+    private var invitationsListener: ListenerRegistration? = null
+
+    fun observeCurrentUser(
+        uid: String,
+        email: String,
+        onProfile: (UserProfile) -> Unit,
+        onError: (String) -> Unit = {}
+    ) {
+        profileListener?.remove()
+        val access = firestore.collection("workspaces").document("designacoes-jw").collection("settings").document("access")
+        access.get().addOnSuccessListener { accessSnapshot ->
+            val bootstrapUid = accessSnapshot.data?.get("bootstrapUid")?.toString().orEmpty()
+            val isBootstrapAdmin = bootstrapUid == uid
+
+            profileListener = users.document(uid).addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    onError(error.localizedMessage ?: "Não foi possível carregar as permissões da conta.")
+                    return@addSnapshotListener
+                }
+
+                if (isBootstrapAdmin) {
+                    val profile = UserProfile(
+                        uid = uid,
+                        email = email,
+                        name = snapshot?.data?.get("name")?.toString() ?: "",
+                        role = "admin",
+                        permissions = AppPermissions.all,
+                        active = true
+                    )
+                    users.document(uid).set(toMap(profile), SetOptions.merge())
+                    onProfile(profile)
+                    return@addSnapshotListener
+                }
+
+                if (snapshot != null && snapshot.exists()) {
+                    onProfile(fromUser(snapshot.data ?: emptyMap(), uid))
+                    return@addSnapshotListener
+                }
+
+                val profile = UserProfile(
+                    uid = uid,
+                    email = email,
+                    name = "",
+                    role = "viewer",
+                    permissions = setOf(AppPermissions.VIEW_ASSIGNMENTS, AppPermissions.EXPORT_REPORTS)
+                )
+                users.document(uid).set(toMap(profile), SetOptions.merge())
+                onProfile(profile)
+            }
+        }.addOnFailureListener {
+            // Sem documento de bootstrap, segue o fluxo normal de criação do perfil.
+            profileListener = users.document(uid).addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    onError(error.localizedMessage ?: "Não foi possível carregar as permissões da conta.")
+                    return@addSnapshotListener
+                }
+                if (snapshot != null && snapshot.exists()) {
+                    onProfile(fromUser(snapshot.data ?: emptyMap(), uid))
+                    return@addSnapshotListener
+                }
+                val profile = UserProfile(
+                    uid = uid,
+                    email = email,
+                    name = "",
+                    role = "viewer",
+                    permissions = setOf(AppPermissions.VIEW_ASSIGNMENTS, AppPermissions.EXPORT_REPORTS)
+                )
+                users.document(uid).set(toMap(profile), SetOptions.merge())
+                onProfile(profile)
+            }
+        }
+    }
+
+    fun observeInvitations(onInvitations: (List<Invitation>) -> Unit, onError: (String) -> Unit = {}) {
+        invitationsListener?.remove()
+        invitationsListener = invitations.addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                onError(error.localizedMessage ?: "Não foi possível carregar os convites.")
+                return@addSnapshotListener
+            }
+            onInvitations(snapshot?.documents?.mapNotNull { doc ->
+                val data = doc.data ?: return@mapNotNull null
+                Invitation(
+                    id = doc.id,
+                    email = data["email"]?.toString() ?: return@mapNotNull null,
+                    name = data["name"]?.toString() ?: "",
+                    permissions = (data["permissions"] as? List<*>)?.mapNotNull { it?.toString() }?.toSet() ?: emptySet(),
+                    status = data["status"]?.toString() ?: "pending",
+                    createdBy = data["createdBy"]?.toString() ?: "",
+                    createdAt = (data["createdAt"] as? Number)?.toLong() ?: 0L
+                )
+            } ?: emptyList())
+        }
+    }
+
+    fun saveInvitation(
+        email: String,
+        name: String,
+        permissions: Set<String>,
+        createdBy: String,
+        onResult: (Invitation?, String?) -> Unit
+    ) {
+        val normalized = email.trim().lowercase()
+        if (normalized.isBlank()) {
+            onResult(null, "Informe um e-mail.")
+            return
+        }
+        val id = UUID.randomUUID().toString()
+        val invitation = Invitation(
+            id = id,
+            email = normalized,
+            name = name.trim(),
+            permissions = permissions,
+            status = "pending",
+            createdBy = createdBy,
+            createdAt = System.currentTimeMillis()
+        )
+        invitations.document(id).set(toMap(invitation))
+            .addOnSuccessListener { onResult(invitation, null) }
+            .addOnFailureListener { onResult(null, it.localizedMessage ?: "Não foi possível criar o convite.") }
+    }
+
+    fun claimInvitation(invitationId: String, uid: String, email: String, onResult: (String?) -> Unit = {}) {
+        invitations.document(invitationId).get()
+            .addOnSuccessListener { snapshot ->
+                if (!snapshot.exists()) {
+                    onResult("Convite não encontrado ou expirado.")
+                    return@addOnSuccessListener
+                }
+                val data = snapshot.data ?: run {
+                    onResult("Convite inválido.")
+                    return@addOnSuccessListener
+                }
+                val invitedEmail = data["email"]?.toString()?.trim()?.lowercase()
+                if (invitedEmail != email.trim().lowercase()) {
+                    onResult("O e-mail desta conta não corresponde ao convite.")
+                    return@addOnSuccessListener
+                }
+                if (data["status"]?.toString() != "pending") {
+                    onResult("Este convite já foi utilizado.")
+                    return@addOnSuccessListener
+                }
+
+                val permissions = (data["permissions"] as? List<*>)?.mapNotNull { it?.toString() }?.toSet() ?: emptySet()
+                val profile = UserProfile(
+                    uid = uid,
+                    email = email.trim().lowercase(),
+                    name = data["name"]?.toString() ?: "",
+                    role = "custom",
+                    permissions = permissions,
+                    active = true,
+                    invitationId = invitationId
+                )
+                val batch = firestore.batch()
+                batch.set(users.document(uid), toMap(profile), SetOptions.merge())
+                batch.update(invitations.document(invitationId), mapOf(
+                    "status" to "accepted",
+                    "acceptedBy" to uid,
+                    "acceptedAt" to System.currentTimeMillis()
+                ))
+                batch.commit()
+                    .addOnSuccessListener { onResult(null) }
+                    .addOnFailureListener { onResult(it.localizedMessage ?: "Não foi possível aceitar o convite.") }
+            }
+            .addOnFailureListener { onResult(it.localizedMessage ?: "Não foi possível validar o convite.") }
+    }
+
+    fun updateUser(profile: UserProfile, onResult: (String?) -> Unit) {
+        users.document(profile.uid).set(toMap(profile), SetOptions.merge())
+            .addOnSuccessListener { onResult(null) }
+            .addOnFailureListener { onResult(it.localizedMessage ?: "Não foi possível salvar as permissões.") }
+    }
+
+    fun observeAllUsers(onUsers: (List<UserProfile>) -> Unit, onError: (String) -> Unit = {}): ListenerRegistration {
+        return users.addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                onError(error.localizedMessage ?: "Não foi possível carregar os usuários.")
+                return@addSnapshotListener
+            }
+            onUsers(snapshot?.documents?.mapNotNull { doc ->
+                doc.data?.let { fromUser(it, doc.id) }
+            } ?: emptyList())
+        }
+    }
+
+    fun close() {
+        profileListener?.remove()
+        profileListener = null
+        invitationsListener?.remove()
+        invitationsListener = null
+    }
+
+    private fun fromUser(data: Map<String, Any>, uid: String): UserProfile {
+        return UserProfile(
+            uid = uid,
+            email = data["email"]?.toString() ?: "",
+            name = data["name"]?.toString() ?: "",
+            role = data["role"]?.toString() ?: "viewer",
+            permissions = (data["permissions"] as? List<*>)?.mapNotNull { it?.toString() }?.toSet() ?: emptySet(),
+            active = data["active"] as? Boolean ?: true,
+            invitationId = data["invitationId"]?.toString() ?: ""
+        )
+    }
+
+    private fun toMap(profile: UserProfile) = mapOf(
+        "email" to profile.email,
+        "name" to profile.name,
+        "role" to profile.role,
+        "permissions" to profile.permissions.toList(),
+        "active" to profile.active,
+        "invitationId" to profile.invitationId
+    )
+
+    private fun toMap(invitation: Invitation) = mapOf(
+        "email" to invitation.email,
+        "name" to invitation.name,
+        "permissions" to invitation.permissions.toList(),
+        "status" to invitation.status,
+        "createdBy" to invitation.createdBy,
+        "createdAt" to invitation.createdAt
+    )
+}
