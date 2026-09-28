@@ -208,11 +208,11 @@ private fun HomeScreen(vm: AppViewModel) {
                     Text("Gere uma tabela com as datas nas linhas e os privilégios nas colunas.", style = MaterialTheme.typography.bodySmall)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(
-                            onClick = { ReportGenerator.sharePdf(context, month, monthMeetings, vm.brothers.value, vm.privileges.value) },
+                            onClick = { ReportGenerator.sharePdf(LocalContext.current, month, monthMeetings, vm.brothers.value, vm.privileges.value) },
                             modifier = Modifier.weight(1f)
                         ) { Text("PDF") }
                         OutlinedButton(
-                            onClick = { ReportGenerator.shareDocx(context, month, monthMeetings, vm.brothers.value, vm.privileges.value) },
+                            onClick = { ReportGenerator.shareDocx(LocalContext.current, month, monthMeetings, vm.brothers.value, vm.privileges.value) },
                             modifier = Modifier.weight(1f)
                         ) { Text("Word") }
                     }
