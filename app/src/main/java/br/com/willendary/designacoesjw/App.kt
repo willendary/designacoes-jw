@@ -214,6 +214,7 @@ private fun HomeScreen(vm: AppViewModel) {
             }
         }
 
+        if (vm.can(AppPermissions.MANAGE_SETTINGS)) {
         item {
             var firstExpanded by remember { mutableStateOf(false) }
             var secondExpanded by remember { mutableStateOf(false) }
@@ -268,6 +269,8 @@ private fun HomeScreen(vm: AppViewModel) {
                     )
                 }
             }
+        }
+
         }
 
         item {
@@ -424,7 +427,7 @@ private fun MeetingResult(vm: AppViewModel, meeting: Meeting, context: android.c
                 Row(Modifier.padding(12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Column(Modifier.weight(1f)) { Text(privilege?.name ?: "Privilégio", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                         Text(brother?.name ?: "Irmão", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
-                    IconButton({ replaceTarget = Triple(meeting.id, assignment.privilegeId, assignment.brotherId) }) {
+                    IconButton(enabled = vm.can(AppPermissions.GENERATE_ASSIGNMENTS), onClick = { replaceTarget = Triple(meeting.id, assignment.privilegeId, assignment.brotherId) }) {
                         Icon(Icons.Filled.SwapHoriz, contentDescription = "Trocar")
                     }
                 }
