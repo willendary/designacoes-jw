@@ -89,35 +89,7 @@ object ReportGenerator {
     private fun generateDoc(context: Context, month: YearMonth, meetings: List<Meeting>, brothers: List<Brother>, privileges: List<Privilege>): File {
         val dir = File(context.cacheDir, "reports").apply { mkdirs() }
         val file = File(dir, "designacoes-${month.year}-${month.monthValue.toString().padStart(2, '0')}.doc")
-        val activePrivileges = privileges.filter { it.active }.sortedBy { it.id }
-        val sortedMeetings = meetings.sortedBy { parseDate(it.date) }
-
-        val html = buildString {
-            append("<html><head><meta charset='UTF-8'><style>")
-            append("@page { size: landscape; margin: 1cm; }")
-            append("body { font-family: Arial, sans-serif; }")
-            append("h1 { text-align:center; font-size:20pt; }")
-            append("table { width:100%; border-collapse:collapse; table-layout:fixed; }")
-            append("th,td { border:1px solid #777; padding:6px; text-align:center; vertical-align:middle; font-size:10pt; }")
-            append("th { font-weight:bold; background:#eeeeee; }")
-            append("th:first-child,td:first-child { width:90px; }")
-            append("</style></head><body>")
-            append("<h1>DESIGNAÇÕES — ${monthLabel(month)}</h1>")
-            append("<table><tr><th>Data</th>")
-            activePrivileges.forEach { privilege -> append("<th>${xmlEscape(privilege.name)}</th>") }
-            append("</tr>")
-            sortedMeetings.forEach { meeting ->
-                append("<tr><td>${xmlEscape(dateWithWeekday(meeting.date)).replace("\n", "<br>")}</td>")
-                activePrivileges.forEach { privilege ->
-                    val names = meeting.assignments.filter { it.privilegeId == privilege.id }
-                        .mapNotNull { a -> brothers.find { it.id == a.brotherId }?.name }
-                    val value = if (names.isEmpty()) "—" else names.joinToString("<br>")
-                    append("<td>$value</td>")
-                }
-                append("</tr>")
-            }
-            append("</table></body></html>")
-        }
+        val html = br.com.willendary.designacoesjw.export.HtmlReportGenerator.generateHtml(month, meetings, brothers, privileges)
         file.writeText(html, Charsets.UTF_8)
         return file
     }

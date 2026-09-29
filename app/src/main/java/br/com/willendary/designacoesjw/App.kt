@@ -28,10 +28,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.viewmodel.compose.viewModel
-import br.com.willendary.designacoesjw.data.Brother
-import br.com.willendary.designacoesjw.data.Meeting
-import br.com.willendary.designacoesjw.data.Privilege
-import br.com.willendary.designacoesjw.data.AppPermissions
+import br.com.willendary.designacoesjw.data.*
+import br.com.willendary.designacoesjw.util.WhatsAppHelper
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -435,24 +433,21 @@ private fun MeetingResult(vm: AppViewModel, meeting: Meeting, context: android.c
             }
         }
         Button({
-            val msg = buildString {
-                append("Designações — " + meeting.type + " em " + meeting.date + "\n\n")
-                meeting.assignments.forEach { a ->
-                    val b = vm.brothers.value.find { it.id == a.brotherId }
-                    val p = vm.privileges.value.find { it.id == a.privilegeId }
-                    append((p?.name ?: "Privilégio") + ": " + (b?.name ?: "Irmão") + "\n")
-                }
-                if (missing.isNotEmpty()) append("\n⚠ Faltaram candidatos para: " + missing.joinToString { it.name })
-            }
-            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/?text=" + Uri.encode(msg))))
+            val missing = vm.missingAssignments(meeting)
+            val msg = WhatsAppHelper.buildMeetingBroadcastMessage(
+                null, meeting, vm.brothers.value, vm.privileges.value, missing
+            )
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(WhatsAppHelper.buildUniversalLink("", msg))))
         }, Modifier.fillMaxWidth()) { Text("Compartilhar no WhatsApp") }
         meeting.assignments.mapNotNull { a -> vm.brothers.value.find { it.id == a.brotherId } }.distinctBy { it.id }.forEach { brother ->
             if (brother.phone.isNotBlank()) {
-                OutlinedButton({
-                    val phone = brother.phone.filter(Char::isDigit)
-                    val msg = "Olá, " + brother.name + "! Você foi designado para a reunião de " + meeting.date + ". Por favor, confirme o recebimento da designação."
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/" + phone + "?text=" + Uri.encode(msg))))
-                }, Modifier.fillMaxWidth()) { Text("Enviar para " + brother.name) }
+                val privilege = vm.privileges.value.find { p -> meeting.assignments.any { it.brotherId == brother.id && it.privilegeId == p.id } }
+                if (privilege != null) {
+                    OutlinedButton({
+                        val msg = WhatsAppHelper.buildSingleMessage(null, brother, privilege, meeting)
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(WhatsAppHelper.buildUniversalLink(brother.phone, msg))))
+                    }, Modifier.fillMaxWidth()) { Text("Enviar para " + brother.name) }
+                }
             }
         }
     }
@@ -465,8 +460,10 @@ private fun MeetingResult(vm: AppViewModel, meeting: Meeting, context: android.c
 private fun BrothersScreen(vm: AppViewModel) {
     var name by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
+    var role by remember { mutableStateOf(BrotherRole.PUBLISHER) }
     var search by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<Brother?>(null) }
+    var unavailBrother by remember { mutableStateOf<Brother?>(null) }
     var deleting by remember { mutableStateOf<Brother?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     val filtered = vm.brothers.value.filter { it.name.contains(search.trim(), ignoreCase = true) }.sortedBy { it.name.lowercase(Locale.getDefault()) }
@@ -478,9 +475,30 @@ private fun BrothersScreen(vm: AppViewModel) {
         Text("${filtered.size} cadastro(s) encontrado(s)", style = MaterialTheme.typography.bodySmall)
         OutlinedTextField(name, { name = it }, label = { Text("Nome") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
         OutlinedTextField(phone, { phone = it }, label = { Text("WhatsApp (somente números)") }, modifier = Modifier.fillMaxWidth())
+
+        var roleMenu by remember { mutableStateOf(false) }
+        Box(Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = { roleMenu = true }, modifier = Modifier.fillMaxWidth()) {
+                Text("Cargo: " + role.label)
+            }
+            DropdownMenu(expanded = roleMenu, onDismissRequest = { roleMenu = false }) {
+                BrotherRole.values().forEach { r ->
+                    DropdownMenuItem(text = { Text(r.label) }, onClick = { role = r; roleMenu = false })
+                }
+            }
+        }
+
         Button({
             error = vm.addBrother(name, phone)
-            if (error == null) { name = ""; phone = "" }
+            if (error == null) {
+                val newBro = vm.brothers.value.lastOrNull()
+                if (newBro != null && role != BrotherRole.PUBLISHER) {
+                    vm.setBrotherRole(newBro.id, role)
+                }
+                name = ""
+                phone = ""
+                role = BrotherRole.PUBLISHER
+            }
         }, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Filled.Add, contentDescription = null)
             Spacer(Modifier.width(6.dp))
@@ -502,13 +520,19 @@ private fun BrothersScreen(vm: AppViewModel) {
                         Column(Modifier.weight(1f)) {
                             Text(brother.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                AssistChip(onClick = {}, enabled = false, label = { Text(brother.role.label) })
                                 AssistChip(onClick = {}, enabled = false, label = { Text(if (brother.active) "Ativo" else "Inativo") })
-                                if (brother.phone.isNotBlank()) AssistChip(onClick = {}, enabled = false, label = { Text("WhatsApp") })
+                                if (brother.unavailabilities.isNotEmpty()) {
+                                    AssistChip(onClick = {}, enabled = false, label = { Text("${brother.unavailabilities.size} ausência(s)") })
+                                }
                             }
                         }
-                        Column {
-                            IconButton({ editing = brother }) { Icon(Icons.Filled.Edit, contentDescription = "Editar") }
-                            IconButton({ deleting = brother }) { Icon(Icons.Filled.Delete, contentDescription = "Excluir") }
+                        Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {
+                            Row {
+                                TextButton({ unavailBrother = brother }) { Text("Ausências") }
+                                IconButton({ editing = brother }) { Icon(Icons.Filled.Edit, contentDescription = "Editar") }
+                                IconButton({ deleting = brother }) { Icon(Icons.Filled.Delete, contentDescription = "Excluir") }
+                            }
                             TextButton({ vm.setBrotherActive(brother.id, !brother.active) }) { Text(if (brother.active) "Desativar" else "Ativar") }
                         }
                     }
@@ -517,7 +541,28 @@ private fun BrothersScreen(vm: AppViewModel) {
         }
     }
     error?.let { message -> AlertDialog(onDismissRequest = { error = null }, title = { Text("Não foi possível salvar") }, text = { Text(message) }, confirmButton = { TextButton({ error = null }) { Text("OK") } }) }
-    editing?.let { brother -> EditBrotherDialog(brother, { n, p -> error = vm.updateBrother(brother.id, n, p); if (error == null) editing = null }, { editing = null }) }
+    editing?.let { brother ->
+        EditBrotherDialog(
+            brother,
+            onSave = { n, p, r ->
+                error = vm.updateBrother(brother.id, n, p)
+                if (error == null) {
+                    vm.setBrotherRole(brother.id, r)
+                    editing = null
+                }
+            },
+            onDismiss = { editing = null }
+        )
+    }
+    unavailBrother?.let { brother ->
+        val current = vm.brothers.value.find { it.id == brother.id } ?: brother
+        BrotherUnavailabilityDialog(
+            brother = current,
+            onAdd = { start, end, reason -> vm.addUnavailability(brother.id, start, end, reason) },
+            onRemove = { periodId -> vm.removeUnavailability(brother.id, periodId) },
+            onDismiss = { unavailBrother = null }
+        )
+    }
     deleting?.let { brother ->
         AlertDialog(onDismissRequest = { deleting = null }, title = { Text("Excluir irmão?") },
             text = { Text("O irmão " + brother.name + " será removido do cadastro. As designações já registradas no histórico serão mantidas.") },
@@ -789,20 +834,92 @@ private fun ReplaceDialog(candidates: List<Brother>, onSelect: (Long) -> Unit, o
 }
 
 @Composable
-private fun EditBrotherDialog(brother: Brother, onSave: (String, String) -> Unit, onDismiss: () -> Unit) {
+private fun EditBrotherDialog(brother: Brother, onSave: (String, String, BrotherRole) -> Unit, onDismiss: () -> Unit) {
     var name by remember(brother.id) { mutableStateOf(brother.name) }
     var phone by remember(brother.id) { mutableStateOf(brother.phone) }
+    var role by remember(brother.id) { mutableStateOf(brother.role) }
+    var roleDropdown by remember { mutableStateOf(false) }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Editar irmão") },
         text = {
-            Column {
-                OutlinedTextField(name, { name = it }, label = { Text("Nome") })
-                OutlinedTextField(phone, { phone = it }, label = { Text("WhatsApp") })
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(name, { name = it }, label = { Text("Nome") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(phone, { phone = it }, label = { Text("WhatsApp") }, modifier = Modifier.fillMaxWidth())
+                Box {
+                    OutlinedButton({ roleDropdown = true }, Modifier.fillMaxWidth()) { Text("Cargo: " + role.label) }
+                    DropdownMenu(roleDropdown, { roleDropdown = false }) {
+                        BrotherRole.values().forEach { r ->
+                            DropdownMenuItem(text = { Text(r.label) }, onClick = { role = r; roleDropdown = false })
+                        }
+                    }
+                }
             }
         },
-        confirmButton = { TextButton({ onSave(name, phone) }) { Text("Salvar") } },
+        confirmButton = { TextButton({ onSave(name, phone, role) }) { Text("Salvar") } },
         dismissButton = { TextButton(onDismiss) { Text("Cancelar") } }
+    )
+}
+
+@Composable
+private fun BrotherUnavailabilityDialog(
+    brother: Brother,
+    onAdd: (String, String, String) -> String?,
+    onRemove: (Long) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var start by remember { mutableStateOf("") }
+    var end by remember { mutableStateOf("") }
+    var reason by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Ausências — ${brother.name}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (brother.unavailabilities.isEmpty()) {
+                    Text("Nenhuma ausência registrada para este irmão.")
+                } else {
+                    Text("Períodos cadastrados:", fontWeight = FontWeight.Bold)
+                    brother.unavailabilities.forEach { u ->
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                        ) {
+                            Text("${u.startDate} a ${u.endDate}${if (u.reason.isNotBlank()) " (${u.reason})" else ""}", style = MaterialTheme.typography.bodySmall)
+                            IconButton(onClick = { onRemove(u.id) }) {
+                                Icon(Icons.Filled.Delete, contentDescription = "Remover")
+                            }
+                        }
+                    }
+                }
+                HorizontalDivider()
+                Text("Adicionar novo período:", fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedTextField(start, { start = it }, label = { Text("Início (dd/MM/yyyy)") }, modifier = Modifier.weight(1f))
+                    OutlinedTextField(end, { end = it }, label = { Text("Fim (dd/MM/yyyy)") }, modifier = Modifier.weight(1f))
+                }
+                OutlinedTextField(reason, { reason = it }, label = { Text("Motivo (ex: Viagem, Férias)") }, modifier = Modifier.fillMaxWidth())
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                Button(
+                    onClick = {
+                        error = onAdd(start, end, reason)
+                        if (error == null) {
+                            start = ""
+                            end = ""
+                            reason = ""
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Adicionar ausência")
+                }
+            }
+        },
+        confirmButton = { TextButton(onDismiss) { Text("Concluir") } }
     )
 }
 

@@ -1,5 +1,8 @@
 package br.com.willendary.designacoesjw.data
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class UserProfile(
     val uid: String,
     val email: String,
@@ -10,6 +13,7 @@ data class UserProfile(
     val invitationId: String = ""
 )
 
+@Serializable
 data class Invitation(
     val id: String,
     val email: String,

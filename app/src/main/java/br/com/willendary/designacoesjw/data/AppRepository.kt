@@ -131,7 +131,14 @@ class AppRepository(context: Context) {
             val p = o.optJSONArray("privileges") ?: org.json.JSONArray()
             val ids = mutableSetOf<Long>()
             for (j in 0 until p.length()) ids += p.getLong(j)
-            Brother(o.getLong("id"), o.getString("name"), o.optString("phone"), ids, o.optBoolean("active", true))
+            val roleStr = o.optString("role", "PUBLISHER")
+            val role = runCatching { BrotherRole.valueOf(roleStr) }.getOrDefault(BrotherRole.PUBLISHER)
+            val unavailArray = o.optJSONArray("unavailabilities") ?: org.json.JSONArray()
+            val unavails = List(unavailArray.length()) { u ->
+                val uObj = unavailArray.getJSONObject(u)
+                UnavailablePeriod(uObj.optLong("id", 0L), uObj.getString("startDate"), uObj.getString("endDate"), uObj.optString("reason", ""))
+            }
+            Brother(o.getLong("id"), o.getString("name"), o.optString("phone"), ids, o.optBoolean("active", true), role, unavails)
         }
     }
 
@@ -221,7 +228,18 @@ class AppRepository(context: Context) {
                 put("name", b.name)
                 put("phone", b.phone)
                 put("active", b.active)
+                put("role", b.role.name)
                 put("privileges", org.json.JSONArray(b.privileges.toList()))
+                val ua = org.json.JSONArray()
+                b.unavailabilities.forEach { u ->
+                    ua.put(org.json.JSONObject().apply {
+                        put("id", u.id)
+                        put("startDate", u.startDate)
+                        put("endDate", u.endDate)
+                        put("reason", u.reason)
+                    })
+                }
+                put("unavailabilities", ua)
             })
         }
         prefs.edit().putString("brothers", a.toString()).apply()
@@ -284,12 +302,17 @@ class AppRepository(context: Context) {
 
     private fun Brother.toMap() = mapOf(
         "id" to id, "name" to name, "phone" to phone,
-        "privileges" to privileges.toList(), "active" to active
+        "privileges" to privileges.toList(), "active" to active,
+        "role" to role.name,
+        "unavailabilities" to unavailabilities.map {
+            mapOf("id" to it.id, "startDate" to it.startDate, "endDate" to it.endDate, "reason" to it.reason)
+        }
     )
 
     private fun Privilege.toMap() = mapOf(
         "id" to id, "name" to name, "quantity" to quantity,
-        "active" to active, "allowedDays" to allowedDays.toList()
+        "active" to active, "allowedDays" to allowedDays.toList(),
+        "minRole" to minRole.name
     )
 
     private fun Meeting.toMap() = mapOf(
@@ -302,14 +325,26 @@ class AppRepository(context: Context) {
         val d = document.data ?: return null
         val id = (d["id"] as? Number)?.toLong() ?: document.id.toLongOrNull() ?: return null
         val privileges = (d["privileges"] as? List<*>)?.mapNotNull { (it as? Number)?.toLong() }?.toSet() ?: emptySet()
-        return Brother(id, d["name"]?.toString() ?: return null, d["phone"]?.toString() ?: "", privileges, d["active"] as? Boolean ?: true)
+        val roleStr = d["role"]?.toString() ?: "PUBLISHER"
+        val role = runCatching { BrotherRole.valueOf(roleStr) }.getOrDefault(BrotherRole.PUBLISHER)
+        val unavailList = (d["unavailabilities"] as? List<*>)?.mapNotNull { raw ->
+            val m = raw as? Map<*, *> ?: return@mapNotNull null
+            val uid = (m["id"] as? Number)?.toLong() ?: 0L
+            val start = m["startDate"]?.toString() ?: return@mapNotNull null
+            val end = m["endDate"]?.toString() ?: return@mapNotNull null
+            val reason = m["reason"]?.toString() ?: ""
+            UnavailablePeriod(uid, start, end, reason)
+        } ?: emptyList()
+        return Brother(id, d["name"]?.toString() ?: return null, d["phone"]?.toString() ?: "", privileges, d["active"] as? Boolean ?: true, role, unavailList)
     }
 
     private fun privilegeFromDocument(document: com.google.firebase.firestore.DocumentSnapshot): Privilege? {
         val d = document.data ?: return null
         val id = (d["id"] as? Number)?.toLong() ?: document.id.toLongOrNull() ?: return null
         val days = (d["allowedDays"] as? List<*>)?.mapNotNull { (it as? Number)?.toInt() }?.toSet() ?: emptySet()
-        return Privilege(id, d["name"]?.toString() ?: return null, (d["quantity"] as? Number)?.toInt()?.coerceAtLeast(1) ?: 1, d["active"] as? Boolean ?: true, days)
+        val roleStr = d["minRole"]?.toString() ?: "PUBLISHER"
+        val minRole = runCatching { BrotherRole.valueOf(roleStr) }.getOrDefault(BrotherRole.PUBLISHER)
+        return Privilege(id, d["name"]?.toString() ?: return null, (d["quantity"] as? Number)?.toInt()?.coerceAtLeast(1) ?: 1, d["active"] as? Boolean ?: true, days, minRole)
     }
 
     private fun meetingFromDocument(document: com.google.firebase.firestore.DocumentSnapshot): Meeting? {

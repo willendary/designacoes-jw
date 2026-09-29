@@ -4,6 +4,9 @@ import android.app.Application
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.AndroidViewModel
 import br.com.willendary.designacoesjw.data.*
+import br.com.willendary.designacoesjw.generator.AssignmentGenerator
+import br.com.willendary.designacoesjw.export.CsvDataHandler
+import br.com.willendary.designacoesjw.util.WhatsAppHelper
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.ListenerRegistration
 import java.text.SimpleDateFormat
@@ -162,51 +165,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun generateMonth(yearMonth: YearMonth): List<Meeting> {
-        val days = listOf(schedule.value.firstDay, schedule.value.secondDay)
-        val dates = yearMonth.atDay(1).let { first ->
-            (0 until yearMonth.lengthOfMonth()).map { first.plusDays(it.toLong()) }
-        }.filter { it.dayOfWeek.value in days }.sorted()
-
-        val generated = mutableListOf<Meeting>()
-        var historyMeetings = meetings.value
-        dates.forEach { date ->
-            val meeting = generateMeetingInternal(date, "Reunião", emptySet(), historyMeetings)
-            generated += meeting
-            historyMeetings = historyMeetings + meeting
-        }
-        meetings.value = historyMeetings
+        val monthPrefix = yearMonth.format(DateTimeFormatter.ofPattern("MM/yyyy"))
+        val keep = meetings.value.filterNot { it.date.endsWith("/$monthPrefix") }
+        val generated = AssignmentGenerator.generateMonth(
+            yearMonth = yearMonth,
+            schedule = schedule.value,
+            brothers = brothers.value,
+            privileges = privileges.value,
+            existingMeetings = keep
+        )
+        meetings.value = (keep + generated).sortedBy { AssignmentGenerator.parseDate(it.date) }
         repo.saveMeetings(meetings.value)
         return generated
-    }
-
-    private fun generateMeetingInternal(
-        date: LocalDate,
-        type: String,
-        blocked: Set<Long>,
-        historySource: List<Meeting>
-    ): Meeting {
-        val activePrivileges = privileges.value.filter { it.active && (it.allowedDays.isEmpty() || date.dayOfWeek.value in it.allowedDays) }
-        val activeBrothers = brothers.value.filter { it.active && it.id !in blocked }
-        val history = historySource.flatMap { it.assignments }
-            .groupingBy { it.brotherId to it.privilegeId }.eachCount()
-        val result = mutableListOf<Assignment>()
-        val used = mutableSetOf<Long>()
-
-        activePrivileges.sortedBy { it.name.lowercase(Locale.getDefault()) }.forEach { privilege ->
-            val candidates = activeBrothers
-                .filter { it.id !in used && isBrotherAuthorizedForPrivilege(it, privilege) }
-                .sortedWith(
-                    compareBy<Brother> { history[it.id to privilege.id] ?: 0 }
-                        .thenBy { lastAssignmentDate(it.id, privilege.id)?.time ?: 0L }
-                        .thenBy { it.name.lowercase(Locale.getDefault()) }
-                )
-            candidates.take(privilege.quantity).forEach { brother ->
-                result += Assignment(privilege.id, brother.id)
-                used += brother.id
-            }
-        }
-
-        return Meeting(nextId(), date.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), type, result, blocked)
     }
 
     fun replaceAssignment(meetingId: Long, privilegeId: Long, oldBrotherId: Long, newBrotherId: Long) {
@@ -233,72 +203,78 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         repo.saveMeetings(meetings.value)
     }
 
-    fun candidatesFor(meeting: Meeting, privilegeId: Long, currentBrotherId: Long): List<Brother> {
-        val used = meeting.assignments.filter { it.brotherId != currentBrotherId }.map { it.brotherId }.toSet()
-        val privilege = privileges.value.firstOrNull { it.id == privilegeId } ?: return emptyList()
-        return brothers.value.filter {
-            it.active &&
-            it.id !in meeting.blockedBrotherIds &&
-            it.id !in used &&
-            isBrotherAuthorizedForPrivilege(it, privilege) &&
-            (privilege.allowedDays.isEmpty() || parseMeetingDay(meeting.date) in privilege.allowedDays)
-        }.sortedBy { it.name.lowercase(Locale.getDefault()) }
-    }
+    fun candidatesFor(meeting: Meeting, privilegeId: Long, currentBrotherId: Long): List<Brother> =
+        AssignmentGenerator.candidatesFor(meeting, privilegeId, currentBrotherId, brothers.value, privileges.value)
 
     fun missingAssignments(meeting: Meeting): List<Privilege> =
-        privileges.value.filter { p ->
-            p.active &&
-            (p.allowedDays.isEmpty() || parseMeetingDay(meeting.date) in p.allowedDays) &&
-            meeting.assignments.count { it.privilegeId == p.id } < p.quantity
+        AssignmentGenerator.missingAssignments(meeting, privileges.value)
+
+    fun setBrotherRole(id: Long, role: BrotherRole) {
+        brothers.value = brothers.value.map { if (it.id == id) it.copy(role = role) else it }
+        repo.saveBrothers(brothers.value)
+    }
+
+    fun addUnavailability(brotherId: Long, startDate: String, endDate: String, reason: String): String? {
+        val start = AssignmentGenerator.parseDate(startDate)
+        val end = AssignmentGenerator.parseDate(endDate)
+        if (start == LocalDate.MIN || end == LocalDate.MIN) return "Data inválida. Use o formato dd/MM/yyyy."
+        if (end.isBefore(start)) return "A data de término não pode ser anterior à data de início."
+        val newPeriod = UnavailablePeriod(AssignmentGenerator.nextId(), startDate, endDate, reason.trim())
+        brothers.value = brothers.value.map {
+            if (it.id == brotherId) it.copy(unavailabilities = it.unavailabilities + newPeriod) else it
         }
-
-    /** 
-     * Regras de capacidade entre privilégios:
-     * - Leitor da Sentinela também pode ser Leitor do Livro.
-     * - Leitor do Livro não pode, por isso, ser considerado Leitor da Sentinela.
-     *
-     * A autorização direta continua sendo armazenada no cadastro do irmão.
-     * A herança é calculada apenas no momento de verificar a elegibilidade.
-     */
-    private fun isBrotherAuthorizedForPrivilege(brother: Brother, privilege: Privilege): Boolean {
-        if (privilege.id in brother.privileges) return true
-
-        val bookPrivilege = privileges.value.firstOrNull { isBookReaderPrivilege(it) }
-        val sentinelPrivilege = privileges.value.firstOrNull { isSentinelReaderPrivilege(it) }
-
-        return bookPrivilege?.id == privilege.id &&
-            sentinelPrivilege != null &&
-            sentinelPrivilege.id in brother.privileges
+        repo.saveBrothers(brothers.value)
+        return null
     }
 
-    private fun isBookReaderPrivilege(privilege: Privilege): Boolean =
-        normalizeName(privilege.name) in setOf(
-            "leitor do livro",
-            "leitor livro"
-        )
-
-    private fun isSentinelReaderPrivilege(privilege: Privilege): Boolean =
-        normalizeName(privilege.name) in setOf(
-            "leitor da sentinela",
-            "leitor sentinela"
-        )
-
-    private fun parseMeetingDay(value: String): Int = runCatching {
-        LocalDate.parse(value, DateTimeFormatter.ofPattern("dd/MM/yyyy")).dayOfWeek.value
-    }.getOrDefault(0)
-
-    private fun lastAssignmentDate(brotherId: Long, privilegeId: Long): java.util.Date? {
-        val formatter = SimpleDateFormat("dd/MM/yyyy", Locale("pt", "BR"))
-        return meetings.value
-            .filter { it.assignments.any { a -> a.brotherId == brotherId && a.privilegeId == privilegeId } }
-            .mapNotNull { formatter.parse(it.date) }
-            .maxOrNull()
+    fun removeUnavailability(brotherId: Long, periodId: Long) {
+        brothers.value = brothers.value.map {
+            if (it.id == brotherId) it.copy(unavailabilities = it.unavailabilities.filterNot { p -> p.id == periodId }) else it
+        }
+        repo.saveBrothers(brothers.value)
     }
 
-    private fun normalizeName(value: String): String =
-        java.text.Normalizer.normalize(value.trim(), java.text.Normalizer.Form.NFD)
-            .replace("\\p{InCombiningDiacriticalMarks}+".toRegex(), "")
-            .lowercase(Locale.getDefault())
+    fun setPrivilegeMinRole(id: Long, role: BrotherRole) {
+        privileges.value = privileges.value.map { if (it.id == id) it.copy(minRole = role) else it }
+        repo.savePrivileges(privileges.value)
+    }
 
-    private fun nextId(): Long = System.currentTimeMillis() * 1000L + Random.nextLong(1000)
+    fun exportBrothersCsv(): String = CsvDataHandler.exportBrothersToCsv(brothers.value, privileges.value)
+
+    fun exportMeetingsCsv(): String = CsvDataHandler.exportMeetingsToCsv(meetings.value, brothers.value, privileges.value)
+
+    fun importBrothersCsv(csvText: String): Int {
+        val imported = CsvDataHandler.importBrothersFromCsv(csvText)
+        if (imported.isEmpty()) return 0
+        val currentBrothers = brothers.value.toMutableList()
+        val currentPrivileges = privileges.value
+        var count = 0
+        imported.forEach { imp ->
+            val normName = AssignmentGenerator.normalizeName(imp.name)
+            if (normName.isNotBlank() && currentBrothers.none { AssignmentGenerator.normalizeName(it.name) == normName }) {
+                val matchedPrivilegeIds = imp.privilegeNames.mapNotNull { pName ->
+                    val normPName = AssignmentGenerator.normalizeName(pName)
+                    currentPrivileges.find { AssignmentGenerator.normalizeName(it.name) == normPName }?.id
+                }.toSet()
+                currentBrothers += Brother(
+                    id = AssignmentGenerator.nextId(),
+                    name = imp.name,
+                    phone = imp.phone,
+                    privileges = matchedPrivilegeIds,
+                    active = imp.active,
+                    role = imp.role
+                )
+                count++
+            }
+        }
+        if (count > 0) {
+            brothers.value = currentBrothers.sortedBy { AssignmentGenerator.normalizeName(it.name) }
+            repo.saveBrothers(brothers.value)
+        }
+        return count
+    }
+
+    private fun normalizeName(value: String): String = AssignmentGenerator.normalizeName(value)
+
+    private fun nextId(): Long = AssignmentGenerator.nextId()
 }

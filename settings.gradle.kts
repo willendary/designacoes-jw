@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "DesignacoesJW"
-include(":app", ":desktop")
+include(":app", ":desktop", ":shared")

@@ -1,0 +1,94 @@
+package br.com.willendary.designacoesjw.util
+
+import br.com.willendary.designacoesjw.data.Brother
+import br.com.willendary.designacoesjw.data.Meeting
+import br.com.willendary.designacoesjw.data.Privilege
+import br.com.willendary.designacoesjw.generator.AssignmentGenerator
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
+import java.time.LocalDate
+import java.time.format.TextStyle
+import java.util.Locale
+
+object WhatsAppHelper {
+
+    const val DEFAULT_SINGLE_TEMPLATE =
+        "Olá, {nome}! Você foi designado para *{privilegio}* na reunião de *{data}* ({diaSemana}).\nPor favor, confirme o recebimento desta mensagem."
+
+    const val DEFAULT_MEETING_TEMPLATE =
+        "📋 *Designações — {tipo}*\n📅 Data: *{data}* ({diaSemana})\n\n{designacoes}\n\nPor favor, confirmem o recebimento."
+
+    fun buildSingleMessage(
+        template: String?,
+        brother: Brother,
+        privilege: Privilege,
+        meeting: Meeting
+    ): String {
+        val tmpl = if (template.isNullOrBlank()) DEFAULT_SINGLE_TEMPLATE else template
+        val date = AssignmentGenerator.parseDate(meeting.date)
+        val weekday = if (date != LocalDate.MIN) {
+            date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))
+                .removeSuffix("-feira")
+                .replaceFirstChar { it.uppercase(Locale("pt", "BR")) }
+        } else ""
+
+        return tmpl
+            .replace("{nome}", brother.name)
+            .replace("{privilegio}", privilege.name)
+            .replace("{data}", meeting.date)
+            .replace("{diaSemana}", weekday)
+            .replace("{tipo}", meeting.type)
+    }
+
+    fun buildMeetingBroadcastMessage(
+        template: String?,
+        meeting: Meeting,
+        brothers: List<Brother>,
+        privileges: List<Privilege>,
+        missingPrivileges: List<Privilege> = emptyList()
+    ): String {
+        val tmpl = if (template.isNullOrBlank()) DEFAULT_MEETING_TEMPLATE else template
+        val date = AssignmentGenerator.parseDate(meeting.date)
+        val weekday = if (date != LocalDate.MIN) {
+            date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))
+                .removeSuffix("-feira")
+                .replaceFirstChar { it.uppercase(Locale("pt", "BR")) }
+        } else ""
+
+        val assignmentsText = meeting.assignments.joinToString("\n") { a ->
+            val p = privileges.find { it.id == a.privilegeId }?.name ?: "Privilégio"
+            val b = brothers.find { it.id == a.brotherId }?.name ?: "Irmão"
+            "• *$p:* $b"
+        }
+
+        val missingText = if (missingPrivileges.isNotEmpty()) {
+            "\n\n⚠ *Pendências:* " + missingPrivileges.joinToString { it.name }
+        } else ""
+
+        return tmpl
+            .replace("{data}", meeting.date)
+            .replace("{diaSemana}", weekday)
+            .replace("{tipo}", meeting.type)
+            .replace("{designacoes}", assignmentsText + missingText)
+    }
+
+    fun buildWebLink(phone: String, text: String): String {
+        val cleanPhone = phone.filter { it.isDigit() }
+        val encodedText = URLEncoder.encode(text, StandardCharsets.UTF_8.name())
+        return if (cleanPhone.isNotBlank()) {
+            "https://web.whatsapp.com/send?phone=$cleanPhone&text=$encodedText"
+        } else {
+            "https://web.whatsapp.com/send?text=$encodedText"
+        }
+    }
+
+    fun buildUniversalLink(phone: String, text: String): String {
+        val cleanPhone = phone.filter { it.isDigit() }
+        val encodedText = URLEncoder.encode(text, StandardCharsets.UTF_8.name())
+        return if (cleanPhone.isNotBlank()) {
+            "https://wa.me/$cleanPhone?text=$encodedText"
+        } else {
+            "https://wa.me/?text=$encodedText"
+        }
+    }
+}
