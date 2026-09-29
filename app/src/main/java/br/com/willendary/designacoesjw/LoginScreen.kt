@@ -28,14 +28,14 @@ import br.com.willendary.designacoesjw.data.UserAccessRepository
 import kotlinx.coroutines.launch
 
 @Composable
-fun LoginScreen() {
+fun LoginScreen(onInviteClaimFinished: () -> Unit = {}) {
     val context = LocalContext.current
     val activity = context as? Activity
     val auth = remember { FirebaseAuth.getInstance() }
     val credentialManager = remember { CredentialManager.create(context) }
     val scope = rememberCoroutineScope()
 
-    var email by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf(prefs.getString("last_invitation_email", "") ?: "") }
     var password by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -120,7 +120,7 @@ fun LoginScreen() {
                     modifier = Modifier.fillMaxWidth(),
                     onClick = {
                         runAuth {
-                            if (inviteMode && pendingEmailLink != null) {
+                            if (inviteMode && pendingEmailLink != null) {\n                                prefs.edit().putBoolean("invite_claim_in_progress", true).apply()
                                 auth.signInWithEmailLink(email, pendingEmailLink!!)
                                     .addOnCompleteListener { task ->
                                         loading = false
