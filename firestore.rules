@@ -23,7 +23,7 @@ service cloud.firestore {
     }
 
     function activeUser() {
-      return hasProfile() && profile().data.active == true;
+      return isAdmin() || (hasProfile() && profile().data.active == true);
     }
 
     function isAdmin() {

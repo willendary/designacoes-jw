@@ -44,13 +44,16 @@ class AppRepository(context: Context) {
                 return@addSnapshotListener
             }
             val items = snapshot?.documents?.mapNotNull(::brotherFromDocument) ?: emptyList()
-            if (items.isEmpty()) {
+            if (items.isEmpty() && !cloudMigrationDone("brothers")) {
                 val local = loadBrothers()
+                cloudMigrationDone("brothers", true)
                 if (local.isNotEmpty()) {
                     saveBrothers(local)
                     onBrothers(local)
                     return@addSnapshotListener
                 }
+            } else if (items.isNotEmpty()) {
+                cloudMigrationDone("brothers", true)
             }
             saveBrothersLocal(items)
             onBrothers(items)
@@ -62,13 +65,16 @@ class AppRepository(context: Context) {
                 return@addSnapshotListener
             }
             val items = snapshot?.documents?.mapNotNull(::privilegeFromDocument) ?: emptyList()
-            if (items.isEmpty()) {
+            if (items.isEmpty() && !cloudMigrationDone("privileges")) {
                 val local = loadPrivileges()
+                cloudMigrationDone("privileges", true)
                 if (local.isNotEmpty()) {
                     savePrivileges(local)
                     onPrivileges(local)
                     return@addSnapshotListener
                 }
+            } else if (items.isNotEmpty()) {
+                cloudMigrationDone("privileges", true)
             }
             savePrivilegesLocal(items)
             onPrivileges(items)
@@ -80,13 +86,16 @@ class AppRepository(context: Context) {
                 return@addSnapshotListener
             }
             val items = snapshot?.documents?.mapNotNull(::meetingFromDocument) ?: emptyList()
-            if (items.isEmpty()) {
+            if (items.isEmpty() && !cloudMigrationDone("meetings")) {
                 val local = loadMeetings()
+                cloudMigrationDone("meetings", true)
                 if (local.isNotEmpty()) {
                     saveMeetings(local)
                     onMeetings(local)
                     return@addSnapshotListener
                 }
+            } else if (items.isNotEmpty()) {
+                cloudMigrationDone("meetings", true)
             }
             saveMeetingsLocal(items)
             onMeetings(items)
@@ -251,6 +260,12 @@ class AppRepository(context: Context) {
             })
         }
         prefs.edit().putString("meetings", a.toString()).apply()
+    }
+
+    private fun cloudMigrationDone(key: String): Boolean = prefs.getBoolean("cloud_migration_$key", false)
+
+    private fun cloudMigrationDone(key: String, done: Boolean) {
+        prefs.edit().putBoolean("cloud_migration_$key", done).apply()
     }
 
     private fun saveScheduleLocal(schedule: MeetingSchedule) {

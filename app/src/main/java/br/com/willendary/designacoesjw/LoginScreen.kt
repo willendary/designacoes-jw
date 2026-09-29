@@ -28,7 +28,7 @@ import br.com.willendary.designacoesjw.data.UserAccessRepository
 import kotlinx.coroutines.launch
 
 @Composable
-fun LoginScreen() {
+fun LoginScreen(onInviteClaimFinished: () -> Unit = {}) {
     val context = LocalContext.current
     val activity = context as? Activity
     val auth = remember { FirebaseAuth.getInstance() }
@@ -42,6 +42,10 @@ fun LoginScreen() {
     var showRegister by remember { mutableStateOf(false) }
     val prefs = remember { context.getSharedPreferences("designacoes_jw", android.content.Context.MODE_PRIVATE) }
     var pendingEmailLink by remember { mutableStateOf(prefs.getString("pending_email_link", null)) }
+
+    LaunchedEffect(Unit) {
+        if (email.isBlank()) email = prefs.getString("last_invitation_email", "") ?: ""
+    }
     val inviteMode = pendingEmailLink?.let { auth.isSignInWithEmailLink(it) } == true
 
     fun firebaseErrorMessage(t: Throwable): String = when {
@@ -121,6 +125,7 @@ fun LoginScreen() {
                     onClick = {
                         runAuth {
                             if (inviteMode && pendingEmailLink != null) {
+                                prefs.edit().putBoolean("invite_claim_in_progress", true).apply()
                                 auth.signInWithEmailLink(email, pendingEmailLink!!)
                                     .addOnCompleteListener { task ->
                                         loading = false
@@ -133,15 +138,24 @@ fun LoginScreen() {
                                             }.getOrNull()
                                             if (uid != null && !inviteId.isNullOrBlank()) {
                                                 UserAccessRepository().claimInvitation(inviteId, uid, email) { claimError ->
-                                                    if (claimError != null) error = claimError
-                                                    prefs.edit().remove("pending_email_link").apply()
-                                                    pendingEmailLink = null
+                                                    if (claimError != null) {
+                                                        error = claimError
+                                                        prefs.edit().putBoolean("invite_claim_in_progress", false).apply()
+                                                        onInviteClaimFinished()
+                                                    } else {
+                                                        prefs.edit().remove("pending_email_link").remove("last_invitation_email").putBoolean("invite_claim_in_progress", false).apply()
+                                                        pendingEmailLink = null
+                                                        onInviteClaimFinished()
+                                                    }
                                                 }
                                             } else {
-                                                prefs.edit().remove("pending_email_link").apply()
+                                                prefs.edit().remove("pending_email_link").remove("last_invitation_email").putBoolean("invite_claim_in_progress", false).apply()
                                                 pendingEmailLink = null
+                                                onInviteClaimFinished()
                                             }
                                         } else {
+                                            prefs.edit().putBoolean("invite_claim_in_progress", false).apply()
+                                            onInviteClaimFinished()
                                             error = firebaseErrorMessage(task.exception ?: Exception())
                                         }
                                     }
