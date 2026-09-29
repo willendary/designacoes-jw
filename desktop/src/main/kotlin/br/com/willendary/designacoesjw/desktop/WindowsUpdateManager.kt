@@ -11,7 +11,7 @@ import java.nio.file.StandardCopyOption
 import kotlin.concurrent.thread
 
 private const val CURRENT_VERSION = "0.1.6"
-private const val GITHUB_RELEASES_URL = "https://api.github.com/repos/willendary/designacoes-jw/releases/latest"
+private const val GITHUB_RELEASES_URL = "https://api.github.com/repos/willendary/designacoes-jw/releases?per_page=20"
 
 @Serializable
 private data class GitHubRelease(
@@ -44,12 +44,20 @@ object WindowsUpdateManager {
 
         connection.use {
             if (it.responseCode !in 200..299) return null
-            val release = json.decodeFromString<GitHubRelease>(it.inputStream.bufferedReader().readText())
+            val releases = json.decodeFromString<List<GitHubRelease>>(it.inputStream.bufferedReader().readText())
+            val release = releases.firstOrNull { release ->
+                release.tagName.isNotBlank() &&
+                    release.assets.any { asset ->
+                        asset.name.endsWith(".exe", ignoreCase = true) &&
+                            asset.browserDownloadUrl.isNotBlank()
+                    }
+            } ?: return null
+
             val version = release.tagName.removePrefix("v").trim()
-            val asset = release.assets.firstOrNull {
+            val asset = release.assets.first {
                 it.name.endsWith(".exe", ignoreCase = true) &&
                     it.browserDownloadUrl.isNotBlank()
-            } ?: return null
+            }
 
             if (!isNewer(version, CURRENT_VERSION)) null
             else WindowsUpdateInfo(version, asset.browserDownloadUrl)
