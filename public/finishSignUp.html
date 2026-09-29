@@ -23,7 +23,6 @@ h1{margin:0 0 10px;font-size:28px}p{line-height:1.55;color:#5d6670}
 <h1>Você foi convidado!</h1>
 <p>Este convite permite que você participe do <strong>Designações JW</strong> com as permissões definidas pelo administrador da congregação.</p>
 <div id="webFallback">
-<a class="button" id="openApp" href="#">Abrir o aplicativo</a>
 <button class="button secondary" id="showEmail">Continuar pelo navegador</button>
 <p class="small">Se o aplicativo estiver instalado, o link original deverá abri-lo automaticamente. Se isso não acontecer, abra o aplicativo e tente novamente pelo e-mail.</p>
 </div>
@@ -46,7 +45,6 @@ const firebaseConfig={
   projectId:"designacoes-jw",
   storageBucket:"designacoes-jw.firebasestorage.app",
   messagingSenderId:"859002390487",
-  appId:"1:859002390487:web:designacoes-jw-web"
 };
 const app=initializeApp(firebaseConfig);
 const auth=getAuth(app);
@@ -57,8 +55,6 @@ const webFallback=document.getElementById("webFallback");
 const params=new URLSearchParams(location.search);
 const inviteId=params.get("inviteId")||"";
 const currentLink=location.href;
-
-document.getElementById("openApp").href="https://designacoes-jw.firebaseapp.com/__/auth/links?continueUrl="+encodeURIComponent(location.href);
 
 document.getElementById("showEmail").onclick=()=>{emailBox.style.display="block";webFallback.style.display="none";document.getElementById("email").focus()};
 
