@@ -35,13 +35,13 @@ fun LoginScreen(onInviteClaimFinished: () -> Unit = {}) {
     val credentialManager = remember { CredentialManager.create(context) }
     val scope = rememberCoroutineScope()
 
-    var email by remember { mutableStateOf(prefs.getString("last_invitation_email", "") ?: "") }
+    var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var showRegister by remember { mutableStateOf(false) }
     val prefs = remember { context.getSharedPreferences("designacoes_jw", android.content.Context.MODE_PRIVATE) }
-    var pendingEmailLink by remember { mutableStateOf(prefs.getString("pending_email_link", null)) }
+    var pendingEmailLink by remember { mutableStateOf(prefs.getString("pending_email_link", null)) }\n\n    LaunchedEffect(Unit) {\n        if (email.isBlank()) email = prefs.getString("last_invitation_email", "") ?: ""\n    }
     val inviteMode = pendingEmailLink?.let { auth.isSignInWithEmailLink(it) } == true
 
     fun firebaseErrorMessage(t: Throwable): String = when {
