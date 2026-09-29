@@ -62,7 +62,8 @@ private fun FirebaseAuthGate(
     themeIndex: Int,
     onThemeChange: (Int) -> Unit
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current\n    val auth = remember { FirebaseAuth.getInstance() }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val auth = remember { FirebaseAuth.getInstance() }
     var user by remember { mutableStateOf(auth.currentUser) }
 
     DisposableEffect(auth) {
@@ -71,8 +72,11 @@ private fun FirebaseAuthGate(
         onDispose { auth.removeAuthStateListener(listener) }
     }
 
-    if (user == null) {
-        LoginScreen()
+    val prefs = remember { context.getSharedPreferences("designacoes_jw", MODE_PRIVATE) }
+    var inviteClaimInProgress by remember { mutableStateOf(prefs.getBoolean("invite_claim_in_progress", false)) }
+
+    if (user == null || inviteClaimInProgress) {
+        LoginScreen(onInviteClaimFinished = { inviteClaimInProgress = false })
     } else {
         App(
             themeIndex = themeIndex,
