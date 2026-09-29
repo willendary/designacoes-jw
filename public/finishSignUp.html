@@ -38,7 +38,7 @@ h1{margin:0 0 10px;font-size:28px}p{line-height:1.55;color:#5d6670}
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 import { getAuth, isSignInWithEmailLink, signInWithEmailLink } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, writeBatch } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 const firebaseConfig={
   apiKey:"AIzaSyDpLo4zAsQ8Tl4V6MJ-lp5hgnQSaaZvD_0",
@@ -77,8 +77,10 @@ async function claim(invitationId,user,email){
     active:true,
     invitationId
   };
-  await setDoc(doc(db,"users",user.uid),profile,{merge:true});
-  await updateDoc(ref,{status:"accepted",acceptedBy:user.uid,acceptedAt:Date.now()});
+  const batch=writeBatch(db);
+  batch.set(doc(db,"users",user.uid),profile,{merge:true});
+  batch.update(ref,{status:"accepted",acceptedBy:user.uid,acceptedAt:Date.now()});
+  await batch.commit();
 }
 
 async function finish(){
