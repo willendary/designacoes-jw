@@ -88,9 +88,58 @@ class StoreController {
 
 fun main()=application{
     val c=remember{StoreController()}
-    Window(onCloseRequest=::exitApplication,title="Designações JW 0.1.6",state=rememberWindowState(width=1200.dp,height=760.dp)){
-        MaterialTheme{DesktopApp(c)}
+    var updateInfo by remember { mutableStateOf<WindowsUpdateInfo?>(null) }
+    var checkingUpdate by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        updateInfo = WindowsUpdateManager.checkForUpdate()
+        checkingUpdate = false
     }
+
+    Window(onCloseRequest=::exitApplication,title="Designações JW 0.1.6",state=rememberWindowState(width=1200.dp,height=760.dp)){
+        MaterialTheme{
+            DesktopApp(c)
+            if (!checkingUpdate && updateInfo != null) {
+                UpdateDialog(
+                    info = updateInfo!!,
+                    onUpdate = {
+                        WindowsUpdateManager.downloadAndInstall(updateInfo!!)
+                    },
+                    onDismiss = { updateInfo = null }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun UpdateDialog(
+    info: WindowsUpdateInfo,
+    onUpdate: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Nova versão disponível") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Uma nova versão do Designações JW está disponível.")
+                Text("Instalada: 0.1.6")
+                Text("Nova versão: ${info.version}", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                Text("O aplicativo será fechado e reaberto automaticamente durante a atualização.")
+            }
+        },
+        confirmButton = {
+            Button(onClick = onUpdate) {
+                Text("Atualizar agora")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Depois")
+            }
+        }
+    )
 }
 
 @Composable fun DesktopApp(c:StoreController){
