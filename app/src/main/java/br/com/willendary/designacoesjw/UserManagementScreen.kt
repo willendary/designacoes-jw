@@ -16,7 +16,8 @@ import com.google.firebase.auth.FirebaseAuth
 import br.com.willendary.designacoesjw.data.*
 
 @Composable
-fun UserManagementScreen(vm: AppViewModel) {\n    val context = androidx.compose.ui.platform.LocalContext.current
+fun UserManagementScreen(vm: AppViewModel) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var email by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
     var selectedPermissions by remember { mutableStateOf(setOf(AppPermissions.VIEW_ASSIGNMENTS, AppPermissions.EXPORT_REPORTS)) }
