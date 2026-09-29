@@ -42,9 +42,9 @@ object WindowsUpdateManager {
             setRequestProperty("User-Agent", "Designacoes-JW-Windows/$CURRENT_VERSION")
         }
 
-        connection.use {
-            if (it.responseCode !in 200..299) return null
-            val releases = json.decodeFromString<List<GitHubRelease>>(it.inputStream.bufferedReader().readText())
+        try {
+            if (connection.responseCode !in 200..299) return null
+            val releases = json.decodeFromString<List<GitHubRelease>>(connection.inputStream.bufferedReader().readText())
             val release = releases.firstOrNull { release ->
                 release.tagName.isNotBlank() &&
                     release.assets.any { asset ->
@@ -61,6 +61,8 @@ object WindowsUpdateManager {
 
             if (!isNewer(version, CURRENT_VERSION)) null
             else WindowsUpdateInfo(version, asset.browserDownloadUrl)
+        } finally {
+            connection.disconnect()
         }
     }.getOrNull()
 
@@ -114,12 +116,14 @@ object WindowsUpdateManager {
             setRequestProperty("User-Agent", "Designacoes-JW-Windows/$CURRENT_VERSION")
         }
 
-        connection.use {
-            if (it.responseCode !in 200..299) error("Download HTTP ${it.responseCode}")
+        try {
+            if (connection.responseCode !in 200..299) error("Download HTTP ${connection.responseCode}")
             destination.parentFile?.mkdirs()
-            it.inputStream.use { input ->
+            connection.inputStream.use { input ->
                 Files.copy(input, destination.toPath(), StandardCopyOption.REPLACE_EXISTING)
             }
+        } finally {
+            connection.disconnect()
         }
     }
 
@@ -127,32 +131,32 @@ object WindowsUpdateManager {
         fun ps(value: String) = "'" + value.replace("'", "''") + "'"
 
         return """
-            $ErrorActionPreference = 'SilentlyContinue'
-            $pidToWait = $pid
-            $old = ${ps(oldPath)}
-            $new = ${ps(newPath)}
-            $script = ${ps(scriptPath)}
+            ${'$'}ErrorActionPreference = 'SilentlyContinue'
+            ${'$'}pidToWait = $pid
+            ${'$'}old = ${ps(oldPath)}
+            ${'$'}new = ${ps(newPath)}
+            ${'$'}script = ${ps(scriptPath)}
 
             try {
-                Wait-Process -Id $pidToWait -Timeout 120
+                Wait-Process -Id ${'$'}pidToWait -Timeout 120
             } catch {}
 
             Start-Sleep -Milliseconds 1000
 
-            for ($i = 0; $i -lt 10; $i++) {
+            for (${ '$'}i = 0; ${'$'}i -lt 10; ${'$'}i++) {
                 try {
-                    Copy-Item -LiteralPath $new -Destination $old -Force -ErrorAction Stop
-                    Start-Process -FilePath $old
-                    Remove-Item -LiteralPath $new -Force
-                    Remove-Item -LiteralPath $script -Force
+                    Copy-Item -LiteralPath ${'$'}new -Destination ${'$'}old -Force -ErrorAction Stop
+                    Start-Process -FilePath ${'$'}old
+                    Remove-Item -LiteralPath ${'$'}new -Force
+                    Remove-Item -LiteralPath ${'$'}script -Force
                     exit 0
                 } catch {
                     Start-Sleep -Seconds 1
                 }
             }
 
-            Start-Process -FilePath $old
-            Remove-Item -LiteralPath $script -Force
+            Start-Process -FilePath ${'$'}old
+            Remove-Item -LiteralPath ${'$'}script -Force
         """.trimIndent()
     }
 
