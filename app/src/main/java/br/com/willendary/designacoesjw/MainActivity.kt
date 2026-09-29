@@ -16,7 +16,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         captureEmailLink(intent)
-        val prefs = getSharedPreferences("designacoes_jw", Context.Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("designacoes_jw", Context.MODE_PRIVATE)
         setContent {
             val themeIndexState = remember { mutableIntStateOf(prefs.getInt("theme_index", 0)) }
             val themeIndex = themeIndexState.intValue
@@ -50,7 +50,7 @@ class MainActivity : ComponentActivity() {
         val link = intent?.data?.toString() ?: return
         val auth = FirebaseAuth.getInstance()
         if (auth.isSignInWithEmailLink(link)) {
-            getSharedPreferences("designacoes_jw", Context.Context.MODE_PRIVATE)
+            getSharedPreferences("designacoes_jw", Context.MODE_PRIVATE)
                 .edit()
                 .putString("pending_email_link", link)
                 .apply()
