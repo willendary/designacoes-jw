@@ -62,7 +62,7 @@ private fun FirebaseAuthGate(
     themeIndex: Int,
     onThemeChange: (Int) -> Unit
 ) {
-    val auth = remember { FirebaseAuth.getInstance() }
+    val context = androidx.compose.ui.platform.LocalContext.current\n    val auth = remember { FirebaseAuth.getInstance() }
     var user by remember { mutableStateOf(auth.currentUser) }
 
     DisposableEffect(auth) {
