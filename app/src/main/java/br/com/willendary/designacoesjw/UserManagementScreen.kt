@@ -16,7 +16,7 @@ import com.google.firebase.auth.FirebaseAuth
 import br.com.willendary.designacoesjw.data.*
 
 @Composable
-fun UserManagementScreen(vm: AppViewModel) {
+fun UserManagementScreen(vm: AppViewModel) {\n    val context = androidx.compose.ui.platform.LocalContext.current
     var email by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
     var selectedPermissions by remember { mutableStateOf(setOf(AppPermissions.VIEW_ASSIGNMENTS, AppPermissions.EXPORT_REPORTS)) }
@@ -72,6 +72,8 @@ fun UserManagementScreen(vm: AppViewModel) {
                                         .setHandleCodeInApp(true)
                                         .setAndroidPackageName("br.com.willendary.designacoesjw", true, null)
                                         .build()
+                                    context.getSharedPreferences("designacoes_jw", android.content.Context.MODE_PRIVATE)
+                                        .edit().putString("last_invitation_email", invitation.email).apply()
                                     FirebaseAuth.getInstance().sendSignInLinkToEmail(invitation.email, settings)
                                         .addOnSuccessListener {
                                             status = "Convite enviado para " + invitation.email + "."
@@ -79,7 +81,7 @@ fun UserManagementScreen(vm: AppViewModel) {
                                             name = ""
                                         }
                                         .addOnFailureListener {
-                                            status = "Convite criado, mas o Firebase não enviou o e-mail: " + (it.localizedMessage ?: "erro desconhecido")
+                                            status = "Convite criado, mas o Firebase não enviou o e-mail (" + (it as? com.google.firebase.auth.FirebaseAuthException)?.errorCode + "): " + (it.localizedMessage ?: "erro desconhecido")
                                         }
                                 }
                             }
