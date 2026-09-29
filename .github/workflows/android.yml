@@ -1,4 +1,5 @@
 name: Android APK
+# CI: rebuild on every update to main.
 
 on:
   push:
