@@ -41,7 +41,11 @@ fun LoginScreen(onInviteClaimFinished: () -> Unit = {}) {
     var error by remember { mutableStateOf<String?>(null) }
     var showRegister by remember { mutableStateOf(false) }
     val prefs = remember { context.getSharedPreferences("designacoes_jw", android.content.Context.MODE_PRIVATE) }
-    var pendingEmailLink by remember { mutableStateOf(prefs.getString("pending_email_link", null)) }\n\n    LaunchedEffect(Unit) {\n        if (email.isBlank()) email = prefs.getString("last_invitation_email", "") ?: ""\n    }
+    var pendingEmailLink by remember { mutableStateOf(prefs.getString("pending_email_link", null)) }
+
+    LaunchedEffect(Unit) {
+        if (email.isBlank()) email = prefs.getString("last_invitation_email", "") ?: ""
+    }
     val inviteMode = pendingEmailLink?.let { auth.isSignInWithEmailLink(it) } == true
 
     fun firebaseErrorMessage(t: Throwable): String = when {
@@ -120,7 +124,8 @@ fun LoginScreen(onInviteClaimFinished: () -> Unit = {}) {
                     modifier = Modifier.fillMaxWidth(),
                     onClick = {
                         runAuth {
-                            if (inviteMode && pendingEmailLink != null) {\n                                prefs.edit().putBoolean("invite_claim_in_progress", true).apply()
+                            if (inviteMode && pendingEmailLink != null) {
+                                prefs.edit().putBoolean("invite_claim_in_progress", true).apply()
                                 auth.signInWithEmailLink(email, pendingEmailLink!!)
                                     .addOnCompleteListener { task ->
                                         loading = false
