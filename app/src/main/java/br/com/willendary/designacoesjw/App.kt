@@ -126,6 +126,7 @@ fun App(
     val currentTitle = when (tab) {
         0 -> "Configurações"
         1 -> "Histórico de Reuniões"
+        16 -> "Reuniões"
         2 -> "Irmãos & Irmãs"
         3 -> "Quadro de Reuniões"
         4 -> "Privilégios"
@@ -244,6 +245,15 @@ fun App(
                                 icon = { Icon(Icons.Filled.History, null) },
                                 selected = tab == 1,
                                 onClick = { tab = 1; scope.launch { drawerState.close() } },
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                            )
+                        }
+                        item {
+                            NavigationDrawerItem(
+                                label = { Text("Reuniões") },
+                                icon = { Icon(Icons.Filled.Event, null) },
+                                selected = tab == 16,
+                                onClick = { tab = 16; scope.launch { drawerState.close() } },
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                             )
                         }
@@ -434,6 +444,7 @@ fun App(
                     when (tab) {
                         0 -> SettingsScreen(vm, themeIndex, onThemeChange, onSignOut)
                         1 -> HistoryScreen(vm)
+                        16 -> MeetingsScreen(vm)
                         2 -> BrothersScreen(vm)
                         3 -> HomeScreen(vm)
                         4 -> PrivilegesScreen(vm)
