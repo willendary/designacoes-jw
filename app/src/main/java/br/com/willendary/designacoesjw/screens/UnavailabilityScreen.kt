@@ -90,7 +90,7 @@ fun UnavailabilityScreen(vm: AppViewModel) {
                     ) {
                         Column(
                             Modifier.padding(24.dp).fillMaxWidth(),
-                            horizontalAlignment = Alignment.CenterVertically,
+                            horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Icon(Icons.Default.CheckCircle, null, modifier = Modifier.size(40.dp), tint = Color(0xFF2E7D32))

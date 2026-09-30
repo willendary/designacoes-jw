@@ -101,7 +101,7 @@ fun PublicTalksAndroidScreen(vm: AppViewModel) {
                     ) {
                         Column(
                             Modifier.padding(24.dp).fillMaxWidth(),
-                            horizontalAlignment = Alignment.CenterVertically,
+                            horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Icon(Icons.Default.RecordVoiceOver, null, modifier = Modifier.size(40.dp), tint = MaterialTheme.colorScheme.outline)
@@ -148,8 +148,9 @@ fun PublicTalksAndroidScreen(vm: AppViewModel) {
 
                         // Tema
                         Column {
-                            val themeTitle = if (talk.themeNumber != null && talk.themeNumber > 0) {
-                                "Nº ${talk.themeNumber} — ${talk.themeTitle.ifBlank { "Sem tema informado" }}"
+                            val themeNumber = talk.themeNumber
+                            val themeTitle = if (themeNumber != null && themeNumber > 0) {
+                                "Nº $themeNumber — ${talk.themeTitle.ifBlank { "Sem tema informado" }}"
                             } else {
                                 talk.themeTitle.ifBlank { "Tema não cadastrado" }
                             }

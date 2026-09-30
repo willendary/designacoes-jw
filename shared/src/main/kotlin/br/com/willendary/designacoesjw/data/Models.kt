@@ -66,7 +66,11 @@ data class Meeting(
     val date: String,
     val type: String,
     val assignments: List<Assignment> = emptyList(),
-    val blockedBrotherIds: Set<Long> = emptySet()
+    val blockedBrotherIds: Set<Long> = emptySet(),
+    /** Leitura do dia da semana ("JEREMIAS 40-41"), preenchida pelo import do jw.org. */
+    val theme: String = "",
+    /** Itens do programa oficial, na ordem ("1. Joias espirituais", ...). */
+    val program: List<String> = emptyList()
 )
 
 @Serializable

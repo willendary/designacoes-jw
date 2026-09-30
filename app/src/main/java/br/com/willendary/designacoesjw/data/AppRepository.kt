@@ -240,7 +240,13 @@ class AppRepository(context: Context) {
             val blocked = mutableSetOf<Long>()
             val ba = o.optJSONArray("blockedBrotherIds") ?: org.json.JSONArray()
             for (j in 0 until ba.length()) blocked += ba.getLong(j)
-            Meeting(o.getLong("id"), o.getString("date"), o.getString("type"), assignments, blocked)
+            val program = mutableListOf<String>()
+            val pa = o.optJSONArray("program") ?: org.json.JSONArray()
+            for (j in 0 until pa.length()) pa.optString(j)?.takeIf { it.isNotBlank() }?.let { program += it }
+            Meeting(
+                o.getLong("id"), o.getString("date"), o.getString("type"), assignments, blocked,
+                o.optString("theme"), program
+            )
         }
     }
 
@@ -419,6 +425,8 @@ class AppRepository(context: Context) {
                 put("type", m.type)
                 put("assignments", aa)
                 put("blockedBrotherIds", org.json.JSONArray(m.blockedBrotherIds.toList()))
+                put("theme", m.theme)
+                put("program", org.json.JSONArray(m.program))
             })
         }
         prefs.edit().putString("meetings", a.toString()).apply()
@@ -512,7 +520,8 @@ class AppRepository(context: Context) {
     private fun Meeting.toMap() = mapOf(
         "id" to id, "date" to date, "type" to type,
         "assignments" to assignments.map { mapOf("privilegeId" to it.privilegeId, "brotherId" to it.brotherId) },
-        "blockedBrotherIds" to blockedBrotherIds.toList()
+        "blockedBrotherIds" to blockedBrotherIds.toList(),
+        "theme" to theme, "program" to program
     )
 
     private fun PublicTalk.toMap(): Map<String, Any?> = mutableMapOf<String, Any?>(

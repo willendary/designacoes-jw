@@ -35,17 +35,36 @@ object GoogleDesktopAuth {
     private const val GOOGLE_CLIENT_ID =
         "859002390487-u74nnqf0f8pg5css83tirh7ibj4ucts9.apps.googleusercontent.com"
 
-    // Client Secret correspondente ao Web Client ID
-    // IMPORTANTE: Para apps "instalados" (desktop), o Google aceita um secret pois
-    // o Client ID tipo "Web" do Firebase Console não é confidencial desta forma —
-    // porém, se o projeto não tiver secret configurado, o flow "installed app" pode
-    // ser necessário. Aqui usamos string vazia e o flow PKCE que não exige secret.
-    private const val GOOGLE_CLIENT_SECRET = "" // PKCE flow — sem secret necessário
+    /**
+     * Client Secret do Web OAuth Client.
+     *
+     * PKCE NÃO dispensa o secret para clients do tipo "Web": o endpoint do Google
+     * responde `invalid_request: client_secret is missing` mesmo com code_challenge.
+     * Sem o secret o login nunca fecha.
+     *
+     * Como não deve ficar hardcoded no repo, leia da variável de ambiente
+     * GOOGLE_CLIENT_SECRET ou da propriedade de sistema google.client.secret.
+     * Sem ela, o login com Google no desktop não é possível — use e-mail e senha.
+     */
+    private val GOOGLE_CLIENT_SECRET: String =
+        System.getenv("GOOGLE_CLIENT_SECRET")
+            ?: System.getProperty("google.client.secret", "")
+            ?: ""
 
-    private const val REDIRECT_URI = "http://localhost:8181/callback"
-    private const val SCOPE = "openid email profile"
     private const val CALLBACK_PORT = 8181
+    private const val SCOPE = "openid email profile"
     private const val TIMEOUT_SECONDS = 300L // 5 minutos para o usuário autorizar
+
+    private val REDIRECT_URI = "http://localhost:$CALLBACK_PORT/callback"
+
+    /** Permite à UI abortar a espera pelo callback. */
+    @Volatile
+    private var cancelled = false
+
+    /** Cancela um login em andamento. */
+    fun cancel() {
+        cancelled = true
+    }
 
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -70,7 +89,9 @@ object GoogleDesktopAuth {
 
     data class GoogleAuthResult(
         val session: AuthSession? = null,
-        val error: String? = null
+        val error: String? = null,
+        /** URL de autorização — útil para o botão "Abrir manualmente" quando o SO recusa abrir o browser. */
+        val authUrl: String? = null
     )
 
     /**
@@ -78,7 +99,17 @@ object GoogleDesktopAuth {
      * Chame em uma thread de background (não na Main thread do Compose).
      * Retorna [GoogleAuthResult] com a sessão autenticada ou mensagem de erro.
      */
-    fun signInWithGoogle(): GoogleAuthResult {
+    fun signInWithGoogle(onAuthUrl: (String) -> Unit = {}): GoogleAuthResult {
+        cancelled = false
+
+        if (GOOGLE_CLIENT_SECRET.isBlank()) {
+            return GoogleAuthResult(
+                error = "Login com Google no desktop não está configurado: falta GOOGLE_CLIENT_SECRET. " +
+                    "Defina a variável de ambiente GOOGLE_CLIENT_SECRET com o client secret do Web OAuth Client " +
+                    "ou entre com e-mail e senha."
+            )
+        }
+
         if (!Desktop.isDesktopSupported() || !Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
             return GoogleAuthResult(error = "Seu sistema não suporta abertura de navegador.")
         }
@@ -89,6 +120,7 @@ object GoogleDesktopAuth {
 
         // 2. Construir URL de autorização
         val authUrl = buildAuthUrl(challenge, state)
+        onAuthUrl(authUrl)
 
         // 3. Iniciar servidor HTTP local para receber callback
         var authCode: String? = null
@@ -126,20 +158,33 @@ object GoogleDesktopAuth {
         }
         server.start()
 
-        // 4. Abrir o navegador
+        // 4. Abrir o navegador. Se falhar, seguimos esperando: a UI já recebeu a URL e
+        //    oferece o botão "Abrir no navegador" — nunca mais ficamos presos sem saída.
         try {
             Desktop.getDesktop().browse(URI(authUrl))
         } catch (e: Exception) {
-            server.stop(0)
-            return GoogleAuthResult(error = "Não foi possível abrir o navegador: ${e.message}")
+            println("[GoogleDesktopAuth] browse falhou: ${e.message} — URL exibida na tela.")
         }
 
-        // 5. Aguardar o callback (timeout de 5 min)
-        val received = latch.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        // 5. Aguardar o callback (timeout de 5 min, cancelável)
+        val deadline = System.currentTimeMillis() + TIMEOUT_SECONDS * 1000
+        var received = false
+        while (!received) {
+            received = latch.await(500, TimeUnit.MILLISECONDS)
+            if (!received && cancelled) break
+            if (!received && System.currentTimeMillis() > deadline) break
+        }
         server.stop(0)
 
+        if (cancelled) {
+            return GoogleAuthResult(error = "Login cancelado.", authUrl = authUrl)
+        }
         if (!received) {
-            return GoogleAuthResult(error = "Tempo esgotado aguardando autorização do Google. Tente novamente.")
+            return GoogleAuthResult(
+                error = "Tempo esgotado aguardando autorização do Google. " +
+                    "Confira se a página foi aberta e se o login foi concluído no navegador.",
+                authUrl = authUrl
+            )
         }
         if (serverError != null) {
             return GoogleAuthResult(error = "Google recusou o acesso: $serverError")
@@ -152,11 +197,14 @@ object GoogleDesktopAuth {
         }
 
         // 6. Trocar código pelo id_token via Google Token Endpoint
-        val googleToken = exchangeCodeForToken(authCode!!, verifier)
-            ?: return GoogleAuthResult(error = "Falha ao obter token do Google. Verifique sua conexão.")
+        val tokenResult = exchangeCodeForToken(authCode!!, verifier)
+        if (tokenResult.error != null) {
+            return GoogleAuthResult(error = tokenResult.error, authUrl = authUrl)
+        }
+        val googleToken = tokenResult.token!!
 
         if (googleToken.idToken.isBlank()) {
-            return GoogleAuthResult(error = "id_token do Google vazio. Configure 'openid' no escopo do OAuth.")
+            return GoogleAuthResult(error = "id_token do Google vazio. Configure 'openid' no escopo do OAuth.", authUrl = authUrl)
         }
 
         // 7. Autenticar no Firebase com o id_token do Google
@@ -198,7 +246,12 @@ object GoogleDesktopAuth {
 
     // ── Troca de Código por Token ─────────────────────────────────────────────
 
-    private fun exchangeCodeForToken(code: String, codeVerifier: String): GoogleTokenResponse? {
+    private data class TokenResult(
+        val token: GoogleTokenResponse? = null,
+        val error: String? = null
+    )
+
+    private fun exchangeCodeForToken(code: String, codeVerifier: String): TokenResult {
         return runCatching {
             val url = URI("https://oauth2.googleapis.com/token").toURL()
             val conn = (url.openConnection() as HttpURLConnection).apply {
@@ -212,9 +265,7 @@ object GoogleDesktopAuth {
             val body = buildString {
                 append("code=").append(encode(code))
                 append("&client_id=").append(encode(GOOGLE_CLIENT_ID))
-                if (GOOGLE_CLIENT_SECRET.isNotBlank()) {
-                    append("&client_secret=").append(encode(GOOGLE_CLIENT_SECRET))
-                }
+                append("&client_secret=").append(encode(GOOGLE_CLIENT_SECRET))
                 append("&redirect_uri=").append(encode(REDIRECT_URI))
                 append("&grant_type=authorization_code")
                 append("&code_verifier=").append(encode(codeVerifier))
@@ -224,12 +275,21 @@ object GoogleDesktopAuth {
 
             if (conn.responseCode !in 200..299) {
                 val err = conn.errorStream?.bufferedReader()?.readText().orEmpty()
-                throw RuntimeException("Google token error (${conn.responseCode}): $err")
+                val desc = runCatching {
+                    json.parseToJsonElement(err).let { e ->
+                        val obj = e as? JsonObject
+                        obj?.get("error_description")?.jsonPrimitive?.content
+                            ?: obj?.get("error")?.jsonPrimitive?.content
+                    }
+                }.getOrNull()
+                return TokenResult(error = "Google recusou a autorização: ${desc ?: "erro ${conn.responseCode}"}")
             }
 
             val resp = conn.inputStream.bufferedReader().readText()
-            json.decodeFromString<GoogleTokenResponse>(resp)
-        }.getOrNull()
+            TokenResult(token = json.decodeFromString<GoogleTokenResponse>(resp))
+        }.getOrElse { e ->
+            TokenResult(error = "Falha de rede ao obter token do Google: ${e.message}")
+        }
     }
 
     // ── Autenticação no Firebase ──────────────────────────────────────────────

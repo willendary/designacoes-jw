@@ -401,7 +401,7 @@ fun App(
                                     Spacer(Modifier.width(6.dp))
                                     Text("Sair", color = MaterialTheme.colorScheme.error)
                                 }
-                                Text("v0.2.7", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                Text("v0.2.8", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                             }
                         }
                     }
@@ -882,6 +882,8 @@ private fun MeetingCardView(
     val missing = vm.missingAssignments(meeting)
     var replaceTarget by remember { mutableStateOf<Triple<Long, Long, Long>?>(null) }
     var showQuickUnavailability by remember { mutableStateOf(false) }
+    var importing by remember { mutableStateOf(false) }
+    var importError by remember { mutableStateOf<String?>(null) }
 
     val dateParts = meeting.date.split("/")
     val dayNum = dateParts.getOrNull(0) ?: "--"
@@ -979,6 +981,43 @@ private fun MeetingCardView(
                     Icon(
                         if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
                         contentDescription = "Expandir detalhes"
+                    )
+                }
+            }
+
+            // Programa oficial da semana, importado do jw.org
+            if (meeting.theme.isNotBlank()) {
+                Text(
+                    "📖 ${meeting.theme}",
+                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            meeting.program.forEach { item ->
+                Text("• $item", style = MaterialTheme.typography.bodySmall)
+            }
+
+            if (meeting.type.contains("meio de semana", ignoreCase = true)) {
+                OutlinedButton(
+                    onClick = {
+                        importing = true
+                        importError = null
+                        vm.importMwbProgram(meeting.id) { err ->
+                            importing = false
+                            if (err != null) importError = err
+                        }
+                    },
+                    enabled = !importing,
+                    contentPadding = PaddingValues(vertical = 6.dp)
+                ) {
+                    if (importing) {
+                        CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(6.dp))
+                    }
+                    Text(
+                        if (meeting.theme.isBlank()) "Importar programa do jw.org"
+                        else "Atualizar programa do jw.org",
+                        style = MaterialTheme.typography.labelMedium
                     )
                 }
             }
@@ -1110,6 +1149,17 @@ private fun MeetingCardView(
                 replaceTarget = null
             },
             onDismiss = { replaceTarget = null }
+        )
+    }
+
+    importError?.let { msg ->
+        AlertDialog(
+            onDismissRequest = { importError = null },
+            title = { Text("Não foi possível importar o programa") },
+            text = { Text(msg) },
+            confirmButton = {
+                TextButton(onClick = { importError = null }) { Text("Fechar") }
+            }
         )
     }
 }

@@ -136,6 +136,20 @@ object DesktopFirestoreClient {
                         })
                     })
                 })
+                if (m.theme.isNotBlank()) {
+                    put("theme", buildJsonObject { put("stringValue", m.theme) })
+                }
+                if (m.program.isNotEmpty()) {
+                    put("program", buildJsonObject {
+                        put("arrayValue", buildJsonObject {
+                            put("values", buildJsonArray {
+                                m.program.forEach { p ->
+                                    add(buildJsonObject { put("stringValue", p) })
+                                }
+                            })
+                        })
+                    })
+                }
             }
             patchDocument(idToken, "meetings", docId, fields)
         }
@@ -310,7 +324,14 @@ object DesktopFirestoreClient {
         val blockedArray = fields["blockedBrotherIds"]?.jsonObject?.get("arrayValue")?.jsonObject?.get("values")?.jsonArray
         val blocked = blockedArray?.mapNotNull { it.jsonObject["integerValue"]?.jsonPrimitive?.content?.toLongOrNull() }?.toSet() ?: emptySet()
 
-        return Meeting(id, date, type, assignments, blocked)
+        val theme = fields["theme"]?.jsonObject?.get("stringValue")?.jsonPrimitive?.content ?: ""
+        val programArray = fields["program"]?.jsonObject?.get("arrayValue")?.jsonObject?.get("values")?.jsonArray
+        val program = programArray
+            ?.mapNotNull { it.jsonObject["stringValue"]?.jsonPrimitive?.content }
+            ?.filter { it.isNotBlank() }
+            ?: emptyList()
+
+        return Meeting(id, date, type, assignments, blocked, theme, program)
     }
 
     private fun parsePublicTalk(fields: JsonObject): PublicTalk? {

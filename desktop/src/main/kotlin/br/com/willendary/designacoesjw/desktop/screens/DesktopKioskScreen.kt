@@ -151,6 +151,15 @@ fun DesktopKioskScreen(c: StoreController, onExit: () -> Unit) {
 
                             Divider(color = Color(0xFF334155))
 
+                            if (currentMeeting.theme.isNotBlank()) {
+                                Text(
+                                    currentMeeting.theme,
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+
                             val brothersMap = c.data.brothers.associateBy { it.id }
                             val privilegesMap = c.data.privileges.associateBy { it.id }
 

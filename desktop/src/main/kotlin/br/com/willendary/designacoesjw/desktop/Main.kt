@@ -39,6 +39,7 @@ import br.com.willendary.designacoesjw.desktop.screens.PublicTalksScreen
 import br.com.willendary.designacoesjw.export.CsvDataHandler
 import br.com.willendary.designacoesjw.export.HtmlReportGenerator
 import br.com.willendary.designacoesjw.export.IcsExportHelper
+import br.com.willendary.designacoesjw.export.MwbProgramImporter
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
 import br.com.willendary.designacoesjw.stats.EquityStatisticsHelper
 import br.com.willendary.designacoesjw.util.WhatsAppHelper
@@ -148,9 +149,9 @@ class StoreController {
      * Deve ser chamado em uma thread de background.
      * Retorna null em caso de sucesso, ou a mensagem de erro.
      */
-    fun loginWithGoogle(onResult: (error: String?) -> Unit) {
+    fun loginWithGoogle(onAuthUrl: (String) -> Unit = {}, onResult: (error: String?) -> Unit) {
         kotlin.concurrent.thread {
-            val result = GoogleDesktopAuth.signInWithGoogle()
+            val result = GoogleDesktopAuth.signInWithGoogle(onAuthUrl)
             if (result.session != null) {
                 DesktopAuthManager.saveSessionPublic(result.session)
                 authSession = result.session
@@ -160,6 +161,33 @@ class StoreController {
             } else {
                 onResult(result.error ?: "Falha ao entrar com Google.")
             }
+        }
+    }
+
+    fun cancelGoogleLogin() = GoogleDesktopAuth.cancel()
+
+    /**
+     * Baixa o programa da Reunião Vida e Ministério da semana de [meetingId] no jw.org
+     * e grava tema + itens na reunião. [onResult] recebe null em sucesso, ou a mensagem de erro.
+     */
+    fun importMwbProgram(meetingId: Long, onResult: (error: String?) -> Unit) {
+        val meeting = data.meetings.firstOrNull { it.id == meetingId }
+        if (meeting == null) {
+            onResult("Reunião não encontrada.")
+            return
+        }
+        kotlin.concurrent.thread {
+            val error = runCatching {
+                val program = MwbProgramImporter.fetch(AssignmentGenerator.parseDate(meeting.date))
+                val items = program.parts.mapIndexed { i, p ->
+                    "${i + 1}. ${p.label}"
+                }
+                save(data.copy(meetings = data.meetings.map {
+                    if (it.id == meetingId) it.copy(theme = program.theme, program = items) else it
+                }))
+                null
+            }.exceptionOrNull()?.message ?: "Não foi possível ler o programa no jw.org."
+            onResult(error)
         }
     }
 
@@ -2715,6 +2743,8 @@ private fun DesktopManagePrivilegeBrothersDialog(
 @Composable
 private fun History(c: StoreController) {
     var confirmDelete by remember { mutableStateOf<Meeting?>(null) }
+    var importingId by remember { mutableStateOf<Long?>(null) }
+    var importError by remember { mutableStateOf<String?>(null) }
     val groups = c.data.meetings.sortedByDescending { AssignmentGenerator.parseDate(it.date) }.groupBy {
         it.date.substringAfterLast("/")
     }
@@ -2730,22 +2760,59 @@ private fun History(c: StoreController) {
                 }
                 items(meetings) { m ->
                     Card(Modifier.fillMaxWidth()) {
-                        Row(Modifier.padding(14.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(m.date + " — " + m.type, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                Text("${m.assignments.size} designação(ões)")
-                                m.assignments.forEach { a ->
-                                    val p = c.data.privileges.find { it.id == a.privilegeId }?.name ?: "Privilégio"
-                                    val b = c.data.brothers.find { it.id == a.brotherId }?.name ?: "Irmão"
-                                    Text("• $p: $b", style = MaterialTheme.typography.bodySmall)
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(m.date + " — " + m.type, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    Text("${m.assignments.size} designação(ões)")
+                                }
+                                IconButton({ confirmDelete = m }) { Icon(Icons.Default.Delete, "Excluir") }
+                            }
+
+                            if (m.theme.isNotBlank()) {
+                                Text(
+                                    "📖 ${m.theme}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            m.program.forEach { item ->
+                                Text("• $item", style = MaterialTheme.typography.bodySmall)
+                            }
+
+                            if (m.type.contains("meio de semana", ignoreCase = true)) {
+                                TextButton(
+                                    onClick = {
+                                        importingId = m.id
+                                        importError = null
+                                        c.importMwbProgram(m.id) { err ->
+                                            importingId = null
+                                            if (err != null) importError = err
+                                        }
+                                    },
+                                    enabled = importingId == null
+                                ) {
+                                    if (importingId == m.id) {
+                                        CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                                        Spacer(Modifier.width(6.dp))
+                                    }
+                                    Text(if (m.theme.isBlank()) "Importar programa do jw.org" else "Atualizar programa do jw.org")
                                 }
                             }
-                            IconButton({ confirmDelete = m }) { Icon(Icons.Default.Delete, "Excluir") }
                         }
                     }
                 }
             }
         }
+    }
+
+    importError?.let { msg ->
+        AlertDialog(
+            onDismissRequest = { importError = null },
+            title = { Text("Não foi possível importar o programa") },
+            text = { Text(msg) },
+            confirmButton = { TextButton({ importError = null }) { Text("Fechar") } }
+        )
     }
 
     confirmDelete?.let { m ->

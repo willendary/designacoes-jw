@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import br.com.willendary.designacoesjw.data.*
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
 import br.com.willendary.designacoesjw.export.CsvDataHandler
+import br.com.willendary.designacoesjw.export.MwbProgramImporter
 import br.com.willendary.designacoesjw.util.WhatsAppHelper
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.ListenerRegistration
@@ -199,6 +200,31 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteMeeting(meetingId: Long) {
         meetings.value = meetings.value.filterNot { it.id == meetingId }
         repo.saveMeetings(meetings.value)
+    }
+
+    /**
+     * Baixa o programa da Reunião Vida e Ministério da semana no jw.org e grava
+     * tema + itens na reunião. [onResult] recebe null em sucesso, ou a mensagem de erro.
+     */
+    fun importMwbProgram(meetingId: Long, onResult: (String?) -> Unit) {
+        val meeting = meetings.value.firstOrNull { it.id == meetingId }
+        if (meeting == null) {
+            onResult("Reunião não encontrada.")
+            return
+        }
+        Thread {
+            val error = runCatching {
+                val program = MwbProgramImporter.fetch(AssignmentGenerator.parseDate(meeting.date))
+                val items = program.parts.mapIndexed { i, p -> "${i + 1}. ${p.label}" }
+                val updated = meetings.value.map {
+                    if (it.id == meetingId) it.copy(theme = program.theme, program = items) else it
+                }
+                meetings.value = updated
+                repo.saveMeetings(updated)
+                null
+            }.exceptionOrNull()?.message ?: "Não foi possível ler o programa no jw.org."
+            onResult(error)
+        }.start()
     }
 
     fun deleteMonth(yearMonth: YearMonth) {

@@ -18,6 +18,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import br.com.willendary.designacoesjw.desktop.StoreController
+import java.awt.Desktop
+import java.net.URI
 
 @Composable
 fun CloudSyncBar(c: StoreController) {
@@ -104,6 +106,7 @@ fun DesktopLoginDialog(
     var isLoading by remember { mutableStateOf(false) }
     var googleLoading by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
+    var authUrl by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
         onDismissRequest = { if (!isLoading && !googleLoading) onDismiss() },
@@ -130,16 +133,20 @@ fun DesktopLoginDialog(
                         if (!isLoading && !googleLoading) {
                             googleLoading = true
                             errorMessage = null
+                            authUrl = null
                             statusMessage = "Abrindo navegador para login com Google…"
-                            c.loginWithGoogle { err ->
-                                googleLoading = false
-                                statusMessage = null
-                                if (err == null) {
-                                    onDismiss()
-                                } else {
-                                    errorMessage = err
+                            c.loginWithGoogle(
+                                onAuthUrl = { url -> authUrl = url },
+                                onResult = { err ->
+                                    googleLoading = false
+                                    statusMessage = null
+                                    if (err == null) {
+                                        onDismiss()
+                                    } else {
+                                        errorMessage = err
+                                    }
                                 }
-                            }
+                            )
                         }
                     },
                     shape = RoundedCornerShape(8.dp),
@@ -184,19 +191,59 @@ fun DesktopLoginDialog(
                     }
                 }
 
-                // Status do Google login (mensagem informativa)
+                // Status do Google login (mensagem informativa + fallback manual)
                 statusMessage?.let { msg ->
                     Card(
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier.padding(10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                            Text(msg, style = MaterialTheme.typography.bodySmall)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                                Text(msg, style = MaterialTheme.typography.bodySmall)
+                            }
+
+                            authUrl?.let { url ->
+                                Text(
+                                    "O navegador não abriu? Use o botão abaixo ou copie o link:",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                Text(
+                                    url,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    maxLines = 3,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(4.dp))
+                                        .padding(6.dp)
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(
+                                        onClick = {
+                                            if (Desktop.isDesktopSupported()) Desktop.getDesktop().browse(URI.create(url))
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                                    ) {
+                                        Text("Abrir no navegador", fontSize = 12.sp)
+                                    }
+                                    TextButton(
+                                        onClick = {
+                                            googleLoading = false
+                                            statusMessage = null
+                                            authUrl = null
+                                            c.cancelGoogleLogin()
+                                        }
+                                    ) {
+                                        Text("Cancelar", fontSize = 12.sp)
+                                    }
+                                }
+                            }
                         }
                     }
                 }

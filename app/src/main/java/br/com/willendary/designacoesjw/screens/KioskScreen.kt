@@ -185,8 +185,9 @@ fun KioskScreen(vm: AppViewModel, onClose: () -> Unit) {
                                         Text(nextTalk.date, style = MaterialTheme.typography.labelMedium, color = Color(0xFFCBD5E1))
                                     }
 
-                                    val themeFull = if (nextTalk.themeNumber != null && nextTalk.themeNumber > 0) {
-                                        "Nº ${nextTalk.themeNumber} — ${nextTalk.themeTitle}"
+                                    val talkThemeNumber = nextTalk.themeNumber
+                                    val themeFull = if (talkThemeNumber != null && talkThemeNumber > 0) {
+                                        "Nº $talkThemeNumber — ${nextTalk.themeTitle}"
                                     } else nextTalk.themeTitle
 
                                     Text(themeFull, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
