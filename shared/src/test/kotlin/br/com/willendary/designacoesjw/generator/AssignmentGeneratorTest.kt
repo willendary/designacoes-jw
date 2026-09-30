@@ -35,6 +35,40 @@ class AssignmentGeneratorTest {
     }
 
     @Test
+    fun testReaderPrivilegesByDayOfWeek() {
+        val sentinelPrivilege = Privilege(id = 1, name = "Leitor da Sentinela", quantity = 1)
+        val bookPrivilege = Privilege(id = 2, name = "Leitor do Livro", quantity = 1)
+        val privileges = listOf(sentinelPrivilege, bookPrivilege)
+
+        val quartaDate = LocalDate.of(2026, 10, 7) // Quarta-feira (Meio de semana)
+        val sabadoDate = LocalDate.of(2026, 10, 10) // Sábado (Fim de semana)
+
+        // Quarta: Leitor do Livro é aplicável, Sentinela NÃO é aplicável
+        assertTrue(AssignmentGenerator.isPrivilegeApplicableToMeeting(bookPrivilege, quartaDate))
+        assertFalse(AssignmentGenerator.isPrivilegeApplicableToMeeting(sentinelPrivilege, quartaDate))
+
+        // Sábado: Leitor da Sentinela é aplicável, Livro NÃO é aplicável
+        assertTrue(AssignmentGenerator.isPrivilegeApplicableToMeeting(sentinelPrivilege, sabadoDate))
+        assertFalse(AssignmentGenerator.isPrivilegeApplicableToMeeting(bookPrivilege, sabadoDate))
+
+        // Irmãos: b1 tem apenas Livro, b2 tem Sentinela
+        val b1 = Brother(id = 10, name = "Irmão Livro", privileges = setOf(2))
+        val b2 = Brother(id = 20, name = "Irmão Sentinela", privileges = setOf(1))
+        val brothers = listOf(b1, b2)
+
+        // Na quarta-feira (meio de semana), ambos são candidatos ao Livro (b2 herda)
+        val meetingQuarta = Meeting(id = 1, date = "07/10/2026", type = "Meio de semana")
+        val candidatesQuartaLivro = AssignmentGenerator.candidatesFor(meetingQuarta, bookPrivilege.id, 0L, brothers, privileges)
+        assertEquals(2, candidatesQuartaLivro.size, "Ambos os irmãos devem ser candidatos para o Livro")
+
+        // No sábado (fim de semana), apenas b2 (Sentinela) é candidato para a Sentinela
+        val meetingSabado = Meeting(id = 2, date = "10/10/2026", type = "Fim de semana")
+        val candidatesSabadoSentinela = AssignmentGenerator.candidatesFor(meetingSabado, sentinelPrivilege.id, 0L, brothers, privileges)
+        assertEquals(1, candidatesSabadoSentinela.size)
+        assertEquals(20, candidatesSabadoSentinela[0].id, "Apenas o irmão habilitado para Sentinela deve ler no sábado")
+    }
+
+    @Test
     fun testUnavailableBrotherIsExcluded() {
         val privilege = Privilege(id = 1, name = "Indicador", quantity = 1)
         val meetingDate = LocalDate.of(2026, 10, 7) // Quarta-feira

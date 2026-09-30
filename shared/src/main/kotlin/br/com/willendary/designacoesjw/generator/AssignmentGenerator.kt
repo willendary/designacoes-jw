@@ -58,7 +58,7 @@ object AssignmentGenerator {
         previousMeeting: Meeting? = null
     ): Meeting {
         val activePrivileges = privileges.filter {
-            it.active && (it.allowedDays.isEmpty() || date.dayOfWeek.value in it.allowedDays)
+            isPrivilegeApplicableToMeeting(it, date)
         }.sortedBy { it.name.lowercase(Locale.getDefault()) }
 
         val activeBrothers = brothers.filter {
@@ -127,13 +127,13 @@ object AssignmentGenerator {
         privileges: List<Privilege>
     ): List<Brother> {
         val meetingDate = parseDate(meeting.date)
-        val meetingDay = meetingDate.dayOfWeek.value
         val used = meeting.assignments
             .filter { it.brotherId != currentBrotherId }
             .map { it.brotherId }
             .toSet()
 
         val privilege = privileges.firstOrNull { it.id == privilegeId } ?: return emptyList()
+        if (!isPrivilegeApplicableToMeeting(privilege, meetingDate)) return emptyList()
 
         return brothers.filter { brother ->
             brother.active &&
@@ -141,18 +141,39 @@ object AssignmentGenerator {
                 brother.id !in used &&
                 !isBrotherUnavailableOn(brother, meetingDate) &&
                 brother.role.ordinal >= privilege.minRole.ordinal &&
-                isBrotherAuthorizedForPrivilege(brother, privilege, privileges) &&
-                (privilege.allowedDays.isEmpty() || meetingDay in privilege.allowedDays)
+                isBrotherAuthorizedForPrivilege(brother, privilege, privileges)
         }.sortedBy { normalizeName(it.name) }
     }
 
     fun missingAssignments(meeting: Meeting, privileges: List<Privilege>): List<Privilege> {
-        val meetingDay = parseDate(meeting.date).dayOfWeek.value
+        val meetingDate = parseDate(meeting.date)
         return privileges.filter { p ->
-            p.active &&
-                (p.allowedDays.isEmpty() || meetingDay in p.allowedDays) &&
+            isPrivilegeApplicableToMeeting(p, meetingDate) &&
                 meeting.assignments.count { it.privilegeId == p.id } < p.quantity
         }
+    }
+
+    fun isPrivilegeApplicableToMeeting(privilege: Privilege, date: LocalDate): Boolean {
+        if (!privilege.active) return false
+        val meetingDay = date.dayOfWeek.value
+        val isWeekend = date.dayOfWeek == DayOfWeek.SATURDAY || date.dayOfWeek == DayOfWeek.SUNDAY
+
+        if (privilege.allowedDays.isNotEmpty()) {
+            return meetingDay in privilege.allowedDays
+        }
+
+        // Regra Teocrática JW:
+        // Leitor do Livro (Estudo Bíblico de Congregação) ocorre na reunião de meio de semana.
+        if (isBookReaderPrivilege(privilege)) {
+            return !isWeekend
+        }
+
+        // Leitor de A Sentinela ocorre na reunião de fim de semana.
+        if (isSentinelReaderPrivilege(privilege)) {
+            return isWeekend
+        }
+
+        return true
     }
 
     fun isBrotherUnavailableOn(brother: Brother, date: LocalDate): Boolean {
@@ -174,19 +195,41 @@ object AssignmentGenerator {
         if (privilege.id in brother.privileges) return true
 
         // Regra JW: Leitor da Sentinela pode automaticamente ler o livro
-        val bookPrivilege = allPrivileges.firstOrNull { isBookReaderPrivilege(it) }
-        val sentinelPrivilege = allPrivileges.firstOrNull { isSentinelReaderPrivilege(it) }
+        val isBook = isBookReaderPrivilege(privilege)
+        if (isBook) {
+            val sentinelPrivilege = allPrivileges.firstOrNull { isSentinelReaderPrivilege(it) }
+            if (sentinelPrivilege != null && sentinelPrivilege.id in brother.privileges) {
+                return true
+            }
+        }
 
-        return bookPrivilege?.id == privilege.id &&
-            sentinelPrivilege != null &&
-            sentinelPrivilege.id in brother.privileges
+        return false
     }
 
-    fun isBookReaderPrivilege(privilege: Privilege): Boolean =
-        normalizeName(privilege.name) in setOf("leitor do livro", "leitor livro")
+    fun isBookReaderPrivilege(privilege: Privilege): Boolean {
+        val norm = normalizeName(privilege.name)
+        return norm in setOf(
+            "leitor do livro",
+            "leitor livro",
+            "leitor de livro",
+            "estudo biblico",
+            "estudo biblico de congregacao",
+            "leitor do estudo biblico",
+            "leitor estudo biblico",
+            "leitor ebc"
+        ) || (norm.contains("leitor") && norm.contains("livro")) || (norm.contains("leitor") && norm.contains("ebc"))
+    }
 
-    fun isSentinelReaderPrivilege(privilege: Privilege): Boolean =
-        normalizeName(privilege.name) in setOf("leitor da sentinela", "leitor sentinela")
+    fun isSentinelReaderPrivilege(privilege: Privilege): Boolean {
+        val norm = normalizeName(privilege.name)
+        return norm in setOf(
+            "leitor da sentinela",
+            "leitor sentinela",
+            "leitor de a sentinela",
+            "estudo da sentinela",
+            "estudo de a sentinela"
+        ) || (norm.contains("leitor") && norm.contains("sentinela"))
+    }
 
     fun parseDate(value: String): LocalDate = runCatching {
         LocalDate.parse(value, DATE_FORMATTER)

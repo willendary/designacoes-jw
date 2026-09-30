@@ -3,49 +3,42 @@ package br.com.willendary.designacoesjw
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.Image
-import androidx.compose.material3.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.ViewList
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Groups
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Work
-import androidx.compose.material.icons.filled.AdminPanelSettings
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import br.com.willendary.designacoesjw.notification.MeetingReminderHelper
-import br.com.willendary.designacoesjw.stats.EquityStatisticsHelper
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.viewmodel.compose.viewModel
 import br.com.willendary.designacoesjw.data.*
+import br.com.willendary.designacoesjw.generator.AssignmentGenerator
+import br.com.willendary.designacoesjw.notification.MeetingReminderHelper
+import br.com.willendary.designacoesjw.stats.EquityStatisticsHelper
 import br.com.willendary.designacoesjw.util.WhatsAppHelper
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import java.time.DayOfWeek
-import java.time.YearMonth
-import java.time.format.TextStyle
 import kotlinx.coroutines.launch
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.YearMonth
+import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
+import java.util.Locale
 
 private val weekdays = listOf(
     DayOfWeek.MONDAY to "Segunda-feira",
@@ -56,6 +49,29 @@ private val weekdays = listOf(
     DayOfWeek.SATURDAY to "Sábado",
     DayOfWeek.SUNDAY to "Domingo"
 )
+
+private fun dayLabel(value: Int): String =
+    weekdays.firstOrNull { it.first.value == value }?.second ?: "—"
+
+private fun getInitials(name: String): String {
+    val parts = name.trim().split("\\s+".toRegex()).filter { it.isNotBlank() }
+    return when {
+        parts.isEmpty() -> "?"
+        parts.size == 1 -> parts[0].take(2).uppercase()
+        else -> "${parts[0].first()}${parts.last().first()}".uppercase()
+    }
+}
+
+private val avatarColors = listOf(
+    Color(0xFF1E88E5), Color(0xFF43A047), Color(0xFF8E24AA),
+    Color(0xFFE53935), Color(0xFFFB8C00), Color(0xFF00ACC1),
+    Color(0xFF3949AB), Color(0xFFD81B60), Color(0xFF00897B)
+)
+
+private fun getAvatarColor(name: String): Color {
+    val hash = kotlin.math.abs(name.hashCode())
+    return avatarColors[hash % avatarColors.size]
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -87,7 +103,7 @@ fun App(
             TopAppBar(
                 title = {
                     Row(
-                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Image(
@@ -95,7 +111,10 @@ fun App(
                             contentDescription = "Logo Designações JW",
                             modifier = Modifier.size(34.dp)
                         )
-                        Text("Designações JW", fontWeight = FontWeight.SemiBold)
+                        Column {
+                            Text("Designações JW", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                            Text("Congregação", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             )
@@ -111,9 +130,12 @@ fun App(
                     if (vm.can(AppPermissions.MANAGE_USERS)) add(Triple(5, "Usuários", Icons.Filled.AdminPanelSettings))
                 }
                 navItems.forEach { (key, label, icon) ->
-                    NavigationBarItem(tab == key, { tab = key }, icon = {
-                        Icon(icon, contentDescription = label)
-                    }, label = { Text(label) })
+                    NavigationBarItem(
+                        selected = tab == key,
+                        onClick = { tab = key },
+                        icon = { Icon(icon, contentDescription = label) },
+                        label = { Text(label) }
+                    )
                 }
             }
         }
@@ -129,41 +151,47 @@ fun App(
             }
         }
     }
+
     availableUpdate?.let { update ->
         AlertDialog(
             onDismissRequest = { if (!updating) availableUpdate = null },
             title = { Text("Atualização disponível") },
             text = {
-                Text(if (updating) "Baixando a versão " + update.versionName + "..."
-                     else "A versão " + update.versionName + " do Designações JW está disponível.")
+                Text(
+                    if (updating) "Baixando a versão " + update.versionName + "..."
+                    else "A versão " + update.versionName + " do Designações JW está disponível."
+                )
             },
             confirmButton = {
-                TextButton(enabled = !updating, onClick = {
-                    updating = true
-                    availableUpdate = null
-                    scope.launch {
-                        val result = UpdateManager.downloadAndInstall(context, update)
-                        updating = false
-                        when (result) {
-                            UpdateInstallResult.STARTED -> Unit
-                            UpdateInstallResult.NEED_PERMISSION -> {
-                                Toast.makeText(
-                                    context,
-                                    "Permita a instalação de apps desconhecidos para concluir a atualização. Depois, abra o aplicativo novamente.",
-                                    Toast.LENGTH_LONG
-                                ).show()
-                            }
-                            UpdateInstallResult.FAILED -> {
-                                availableUpdate = update
-                                Toast.makeText(
-                                    context,
-                                    "Não foi possível iniciar a instalação. Tente novamente.",
-                                    Toast.LENGTH_LONG
-                                ).show()
+                TextButton(
+                    enabled = !updating,
+                    onClick = {
+                        updating = true
+                        availableUpdate = null
+                        scope.launch {
+                            val result = UpdateManager.downloadAndInstall(context, update)
+                            updating = false
+                            when (result) {
+                                UpdateInstallResult.STARTED -> Unit
+                                UpdateInstallResult.NEED_PERMISSION -> {
+                                    Toast.makeText(
+                                        context,
+                                        "Permita a instalação de apps desconhecidos para concluir a atualização. Depois, abra o aplicativo novamente.",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                                UpdateInstallResult.FAILED -> {
+                                    availableUpdate = update
+                                    Toast.makeText(
+                                        context,
+                                        "Não foi possível iniciar a instalação. Tente novamente.",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
                             }
                         }
                     }
-                }) { Text(if (updating) "Baixando..." else "Atualizar") }
+                ) { Text(if (updating) "Baixando..." else "Atualizar") }
             },
             dismissButton = {
                 if (!updating) TextButton({ availableUpdate = null }) { Text("Agora não") }
@@ -180,6 +208,8 @@ private fun HomeScreen(vm: AppViewModel) {
     var showRegenerateConfirm by remember { mutableStateOf(false) }
     var viewMode by remember { mutableStateOf("LIST") } // "LIST" or "CALENDAR"
     var showEquityDialog by remember { mutableStateOf(false) }
+    var showMeetingDaysDialog by remember { mutableStateOf(false) }
+    var showExportMenu by remember { mutableStateOf(false) }
 
     val monthMeetings = vm.meetings.value.filter {
         runCatching {
@@ -194,178 +224,181 @@ private fun HomeScreen(vm: AppViewModel) {
     LazyColumn(
         Modifier.fillMaxSize().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
-        contentPadding = PaddingValues(top = 14.dp, bottom = 24.dp)
+        contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp)
     ) {
+        // --- 1. CABEÇALHO DO MÊS & NAVEGAÇÃO COMPACTA ---
         item {
             Card(
                 Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
             ) {
-                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Icon(Icons.Filled.CalendarMonth, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Column {
-                            Text("Planejamento mensal", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                            Text("Organize reuniões e designações em um só lugar.")
-                        }
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        FilledTonalButton({ month = month.minusMonths(1); selectedMeetingId = null }) { Text("‹") }
-                        Column(
-                            Modifier.weight(1f),
-                            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    // Seletor de Mês
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        FilledTonalIconButton(
+                            onClick = { month = month.minusMonths(1); selectedMeetingId = null },
+                            modifier = Modifier.size(36.dp)
                         ) {
-                            Text(monthName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                            Text(month.year.toString(), style = MaterialTheme.typography.labelMedium)
+                            Icon(Icons.Filled.ChevronLeft, contentDescription = "Mês anterior")
                         }
-                        FilledTonalButton({ month = month.plusMonths(1); selectedMeetingId = null }) { Text("›") }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "$monthName ${month.year}",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        FilledTonalIconButton(
+                            onClick = { month = month.plusMonths(1); selectedMeetingId = null },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(Icons.Filled.ChevronRight, contentDescription = "Próximo mês")
+                        }
                     }
-                }
-            }
-        }
 
-        if (vm.can(AppPermissions.MANAGE_SETTINGS)) {
-            item {
-                var firstExpanded by remember { mutableStateOf(false) }
-                var secondExpanded by remember { mutableStateOf(false) }
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("Dias de reunião", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text("Escolha os dois dias da semana em que há reunião.", style = MaterialTheme.typography.bodySmall)
-
-                        Text("Primeiro dia", style = MaterialTheme.typography.labelLarge)
-                        Box {
-                            OutlinedButton({ firstExpanded = true }, Modifier.fillMaxWidth()) {
-                                Text(dayLabel(vm.schedule.value.firstDay))
-                            }
-                            DropdownMenu(expanded = firstExpanded, onDismissRequest = { firstExpanded = false }) {
-                                weekdays.forEach { (day, label) ->
-                                    DropdownMenuItem(
-                                        text = { Text(label) },
-                                        onClick = {
-                                            if (day.value != vm.schedule.value.secondDay) {
-                                                vm.setMeetingDays(day.value, vm.schedule.value.secondDay)
-                                            }
-                                            firstExpanded = false
-                                        }
-                                    )
-                                }
-                            }
+                    // Chips de Status Rápido & Configuração de Dias
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (vm.can(AppPermissions.MANAGE_SETTINGS)) {
+                            AssistChip(
+                                onClick = { showMeetingDaysDialog = true },
+                                label = { Text("Dias: ${dayLabel(vm.schedule.value.firstDay).take(3)} e ${dayLabel(vm.schedule.value.secondDay).take(3)}") },
+                                leadingIcon = { Icon(Icons.Filled.CalendarMonth, null, modifier = Modifier.size(16.dp)) },
+                                trailingIcon = { Icon(Icons.Filled.Edit, null, modifier = Modifier.size(14.dp)) }
+                            )
+                        } else {
+                            AssistChip(
+                                onClick = {},
+                                enabled = false,
+                                label = { Text("Dias: ${dayLabel(vm.schedule.value.firstDay).take(3)} e ${dayLabel(vm.schedule.value.secondDay).take(3)}") }
+                            )
                         }
 
-                        Text("Segundo dia", style = MaterialTheme.typography.labelLarge)
-                        Box {
-                            OutlinedButton({ secondExpanded = true }, Modifier.fillMaxWidth()) {
-                                Text(dayLabel(vm.schedule.value.secondDay))
-                            }
-                            DropdownMenu(expanded = secondExpanded, onDismissRequest = { secondExpanded = false }) {
-                                weekdays.forEach { (day, label) ->
-                                    DropdownMenuItem(
-                                        text = { Text(label) },
-                                        onClick = {
-                                            if (day.value != vm.schedule.value.firstDay) {
-                                                vm.setMeetingDays(vm.schedule.value.firstDay, day.value)
-                                            }
-                                            secondExpanded = false
-                                        }
-                                    )
-                                }
-                            }
-                        }
+                        AssistChip(
+                            onClick = {},
+                            enabled = false,
+                            label = { Text("${vm.brothers.value.count { it.active }} irmãos ativos") },
+                            leadingIcon = { Icon(Icons.Filled.Groups, null, modifier = Modifier.size(16.dp)) }
+                        )
 
-                        Text(
-                            "Reuniões: ${dayLabel(vm.schedule.value.firstDay)} e ${dayLabel(vm.schedule.value.secondDay)}",
-                            style = MaterialTheme.typography.labelLarge
+                        AssistChip(
+                            onClick = {},
+                            enabled = false,
+                            label = { Text("${vm.privileges.value.count { it.active }} privilégios") },
+                            leadingIcon = { Icon(Icons.Filled.Work, null, modifier = Modifier.size(16.dp)) }
+                        )
+
+                        AssistChip(
+                            onClick = {},
+                            enabled = false,
+                            label = { Text("${monthMeetings.size} reuniões") },
+                            leadingIcon = { Icon(Icons.Filled.Event, null, modifier = Modifier.size(16.dp)) }
                         )
                     }
-                }
-            }
-        }
 
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SummaryCard("Irmãos", vm.brothers.value.count { it.active }.toString(), Modifier.weight(1f))
-                SummaryCard("Privilégios", vm.privileges.value.count { it.active }.toString(), Modifier.weight(1f))
-                SummaryCard("Reuniões", monthMeetings.size.toString(), Modifier.weight(1f))
-            }
-        }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-        item {
-            Button(
-                enabled = vm.can(AppPermissions.GENERATE_ASSIGNMENTS),
-                onClick = {
-                    if (monthMeetings.isNotEmpty()) showRegenerateConfirm = true
-                    else selectedMeetingId = vm.generateMonth(month).firstOrNull()?.id
-                },
-                modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(vertical = 14.dp)
-            ) {
-                Text(if (monthMeetings.isEmpty()) "Gerar designações do mês" else "Regenerar designações do mês")
-            }
-        }
+                    // Barra de Ações Rápidas
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Botão Primário de Geração
+                        Button(
+                            enabled = vm.can(AppPermissions.GENERATE_ASSIGNMENTS),
+                            onClick = {
+                                if (monthMeetings.isNotEmpty()) showRegenerateConfirm = true
+                                else selectedMeetingId = vm.generateMonth(month).firstOrNull()?.id
+                            },
+                            modifier = Modifier.weight(1.5f),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+                        ) {
+                            Icon(Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                if (monthMeetings.isEmpty()) "Gerar Escala" else "Regenerar",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.labelLarge
+                            )
+                        }
 
-        if (monthMeetings.isNotEmpty()) {
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Exportar e Relatórios", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text("Compartilhe a escala do mês em PDF, Word ou adicione aos calendários.", style = MaterialTheme.typography.bodySmall)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(
-                            enabled = vm.can(AppPermissions.EXPORT_REPORTS),
-                            onClick = { ReportGenerator.sharePdf(context, month, monthMeetings, vm.brothers.value, vm.privileges.value) },
-                            modifier = Modifier.weight(1f)
-                        ) { Text("PDF") }
-                        OutlinedButton(
-                            enabled = vm.can(AppPermissions.EXPORT_REPORTS),
-                            onClick = { ReportGenerator.shareDocx(context, month, monthMeetings, vm.brothers.value, vm.privileges.value) },
-                            modifier = Modifier.weight(1f)
-                        ) { Text("Word") }
-                        OutlinedButton(
-                            enabled = vm.can(AppPermissions.EXPORT_REPORTS),
-                            onClick = { ReportGenerator.shareIcs(context, month, monthMeetings, vm.brothers.value, vm.privileges.value) },
-                            modifier = Modifier.weight(1f)
-                        ) { Text("iCal (.ics)") }
-                    }
-                }
-            }
-
-            item {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Icon(Icons.Filled.CalendarMonth, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Text("Reuniões de $monthName", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        // Botão Equidade
                         OutlinedButton(
                             onClick = { showEquityDialog = true },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
                         ) {
-                            Icon(Icons.Filled.BarChart, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Filled.BarChart, null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(4.dp))
                             Text("Equidade", style = MaterialTheme.typography.labelMedium)
                         }
-                        IconButton(onClick = { viewMode = "LIST" }) {
-                            Icon(
-                                Icons.Filled.ViewList,
-                                contentDescription = "Lista",
-                                tint = if (viewMode == "LIST") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-                            )
+
+                        // Menu Exportar
+                        Box {
+                            OutlinedButton(
+                                enabled = monthMeetings.isNotEmpty() && vm.can(AppPermissions.EXPORT_REPORTS),
+                                onClick = { showExportMenu = true },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
+                            ) {
+                                Icon(Icons.Filled.Share, null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Exportar", style = MaterialTheme.typography.labelMedium)
+                            }
+                            DropdownMenu(expanded = showExportMenu, onDismissRequest = { showExportMenu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Compartilhar PDF") },
+                                    leadingIcon = { Icon(Icons.Filled.PictureAsPdf, null) },
+                                    onClick = {
+                                        showExportMenu = false
+                                        ReportGenerator.sharePdf(context, month, monthMeetings, vm.brothers.value, vm.privileges.value)
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Compartilhar Word (.docx)") },
+                                    leadingIcon = { Icon(Icons.Filled.Description, null) },
+                                    onClick = {
+                                        showExportMenu = false
+                                        ReportGenerator.shareDocx(context, month, monthMeetings, vm.brothers.value, vm.privileges.value)
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Exportar iCal (.ics)") },
+                                    leadingIcon = { Icon(Icons.Filled.CalendarMonth, null) },
+                                    onClick = {
+                                        showExportMenu = false
+                                        ReportGenerator.shareIcs(context, month, monthMeetings, vm.brothers.value, vm.privileges.value)
+                                    }
+                                )
+                            }
                         }
-                        IconButton(onClick = { viewMode = "CALENDAR" }) {
+
+                        // Alternador de Visualização
+                        IconButton(
+                            onClick = { viewMode = if (viewMode == "LIST") "CALENDAR" else "LIST" },
+                            modifier = Modifier.size(36.dp)
+                        ) {
                             Icon(
-                                Icons.Filled.CalendarMonth,
-                                contentDescription = "Grade Calendário",
-                                tint = if (viewMode == "CALENDAR") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                                if (viewMode == "LIST") Icons.Filled.CalendarMonth else Icons.Filled.ViewList,
+                                contentDescription = "Alternar modo de exibição",
+                                tint = MaterialTheme.colorScheme.primary
                             )
                         }
                     }
                 }
             }
+        }
 
+        // --- 2. CONTEÚDO PRINCIPAL (LISTA DE REUNIÕES OU GRADE) ---
+        if (monthMeetings.isNotEmpty()) {
             if (viewMode == "CALENDAR") {
                 item {
                     CalendarGridView(
@@ -380,39 +413,75 @@ private fun HomeScreen(vm: AppViewModel) {
                 }
             } else {
                 items(monthMeetings, key = { it.id }) { meeting ->
-                    MeetingSummaryCard(vm, meeting, meeting.id == selectedMeetingId) {
-                        selectedMeetingId = if (selectedMeetingId == meeting.id) null else meeting.id
-                    }
-                }
-                monthMeetings.find { it.id == selectedMeetingId }?.let { selected ->
-                    item { MeetingResult(vm, selected, context) {} }
+                    MeetingCardView(
+                        vm = vm,
+                        meeting = meeting,
+                        isExpanded = meeting.id == selectedMeetingId,
+                        onToggleExpand = {
+                            selectedMeetingId = if (selectedMeetingId == meeting.id) null else meeting.id
+                        }
+                    )
                 }
             }
         } else {
             item {
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Pronto para começar?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text("Depois de cadastrar irmãos e privilégios, gere o mês inteiro com um toque.")
+                Card(
+                    Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                ) {
+                    Column(
+                        Modifier
+                            .padding(24.dp)
+                            .fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.Event,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(44.dp)
+                        )
+                        Text(
+                            "Nenhuma designação gerada para $monthName",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            "Toque no botão 'Gerar Escala' acima para criar a escala automática do mês com base nos privilégios e disponibilidade.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
                     }
                 }
             }
         }
     }
 
+    // Diálogos Modais da Home
     if (showRegenerateConfirm) {
         AlertDialog(
             onDismissRequest = { showRegenerateConfirm = false },
-            title = { Text("Regenerar o mês?") },
-            text = { Text("As ${monthMeetings.size} reuniões de ${monthName} serão substituídas.") },
+            title = { Text("Regenerar escala do mês?") },
+            text = { Text("As ${monthMeetings.size} reuniões de ${monthName} serão recalculadas e substituídas de acordo com as regras atuais.") },
             confirmButton = {
-                TextButton({
+                Button({
                     vm.deleteMonth(month)
                     selectedMeetingId = vm.generateMonth(month).firstOrNull()?.id
                     showRegenerateConfirm = false
                 }) { Text("Regenerar") }
             },
             dismissButton = { TextButton({ showRegenerateConfirm = false }) { Text("Cancelar") } }
+        )
+    }
+
+    if (showMeetingDaysDialog) {
+        MeetingDaysDialog(
+            currentFirstDay = vm.schedule.value.firstDay,
+            currentSecondDay = vm.schedule.value.secondDay,
+            onSave = { d1, d2 -> vm.setMeetingDays(d1, d2) },
+            onDismiss = { showMeetingDaysDialog = false }
         )
     }
 
@@ -427,121 +496,1159 @@ private fun HomeScreen(vm: AppViewModel) {
     }
 }
 
-private fun dayLabel(value: Int): String =
-    weekdays.firstOrNull { it.first.value == value }?.second ?: "—"
-
 @Composable
-private fun SummaryCard(title: String, value: String, modifier: Modifier = Modifier) {
-    Card(modifier) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            Text(title, style = MaterialTheme.typography.labelMedium)
-        }
-    }
-}
-
-@Composable
-private fun MeetingSummaryCard(
+private fun MeetingCardView(
     vm: AppViewModel,
     meeting: Meeting,
-    selected: Boolean,
-    onClick: () -> Unit
+    isExpanded: Boolean,
+    onToggleExpand: () -> Unit
 ) {
+    val context = LocalContext.current
     val missing = vm.missingAssignments(meeting)
+    var replaceTarget by remember { mutableStateOf<Triple<Long, Long, Long>?>(null) }
+
+    val dateParts = meeting.date.split("/")
+    val dayNum = dateParts.getOrNull(0) ?: "--"
+    val parsedDate = runCatching {
+        LocalDate.of(dateParts[2].toInt(), dateParts[1].toInt(), dateParts[0].toInt())
+    }.getOrNull()
+    val dayOfWeekShort = parsedDate?.dayOfWeek?.getDisplayName(TextStyle.SHORT, Locale("pt", "BR"))?.uppercase() ?: "REU"
+
     Card(
         Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (selected) MaterialTheme.colorScheme.secondaryContainer
-            else MaterialTheme.colorScheme.surfaceVariant
+            containerColor = if (isExpanded) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
         )
     ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Column {
-                    Text(meeting.date, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text(
-                        meeting.type,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Text("${meeting.assignments.size} designação(ões)")
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Bloco Visual de Data Estilo Calendário
+                Box(
+                    modifier = Modifier
+                        .size(54.dp)
+                        .background(
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            shape = RoundedCornerShape(10.dp)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = dayOfWeekShort.take(3),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = dayNum,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Black,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
                 }
-                TextButton(onClick) { Text(if (selected) "Selecionada" else "Ver") }
+
+                // Centro: Tipo e Badges
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = meeting.type,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (missing.isEmpty()) {
+                            Badge(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)) {
+                                Text(
+                                    "✓ ${meeting.assignments.size} designações",
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            }
+                        } else {
+                            Badge(containerColor = MaterialTheme.colorScheme.errorContainer) {
+                                Text(
+                                    "⚠ Faltam candidatos",
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Ações Rápidas: WhatsApp da Reunião e Toggle Detalhes
+                FilledTonalIconButton(
+                    onClick = {
+                        val msg = WhatsAppHelper.buildMeetingBroadcastMessage(
+                            null, meeting, vm.brothers.value, vm.privileges.value, missing
+                        )
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(WhatsAppHelper.buildUniversalLink("", msg))))
+                    },
+                    modifier = Modifier.size(38.dp)
+                ) {
+                    Icon(Icons.Filled.Share, contentDescription = "WhatsApp", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                }
+
+                IconButton(onClick = onToggleExpand, modifier = Modifier.size(38.dp)) {
+                    Icon(
+                        if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                        contentDescription = "Expandir detalhes"
+                    )
+                }
             }
-            if (missing.isNotEmpty()) {
-                Text(
-                    "⚠ ${missing.size} privilégio(s) sem candidatos suficientes",
-                    color = MaterialTheme.colorScheme.error
-                )
+
+            // Seção Expandida com as Designações e Trocas
+            if (isExpanded) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                if (missing.isNotEmpty()) {
+                    Card(
+                        Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f))
+                    ) {
+                        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text("Atenção: faltaram candidatos para:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onErrorContainer)
+                            missing.forEach {
+                                Text("• ${it.name} (${it.quantity} necessário(s))", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
+                            }
+                        }
+                    }
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    meeting.assignments.forEach { assignment ->
+                        val brother = vm.brothers.value.find { it.id == assignment.brotherId }
+                        val privilege = vm.privileges.value.find { it.id == assignment.privilegeId }
+
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surface
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        privilege?.name ?: "Privilégio",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        brother?.name ?: "Irmão",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    if (brother?.phone?.isNotBlank() == true && privilege != null) {
+                                        IconButton(
+                                            onClick = {
+                                                val msg = WhatsAppHelper.buildSingleMessage(null, brother, privilege, meeting)
+                                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(WhatsAppHelper.buildUniversalLink(brother.phone, msg))))
+                                            },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(Icons.Filled.Share, contentDescription = "Avisar via WhatsApp", modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+
+                                    IconButton(
+                                        enabled = vm.can(AppPermissions.GENERATE_ASSIGNMENTS),
+                                        onClick = { replaceTarget = Triple(meeting.id, assignment.privilegeId, assignment.brotherId) },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(Icons.Filled.SwapHoriz, contentDescription = "Trocar", modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                FilledTonalButton(
+                    onClick = {
+                        val ok = MeetingReminderHelper.notifyMeeting(context, meeting, vm.brothers.value, vm.privileges.value)
+                        if (ok) {
+                            Toast.makeText(context, "Lembrete enviado para a barra de notificações!", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Ative as notificações para o aplicativo nas configurações do aparelho.", Toast.LENGTH_LONG).show()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(vertical = 8.dp)
+                ) {
+                    Icon(Icons.Filled.Notifications, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Criar lembrete nas notificações", style = MaterialTheme.typography.labelMedium)
+                }
             }
         }
+    }
+
+    replaceTarget?.let { target ->
+        val candidates = vm.candidatesFor(meeting, target.second, target.third)
+        ReplaceDialog(
+            candidates = candidates,
+            onSelect = { newId ->
+                vm.replaceAssignment(target.first, target.second, target.third, newId)
+                replaceTarget = null
+            },
+            onDismiss = { replaceTarget = null }
+        )
     }
 }
 
 @Composable
-private fun MeetingResult(vm: AppViewModel, meeting: Meeting, context: android.content.Context, onReplace: (Triple<Long, Long, Long>) -> Unit) {
-    val missing = vm.missingAssignments(meeting)
-    var replaceTarget by remember { mutableStateOf<Triple<Long, Long, Long>?>(null) }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Designações", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        if (missing.isNotEmpty()) {
-            Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp)) {
-                Text("Atenção: faltaram candidatos para:")
-                missing.forEach { Text("• " + it.name + " (" + it.quantity + " necessário(s))") }
-            } }
+private fun MeetingDaysDialog(
+    currentFirstDay: Int,
+    currentSecondDay: Int,
+    onSave: (Int, Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var firstDay by remember { mutableIntStateOf(currentFirstDay) }
+    var secondDay by remember { mutableIntStateOf(currentSecondDay) }
+    var firstExpanded by remember { mutableStateOf(false) }
+    var secondExpanded by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Filled.CalendarMonth, null, tint = MaterialTheme.colorScheme.primary)
+                Text("Dias de Reunião", fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text(
+                    "Selecione os dois dias da semana em que sua congregação realiza as reuniões.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Reunião de Meio de Semana", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                    Box {
+                        OutlinedButton({ firstExpanded = true }, Modifier.fillMaxWidth()) {
+                            Text(dayLabel(firstDay))
+                        }
+                        DropdownMenu(firstExpanded, { firstExpanded = false }) {
+                            weekdays.forEach { (d, label) ->
+                                DropdownMenuItem(
+                                    text = { Text(label) },
+                                    onClick = {
+                                        if (d.value != secondDay) firstDay = d.value
+                                        firstExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Reunião de Fim de Semana", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                    Box {
+                        OutlinedButton({ secondExpanded = true }, Modifier.fillMaxWidth()) {
+                            Text(dayLabel(secondDay))
+                        }
+                        DropdownMenu(secondExpanded, { secondExpanded = false }) {
+                            weekdays.forEach { (d, label) ->
+                                DropdownMenuItem(
+                                    text = { Text(label) },
+                                    onClick = {
+                                        if (d.value != firstDay) secondDay = d.value
+                                        secondExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onSave(firstDay, secondDay); onDismiss() }) {
+                Text("Salvar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
         }
-        meeting.assignments.forEach { assignment ->
-            val brother = vm.brothers.value.find { it.id == assignment.brotherId }
-            val privilege = vm.privileges.value.find { it.id == assignment.privilegeId }
-            Card(Modifier.fillMaxWidth()) {
-                Row(Modifier.padding(12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Column(Modifier.weight(1f)) { Text(privilege?.name ?: "Privilégio", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                        Text(brother?.name ?: "Irmão", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
-                    IconButton(enabled = vm.can(AppPermissions.GENERATE_ASSIGNMENTS), onClick = { replaceTarget = Triple(meeting.id, assignment.privilegeId, assignment.brotherId) }) {
-                        Icon(Icons.Filled.SwapHoriz, contentDescription = "Trocar")
+    )
+}
+
+@Composable
+private fun BrothersScreen(vm: AppViewModel) {
+    var search by remember { mutableStateOf("") }
+    var selectedRoleFilter by remember { mutableStateOf<BrotherRole?>(null) }
+    var editing by remember { mutableStateOf<Brother?>(null) }
+    var unavailBrother by remember { mutableStateOf<Brother?>(null) }
+    var deleting by remember { mutableStateOf<Brother?>(null) }
+    var showAddDialog by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    val allBrothers = vm.brothers.value
+    val filtered = allBrothers.filter { b ->
+        val matchesSearch = b.name.contains(search.trim(), ignoreCase = true) || b.phone.contains(search.trim())
+        val matchesRole = selectedRoleFilter == null || b.role == selectedRoleFilter
+        matchesSearch && matchesRole
+    }.sortedBy { it.name.lowercase(Locale.getDefault()) }
+
+    Box(Modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // Cabeçalho da Tela
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Filled.Groups, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Text("Irmãos", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                }
+                Badge {
+                    Text("${allBrothers.count { it.active }} ativos / ${allBrothers.size} total")
+                }
+            }
+
+            // Barra de Pesquisa Rápida
+            OutlinedTextField(
+                value = search,
+                onValueChange = { search = it },
+                label = { Text("Buscar por nome ou telefone") },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (search.isNotBlank()) {
+                        IconButton(onClick = { search = "" }) {
+                            Icon(Icons.Filled.Clear, contentDescription = "Limpar busca")
+                        }
+                    }
+                },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            // Chips de Filtro por Cargo
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                FilterChip(
+                    selected = selectedRoleFilter == null,
+                    onClick = { selectedRoleFilter = null },
+                    label = { Text("Todos (${allBrothers.size})") }
+                )
+                BrotherRole.values().forEach { r ->
+                    val count = allBrothers.count { it.role == r }
+                    FilterChip(
+                        selected = selectedRoleFilter == r,
+                        onClick = { selectedRoleFilter = if (selectedRoleFilter == r) null else r },
+                        label = { Text("${r.label} ($count)") }
+                    )
+                }
+            }
+
+            // Lista de Irmãos
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(bottom = 80.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                if (filtered.isEmpty()) {
+                    item {
+                        Card(Modifier.fillMaxWidth().padding(top = 16.dp)) {
+                            Column(
+                                Modifier.padding(24.dp).fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text("Nenhum irmão encontrado", fontWeight = FontWeight.Bold)
+                                Text("Tente mudar os termos da busca ou clique no botão + para cadastrar.", color = MaterialTheme.colorScheme.outline)
+                            }
+                        }
+                    }
+                }
+
+                items(filtered, key = { it.id }) { brother ->
+                    Card(
+                        Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (brother.active) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+                        )
+                    ) {
+                        Row(
+                            Modifier.padding(12.dp).fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            // Avatar Circular com Iniciais
+                            Box(
+                                modifier = Modifier
+                                    .size(46.dp)
+                                    .background(getAvatarColor(brother.name), shape = CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = getInitials(brother.name),
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp
+                                )
+                            }
+
+                            Spacer(Modifier.width(12.dp))
+
+                            // Informações do Irmão
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text(
+                                    text = brother.name,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Badge(
+                                        containerColor = when (brother.role) {
+                                            BrotherRole.ELDER -> MaterialTheme.colorScheme.primaryContainer
+                                            BrotherRole.MINISTERIAL_SERVANT -> MaterialTheme.colorScheme.secondaryContainer
+                                            BrotherRole.PUBLISHER -> MaterialTheme.colorScheme.surfaceVariant
+                                        }
+                                    ) {
+                                        Text(
+                                            brother.role.label,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    }
+
+                                    if (!brother.active) {
+                                        Badge(containerColor = MaterialTheme.colorScheme.errorContainer) {
+                                            Text(
+                                                "Inativo",
+                                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                                style = MaterialTheme.typography.labelSmall
+                                            )
+                                        }
+                                    }
+
+                                    if (brother.unavailabilities.isNotEmpty()) {
+                                        Badge(containerColor = MaterialTheme.colorScheme.tertiaryContainer) {
+                                            Text(
+                                                "🏖 ${brother.unavailabilities.size} ausência(s)",
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                                style = MaterialTheme.typography.labelSmall
+                                            )
+                                        }
+                                    }
+                                }
+                                if (brother.phone.isNotBlank()) {
+                                    Text(
+                                        text = "WhatsApp: ${brother.phone}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            // Ações do Irmão
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(onClick = { unavailBrother = brother }, modifier = Modifier.size(36.dp)) {
+                                    Icon(Icons.Filled.Event, contentDescription = "Ausências", modifier = Modifier.size(18.dp))
+                                }
+                                IconButton(onClick = { editing = brother }, modifier = Modifier.size(36.dp)) {
+                                    Icon(Icons.Filled.Edit, contentDescription = "Editar", modifier = Modifier.size(18.dp))
+                                }
+                                IconButton(onClick = { deleting = brother }, modifier = Modifier.size(36.dp)) {
+                                    Icon(Icons.Filled.Delete, contentDescription = "Excluir", modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
-        Button({
-            val missing = vm.missingAssignments(meeting)
-            val msg = WhatsAppHelper.buildMeetingBroadcastMessage(
-                null, meeting, vm.brothers.value, vm.privileges.value, missing
-            )
-            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(WhatsAppHelper.buildUniversalLink("", msg))))
-        }, Modifier.fillMaxWidth()) { Text("Compartilhar no WhatsApp") }
-        FilledTonalButton(
-            onClick = {
-                val ok = MeetingReminderHelper.notifyMeeting(context, meeting, vm.brothers.value, vm.privileges.value)
-                if (ok) {
-                    Toast.makeText(context, "Lembrete enviado para as notificações do aparelho!", Toast.LENGTH_SHORT).show()
+
+        // FAB Flutuante para Adicionar Novo Irmão
+        FloatingActionButton(
+            onClick = { showAddDialog = true },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(20.dp),
+            containerColor = MaterialTheme.colorScheme.primary
+        ) {
+            Icon(Icons.Filled.Add, contentDescription = "Adicionar irmão")
+        }
+    }
+
+    // Diálogo Modal para Cadastrar Irmão
+    if (showAddDialog) {
+        AddBrotherDialog(
+            onSave = { n, p, r ->
+                val err = vm.addBrother(n, p)
+                if (err == null) {
+                    val newBro = vm.brothers.value.lastOrNull()
+                    if (newBro != null && r != BrotherRole.PUBLISHER) {
+                        vm.setBrotherRole(newBro.id, r)
+                    }
+                    showAddDialog = false
                 } else {
-                    Toast.makeText(context, "Ative as notificações para o aplicativo nas configurações do aparelho.", Toast.LENGTH_LONG).show()
+                    error = err
                 }
             },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Icon(Icons.Filled.Notifications, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Lembrete na barra de notificações")
+            onDismiss = { showAddDialog = false }
+        )
+    }
+
+    error?.let { message ->
+        AlertDialog(
+            onDismissRequest = { error = null },
+            title = { Text("Aviso") },
+            text = { Text(message) },
+            confirmButton = { TextButton({ error = null }) { Text("OK") } }
+        )
+    }
+
+    editing?.let { brother ->
+        EditBrotherDialog(
+            brother,
+            onSave = { n, p, r ->
+                error = vm.updateBrother(brother.id, n, p)
+                if (error == null) {
+                    vm.setBrotherRole(brother.id, r)
+                    editing = null
+                }
+            },
+            onDismiss = { editing = null }
+        )
+    }
+
+    unavailBrother?.let { brother ->
+        val current = vm.brothers.value.find { it.id == brother.id } ?: brother
+        BrotherUnavailabilityDialog(
+            brother = current,
+            onAdd = { start, end, reason -> vm.addUnavailability(brother.id, start, end, reason) },
+            onRemove = { periodId -> vm.removeUnavailability(brother.id, periodId) },
+            onDismiss = { unavailBrother = null }
+        )
+    }
+
+    deleting?.let { brother ->
+        AlertDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text("Excluir irmão?") },
+            text = { Text("O irmão ${brother.name} será removido do cadastro. As designações já registradas no histórico serão mantidas.") },
+            confirmButton = { TextButton({ vm.deleteBrother(brother.id); deleting = null }) { Text("Excluir") } },
+            dismissButton = { TextButton({ deleting = null }) { Text("Cancelar") } }
+        )
+    }
+}
+
+@Composable
+private fun AddBrotherDialog(
+    onSave: (String, String, BrotherRole) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
+    var role by remember { mutableStateOf(BrotherRole.PUBLISHER) }
+    var roleDropdown by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Filled.PersonAdd, null, tint = MaterialTheme.colorScheme.primary)
+                Text("Adicionar Irmão", fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Nome completo") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = phone,
+                    onValueChange = { phone = it },
+                    label = { Text("WhatsApp (com DDD)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Box {
+                    OutlinedButton(onClick = { roleDropdown = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Cargo: ${role.label}")
+                    }
+                    DropdownMenu(expanded = roleDropdown, onDismissRequest = { roleDropdown = false }) {
+                        BrotherRole.values().forEach { r ->
+                            DropdownMenuItem(
+                                text = { Text(r.label) },
+                                onClick = { role = r; roleDropdown = false }
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = name.isNotBlank(),
+                onClick = { onSave(name, phone, role) }
+            ) { Text("Salvar") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar") }
         }
-        meeting.assignments.mapNotNull { a -> vm.brothers.value.find { it.id == a.brotherId } }.distinctBy { it.id }.forEach { brother ->
-            if (brother.phone.isNotBlank()) {
-                val privilege = vm.privileges.value.find { p -> meeting.assignments.any { it.brotherId == brother.id && it.privilegeId == p.id } }
-                if (privilege != null) {
-                    OutlinedButton({
-                        val msg = WhatsAppHelper.buildSingleMessage(null, brother, privilege, meeting)
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(WhatsAppHelper.buildUniversalLink(brother.phone, msg))))
-                    }, Modifier.fillMaxWidth()) { Text("Enviar para " + brother.name) }
+    )
+}
+
+@Composable
+private fun PrivilegesScreen(vm: AppViewModel) {
+    var searchPrivilege by remember { mutableStateOf("") }
+    var editing by remember { mutableStateOf<Privilege?>(null) }
+    var deleting by remember { mutableStateOf<Privilege?>(null) }
+    var manageBrothersPrivilege by remember { mutableStateOf<Privilege?>(null) }
+    var showAddDialog by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    val allPrivileges = vm.privileges.value
+    val filtered = allPrivileges.filter {
+        it.name.contains(searchPrivilege.trim(), ignoreCase = true)
+    }.sortedBy { it.name.lowercase(Locale.getDefault()) }
+
+    Box(Modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // Cabeçalho da Tela
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Filled.Work, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Text("Privilégios", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                }
+                Badge {
+                    Text("${allPrivileges.count { it.active }} ativos / ${allPrivileges.size} total")
+                }
+            }
+
+            // Barra de Busca
+            OutlinedTextField(
+                value = searchPrivilege,
+                onValueChange = { searchPrivilege = it },
+                label = { Text("Buscar privilégio") },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (searchPrivilege.isNotBlank()) {
+                        IconButton(onClick = { searchPrivilege = "" }) {
+                            Icon(Icons.Filled.Clear, contentDescription = "Limpar")
+                        }
+                    }
+                },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            // Lista de Cards de Privilégio
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(bottom = 80.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                if (filtered.isEmpty()) {
+                    item {
+                        Card(Modifier.fillMaxWidth().padding(top = 16.dp)) {
+                            Column(
+                                Modifier.padding(24.dp).fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text("Nenhum privilégio encontrado", fontWeight = FontWeight.Bold)
+                                Text("Toque no botão + para adicionar um novo privilégio.", color = MaterialTheme.colorScheme.outline)
+                            }
+                        }
+                    }
+                }
+
+                items(filtered, key = { it.id }) { privilege ->
+                    val isBook = AssignmentGenerator.isBookReaderPrivilege(privilege)
+                    val isSentinel = AssignmentGenerator.isSentinelReaderPrivilege(privilege)
+
+                    val authorizedCount = vm.brothers.value.count { brother ->
+                        val direct = privilege.id in brother.privileges
+                        val inherited = !direct && isBook && vm.privileges.value.any { p ->
+                            AssignmentGenerator.isSentinelReaderPrivilege(p) && p.id in brother.privileges
+                        }
+                        direct || inherited
+                    }
+
+                    Card(
+                        Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (privilege.active) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+                        )
+                    ) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Linha Superior: Nome, Quantidade e Ações
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        text = privilege.name,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "${privilege.quantity} irmão(s) por reunião • ${if (privilege.active) "Ativo" else "Inativo"}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(onClick = { editing = privilege }, modifier = Modifier.size(36.dp)) {
+                                        Icon(Icons.Filled.Edit, contentDescription = "Editar", modifier = Modifier.size(18.dp))
+                                    }
+                                    IconButton(onClick = { deleting = privilege }, modifier = Modifier.size(36.dp)) {
+                                        Icon(Icons.Filled.Delete, contentDescription = "Excluir", modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                            }
+
+                            // Destaque Teocrático de Leitores (Quarta x Sábado)
+                            if (isBook) {
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f))
+                                ) {
+                                    Row(
+                                        Modifier.padding(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(Icons.Filled.MenuBook, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                        Column {
+                                            Text("📖 Reunião de Meio de Semana (Quarta-feira)", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                                            Text("Irmãos que são Leitores da Sentinela se qualificam automaticamente para ler o Livro.", style = MaterialTheme.typography.bodySmall)
+                                        }
+                                    }
+                                }
+                            } else if (isSentinel) {
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f))
+                                ) {
+                                    Row(
+                                        Modifier.padding(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(Icons.Filled.Article, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(20.dp))
+                                        Column {
+                                            Text("📰 Reunião de Fim de Semana (Sábado/Domingo)", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                                            Text("Qualifica automaticamente o irmão para a leitura do Livro de meio de semana.", style = MaterialTheme.typography.bodySmall)
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Seletor de Dias Permitidos
+                            Text("Dias permitidos:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf(vm.schedule.value.firstDay, vm.schedule.value.secondDay).distinct().forEach { day ->
+                                    FilterChip(
+                                        selected = day in privilege.allowedDays,
+                                        onClick = {
+                                            val newDays = privilege.allowedDays.toMutableSet().also { set ->
+                                                if (!set.add(day)) set.remove(day)
+                                            }
+                                            vm.setPrivilegeAllowedDays(privilege.id, newDays)
+                                        },
+                                        label = { Text(dayLabel(day).take(3).replaceFirstChar { it.uppercase() }) }
+                                    )
+                                }
+                                FilterChip(
+                                    selected = privilege.allowedDays.isEmpty(),
+                                    onClick = { vm.setPrivilegeAllowedDays(privilege.id, emptySet()) },
+                                    label = { Text("Qualquer dia") }
+                                )
+                            }
+
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                            // Botão e Contador de Autorizações
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "✓ $authorizedCount irmão(s) autorizados",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+
+                                Button(
+                                    onClick = { manageBrothersPrivilege = privilege },
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Icon(Icons.Filled.Groups, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Gerenciar Irmãos", style = MaterialTheme.typography.labelMedium)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // FAB Flutuante para Adicionar Novo Privilégio
+        FloatingActionButton(
+            onClick = { showAddDialog = true },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(20.dp),
+            containerColor = MaterialTheme.colorScheme.primary
+        ) {
+            Icon(Icons.Filled.Add, contentDescription = "Adicionar privilégio")
+        }
+    }
+
+    // Diálogo Modal para Cadastrar Privilégio
+    if (showAddDialog) {
+        AddPrivilegeDialog(
+            onSave = { n, q ->
+                val err = vm.addPrivilege(n, q)
+                if (err == null) showAddDialog = false
+                else error = err
+            },
+            onDismiss = { showAddDialog = false }
+        )
+    }
+
+    // Diálogo Modal para Gerenciar Irmãos de um Privilégio
+    manageBrothersPrivilege?.let { priv ->
+        ManagePrivilegeBrothersDialog(
+            vm = vm,
+            privilege = priv,
+            onDismiss = { manageBrothersPrivilege = null }
+        )
+    }
+
+    error?.let { message ->
+        AlertDialog(
+            onDismissRequest = { error = null },
+            title = { Text("Aviso") },
+            text = { Text(message) },
+            confirmButton = { TextButton({ error = null }) { Text("OK") } }
+        )
+    }
+
+    editing?.let { privilege ->
+        EditPrivilegeDialog(
+            privilege,
+            onSave = { n, q ->
+                error = vm.updatePrivilege(privilege.id, n, q)
+                if (error == null) editing = null
+            },
+            onDismiss = { editing = null }
+        )
+    }
+
+    deleting?.let { privilege ->
+        AlertDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text("Excluir privilégio?") },
+            text = { Text("O privilégio ${privilege.name} será removido do cadastro e deixará de estar autorizado para os irmãos.") },
+            confirmButton = { TextButton({ vm.deletePrivilege(privilege.id); deleting = null }) { Text("Excluir") } },
+            dismissButton = { TextButton({ deleting = null }) { Text("Cancelar") } }
+        )
+    }
+}
+
+@Composable
+private fun AddPrivilegeDialog(
+    onSave: (String, Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var quantity by remember { mutableStateOf("1") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Filled.Work, null, tint = MaterialTheme.colorScheme.primary)
+                Text("Novo Privilégio", fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Nome (ex: Leitor do Livro, Indicador)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = quantity,
+                    onValueChange = { quantity = it.filter(Char::isDigit) },
+                    label = { Text("Quantidade necessária por reunião") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = name.isNotBlank(),
+                onClick = { onSave(name, quantity.toIntOrNull() ?: 1) }
+            ) { Text("Salvar") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar") }
+        }
+    )
+}
+
+@Composable
+private fun ManagePrivilegeBrothersDialog(
+    vm: AppViewModel,
+    privilege: Privilege,
+    onDismiss: () -> Unit
+) {
+    var search by remember { mutableStateOf("") }
+    val isBook = AssignmentGenerator.isBookReaderPrivilege(privilege)
+    val sentinelPrivilege = vm.privileges.value.find { AssignmentGenerator.isSentinelReaderPrivilege(it) }
+
+    val filteredBrothers = vm.brothers.value.filter {
+        it.name.contains(search.trim(), ignoreCase = true)
+    }.sortedBy { it.name.lowercase(Locale.getDefault()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text("Autorizações — ${privilege.name}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                Text("Marque os irmãos qualificados para esta designação.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+            }
+        },
+        text = {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = search,
+                    onValueChange = { search = it },
+                    label = { Text("Buscar irmão") },
+                    leadingIcon = { Icon(Icons.Filled.Search, null) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                if (isBook) {
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))) {
+                        Text(
+                            "Nota teocrática: Leitores da Sentinela já são autorizados automaticamente para o Livro.",
+                            modifier = Modifier.padding(8.dp),
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                }
+
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 380.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    items(filteredBrothers, key = { it.id }) { brother ->
+                        val directAuthorization = privilege.id in brother.privileges
+                        val inheritedFromSentinel = !directAuthorization && isBook &&
+                            sentinelPrivilege != null && sentinelPrivilege.id in brother.privileges
+
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = !inheritedFromSentinel) {
+                                    vm.togglePrivilege(brother.id, privilege.id)
+                                },
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (directAuthorization || inheritedFromSentinel) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
+                            else MaterialTheme.colorScheme.surface
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(brother.name, fontWeight = FontWeight.Medium)
+                                    if (inheritedFromSentinel) {
+                                        Text(
+                                            "Autorizado automaticamente (Leitor da Sentinela)",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    } else {
+                                        Text(brother.role.label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                    }
+                                }
+                                Checkbox(
+                                    checked = directAuthorization || inheritedFromSentinel,
+                                    onCheckedChange = {
+                                        if (!inheritedFromSentinel) {
+                                            vm.togglePrivilege(brother.id, privilege.id)
+                                        }
+                                    },
+                                    enabled = !inheritedFromSentinel
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss) { Text("Concluir") }
+        }
+    )
+}
+
+@Composable
+private fun HistoryScreen(vm: AppViewModel) {
+    var confirmDelete by remember { mutableStateOf<Meeting?>(null) }
+    LazyColumn(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Filled.History, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Text("Histórico", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            }
+            Text("${vm.meetings.value.size} reunião(ões) registrada(s)", style = MaterialTheme.typography.bodySmall)
+        }
+        items(vm.meetings.value.sortedByDescending { parseDateForSort(it.date) }, key = { it.id }) { meeting ->
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(meeting.date, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(meeting.type, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                    Text("${meeting.assignments.size} designação(ões)")
+                    meeting.assignments.forEach { a ->
+                        val brother = vm.brothers.value.find { it.id == a.brotherId }
+                        val privilege = vm.privileges.value.find { it.id == a.privilegeId }
+                        Text("• ${privilege?.name}: ${brother?.name ?: "Irmão removido"}", style = MaterialTheme.typography.bodyMedium)
+                    }
+                    TextButton(onClick = { confirmDelete = meeting }, modifier = Modifier.align(Alignment.End)) {
+                        Text("Excluir registro", color = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
         }
     }
-    replaceTarget?.let { target ->
-        val candidates = vm.candidatesFor(meeting, target.second, target.third)
-        ReplaceDialog(candidates, { newId -> vm.replaceAssignment(target.first, target.second, target.third, newId); replaceTarget = null }, { replaceTarget = null })
+    confirmDelete?.let { meeting ->
+        AlertDialog(
+            onDismissRequest = { confirmDelete = null },
+            title = { Text("Excluir histórico?") },
+            text = { Text("A reunião ${meeting.type} de ${meeting.date} será removida do histórico.") },
+            confirmButton = { TextButton({ vm.deleteMeeting(meeting.id); confirmDelete = null }) { Text("Excluir") } },
+            dismissButton = { TextButton({ confirmDelete = null }) { Text("Cancelar") } }
+        )
     }
 }
+
+@Composable
+private fun SettingsScreen(themeIndex: Int, onThemeChange: (Int) -> Unit, onSignOut: () -> Unit) {
+    val themes = listOf(
+        "Azul" to androidx.compose.ui.graphics.Color(0xFF1565C0),
+        "Verde" to androidx.compose.ui.graphics.Color(0xFF2E7D32),
+        "Roxo" to androidx.compose.ui.graphics.Color(0xFF6A1B9A),
+        "Laranja" to androidx.compose.ui.graphics.Color(0xFFEF6C00),
+        "Vinho" to androidx.compose.ui.graphics.Color(0xFF8E244D)
+    )
+    LazyColumn(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Filled.Settings, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Text("Configurações", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            }
+            Text("Personalize a aparência do aplicativo.", style = MaterialTheme.typography.bodyMedium)
+        }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Cor do aplicativo", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    themes.forEachIndexed { index, item ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Surface(Modifier.size(28.dp), shape = MaterialTheme.shapes.small, color = item.second) {}
+                                Text(item.first)
+                            }
+                            RadioButton(selected = themeIndex == index, onClick = { onThemeChange(index) })
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Conta", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Sua sessão é protegida pelo Firebase Authentication.", style = MaterialTheme.typography.bodyMedium)
+                    OutlinedButton(onClick = onSignOut, modifier = Modifier.fillMaxWidth()) { Text("Sair da conta") }
+                }
+            }
+        }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Regras teocráticas de leitores", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("• Leitor do Livro (EBC): Atua exclusivamente nas reuniões de meio de semana (quarta-feira). Irmãos habilitados como Leitor da Sentinela podem ler o Livro automaticamente.")
+                    Text("• Leitor da Sentinela: Atua nas reuniões de fim de semana (sábado/domingo). Irmãos que apenas leem o livro nunca leem a Sentinela.")
+                }
+            }
+        }
+    }
+}
+
+private fun parseDateForSort(value: String): LocalDate = runCatching {
+    LocalDate.parse(value, DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+}.getOrElse { LocalDate.MIN }
 
 @Composable
 private fun CalendarGridView(
@@ -605,10 +1712,10 @@ private fun CalendarGridView(
                                             )
                                         }
                                     ),
-                                contentAlignment = androidx.compose.ui.Alignment.Center
+                                contentAlignment = Alignment.Center
                             ) {
                                 Column(
-                                    horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+                                    horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.Center
                                 ) {
                                     Text(
@@ -641,6 +1748,64 @@ private fun CalendarGridView(
 }
 
 @Composable
+private fun MeetingResult(vm: AppViewModel, meeting: Meeting, context: android.content.Context, onReplace: (Triple<Long, Long, Long>) -> Unit) {
+    val missing = vm.missingAssignments(meeting)
+    var replaceTarget by remember { mutableStateOf<Triple<Long, Long, Long>?>(null) }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Designações", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        if (missing.isNotEmpty()) {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp)) {
+                    Text("Atenção: faltaram candidatos para:")
+                    missing.forEach { Text("• " + it.name + " (" + it.quantity + " necessário(s))") }
+                }
+            }
+        }
+        meeting.assignments.forEach { assignment ->
+            val brother = vm.brothers.value.find { it.id == assignment.brotherId }
+            val privilege = vm.privileges.value.find { it.id == assignment.privilegeId }
+            Card(Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(privilege?.name ?: "Privilégio", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        Text(brother?.name ?: "Irmão", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    }
+                    IconButton(enabled = vm.can(AppPermissions.GENERATE_ASSIGNMENTS), onClick = { replaceTarget = Triple(meeting.id, assignment.privilegeId, assignment.brotherId) }) {
+                        Icon(Icons.Filled.SwapHoriz, contentDescription = "Trocar")
+                    }
+                }
+            }
+        }
+        Button({
+            val missing = vm.missingAssignments(meeting)
+            val msg = WhatsAppHelper.buildMeetingBroadcastMessage(
+                null, meeting, vm.brothers.value, vm.privileges.value, missing
+            )
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(WhatsAppHelper.buildUniversalLink("", msg))))
+        }, Modifier.fillMaxWidth()) { Text("Compartilhar no WhatsApp") }
+        FilledTonalButton(
+            onClick = {
+                val ok = MeetingReminderHelper.notifyMeeting(context, meeting, vm.brothers.value, vm.privileges.value)
+                if (ok) {
+                    Toast.makeText(context, "Lembrete enviado para as notificações do aparelho!", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "Ative as notificações para o aplicativo nas configurações do aparelho.", Toast.LENGTH_LONG).show()
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Filled.Notifications, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Lembrete na barra de notificações")
+        }
+    }
+    replaceTarget?.let { target ->
+        val candidates = vm.candidatesFor(meeting, target.second, target.third)
+        ReplaceDialog(candidates, { newId -> vm.replaceAssignment(target.first, target.second, target.third, newId); replaceTarget = null }, { replaceTarget = null })
+    }
+}
+
+@Composable
 private fun EquityStatisticsDialog(
     month: YearMonth,
     meetings: List<Meeting>,
@@ -657,7 +1822,7 @@ private fun EquityStatisticsDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.Filled.BarChart, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Text("Equidade e Estatísticas", style = MaterialTheme.typography.titleLarge)
             }
@@ -679,15 +1844,15 @@ private fun EquityStatisticsDialog(
                             Modifier.padding(12.dp).fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceAround
                         ) {
-                            Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("${report.totalMeetings}", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                                 Text("Reuniões", style = MaterialTheme.typography.labelMedium)
                             }
-                            Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("${report.totalAssignments}", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                                 Text("Designações", style = MaterialTheme.typography.labelMedium)
                             }
-                            Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 val avg = if (report.ranking.isNotEmpty()) {
                                     String.format(Locale.US, "%.1f", report.totalAssignments.toFloat() / report.ranking.size)
                                 } else "0.0"
@@ -734,7 +1899,7 @@ private fun EquityStatisticsDialog(
                         )
                     ) {
                         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
                                     Text(item.brother.name, fontWeight = FontWeight.Bold)
                                     Text(item.brother.role.label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
@@ -778,381 +1943,24 @@ private fun EquityStatisticsDialog(
         }
     )
 }
-@Composable
-private fun BrothersScreen(vm: AppViewModel) {
-    var name by remember { mutableStateOf("") }
-    var phone by remember { mutableStateOf("") }
-    var role by remember { mutableStateOf(BrotherRole.PUBLISHER) }
-    var search by remember { mutableStateOf("") }
-    var editing by remember { mutableStateOf<Brother?>(null) }
-    var unavailBrother by remember { mutableStateOf<Brother?>(null) }
-    var deleting by remember { mutableStateOf<Brother?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
-    val filtered = vm.brothers.value.filter { it.name.contains(search.trim(), ignoreCase = true) }.sortedBy { it.name.lowercase(Locale.getDefault()) }
-    Column(Modifier.padding(20.dp)) {
-        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Icon(Icons.Filled.Groups, contentDescription = null)
-            Text("Irmãos", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        }
-        Text("${filtered.size} cadastro(s) encontrado(s)", style = MaterialTheme.typography.bodySmall)
-        OutlinedTextField(name, { name = it }, label = { Text("Nome") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-        OutlinedTextField(phone, { phone = it }, label = { Text("WhatsApp (somente números)") }, modifier = Modifier.fillMaxWidth())
-
-        var roleMenu by remember { mutableStateOf(false) }
-        Box(Modifier.fillMaxWidth()) {
-            OutlinedButton(onClick = { roleMenu = true }, modifier = Modifier.fillMaxWidth()) {
-                Text("Cargo: " + role.label)
-            }
-            DropdownMenu(expanded = roleMenu, onDismissRequest = { roleMenu = false }) {
-                BrotherRole.values().forEach { r ->
-                    DropdownMenuItem(text = { Text(r.label) }, onClick = { role = r; roleMenu = false })
-                }
-            }
-        }
-
-        Button({
-            error = vm.addBrother(name, phone)
-            if (error == null) {
-                val newBro = vm.brothers.value.lastOrNull()
-                if (newBro != null && role != BrotherRole.PUBLISHER) {
-                    vm.setBrotherRole(newBro.id, role)
-                }
-                name = ""
-                phone = ""
-                role = BrotherRole.PUBLISHER
-            }
-        }, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Filled.Add, contentDescription = null)
-            Spacer(Modifier.width(6.dp))
-            Text("Adicionar irmão")
-        }
-        Spacer(Modifier.height(8.dp))
-        OutlinedTextField(
-            search, { search = it },
-            label = { Text("Buscar irmão") },
-            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(Modifier.height(8.dp))
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(filtered, key = { it.id }) { brother ->
-                Card(Modifier.fillMaxWidth()) {
-                    Row(Modifier.padding(12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Column(Modifier.weight(1f)) {
-                            Text(brother.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                AssistChip(onClick = {}, enabled = false, label = { Text(brother.role.label) })
-                                AssistChip(onClick = {}, enabled = false, label = { Text(if (brother.active) "Ativo" else "Inativo") })
-                                if (brother.unavailabilities.isNotEmpty()) {
-                                    AssistChip(onClick = {}, enabled = false, label = { Text("${brother.unavailabilities.size} ausência(s)") })
-                                }
-                            }
-                        }
-                        Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {
-                            Row {
-                                TextButton({ unavailBrother = brother }) { Text("Ausências") }
-                                IconButton({ editing = brother }) { Icon(Icons.Filled.Edit, contentDescription = "Editar") }
-                                IconButton({ deleting = brother }) { Icon(Icons.Filled.Delete, contentDescription = "Excluir") }
-                            }
-                            TextButton({ vm.setBrotherActive(brother.id, !brother.active) }) { Text(if (brother.active) "Desativar" else "Ativar") }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    error?.let { message -> AlertDialog(onDismissRequest = { error = null }, title = { Text("Não foi possível salvar") }, text = { Text(message) }, confirmButton = { TextButton({ error = null }) { Text("OK") } }) }
-    editing?.let { brother ->
-        EditBrotherDialog(
-            brother,
-            onSave = { n, p, r ->
-                error = vm.updateBrother(brother.id, n, p)
-                if (error == null) {
-                    vm.setBrotherRole(brother.id, r)
-                    editing = null
-                }
-            },
-            onDismiss = { editing = null }
-        )
-    }
-    unavailBrother?.let { brother ->
-        val current = vm.brothers.value.find { it.id == brother.id } ?: brother
-        BrotherUnavailabilityDialog(
-            brother = current,
-            onAdd = { start, end, reason -> vm.addUnavailability(brother.id, start, end, reason) },
-            onRemove = { periodId -> vm.removeUnavailability(brother.id, periodId) },
-            onDismiss = { unavailBrother = null }
-        )
-    }
-    deleting?.let { brother ->
-        AlertDialog(onDismissRequest = { deleting = null }, title = { Text("Excluir irmão?") },
-            text = { Text("O irmão " + brother.name + " será removido do cadastro. As designações já registradas no histórico serão mantidas.") },
-            confirmButton = { TextButton({ vm.deleteBrother(brother.id); deleting = null }) { Text("Excluir") } },
-            dismissButton = { TextButton({ deleting = null }) { Text("Cancelar") } })
-    }
-}
-@Composable
-private fun PrivilegesScreen(vm: AppViewModel) {
-    var name by remember { mutableStateOf("") }
-    var quantity by remember { mutableStateOf("1") }
-    var searchBrother by remember { mutableStateOf("") }
-    var editing by remember { mutableStateOf<Privilege?>(null) }
-    var deleting by remember { mutableStateOf<Privilege?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var panelScale by remember { mutableFloatStateOf(1f) }
-    val filteredBrothers = vm.brothers.value.filter { it.name.contains(searchBrother.trim(), ignoreCase = true) }.sortedBy { it.name.lowercase(Locale.getDefault()) }
-    Column(Modifier.padding(20.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Icon(Icons.Filled.Work, contentDescription = null)
-            Text("Privilégios", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        }
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Text("Painéis", style = MaterialTheme.typography.labelMedium)
-                TextButton({ panelScale = (panelScale - 0.1f).coerceAtLeast(0.8f) }) { Text("−") }
-                Text("${(panelScale * 100).toInt()}%")
-                TextButton({ panelScale = (panelScale + 0.1f).coerceAtMost(1.4f) }) { Text("+") }
-            }
-        }
-        OutlinedTextField(name, { name = it }, label = { Text("Nome") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(quantity, { quantity = it.filter(Char::isDigit) }, label = { Text("Quantidade necessária") }, modifier = Modifier.fillMaxWidth())
-        Button({ error = vm.addPrivilege(name, quantity.toIntOrNull() ?: 1); if (error == null) { name = ""; quantity = "1" } }) { Text("Adicionar privilégio") }
-        Spacer(Modifier.height(8.dp))
-        OutlinedTextField(
-            searchBrother, { searchBrother = it },
-            label = { Text("Buscar irmão para autorizar") },
-            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(Modifier.height(8.dp))
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(vm.privileges.value.sortedBy { it.name.lowercase(Locale.getDefault()) }, key = { it.id }) { privilege ->
-                Card(Modifier.fillMaxWidth().heightIn(min = (145f * panelScale).dp)) {
-                    Column(Modifier.padding(12.dp)) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Column(Modifier.weight(1f)) { Text(privilege.name, style = MaterialTheme.typography.titleMedium); Text("Necessários: " + privilege.quantity + " • " + if (privilege.active) "Ativo" else "Inativo") }
-                            Column {
-                                TextButton({ editing = privilege }) { Text("Editar") }
-                                TextButton({ deleting = privilege }) { Text("Excluir") }
-                                TextButton({ vm.setPrivilegeActive(privilege.id, !privilege.active) }) { Text(if (privilege.active) "Desativar" else "Ativar") }
-                            }
-                        }
-                        Text("Dias permitidos para este privilégio", style = MaterialTheme.typography.labelLarge)
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            listOf(vm.schedule.value.firstDay, vm.schedule.value.secondDay).distinct().forEach { day ->
-                                FilterChip(
-                                    selected = day in privilege.allowedDays,
-                                    onClick = {
-                                        val newDays = privilege.allowedDays.toMutableSet().also { set ->
-                                            if (!set.add(day)) set.remove(day)
-                                        }
-                                        vm.setPrivilegeAllowedDays(privilege.id, newDays)
-                                    },
-                                    label = { Text(dayLabel(day).take(3).replaceFirstChar { it.uppercase() }) }
-                                )
-                            }
-                            FilterChip(
-                                selected = privilege.allowedDays.isEmpty(),
-                                onClick = { vm.setPrivilegeAllowedDays(privilege.id, emptySet()) },
-                                label = { Text("Todos") }
-                            )
-                        }
-                        Text(
-                            if (privilege.allowedDays.isEmpty()) "Permitido em qualquer dia de reunião"
-                            else "Permitido: " + privilege.allowedDays.sorted().joinToString(" e ") { dayLabel(it) },
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        if (privilege.name.trim().lowercase(Locale.getDefault()) in setOf("leitor do livro", "leitor livro", "leitor da sentinela", "leitor sentinela")) {
-                            AssistChip(
-                                onClick = {},
-                                enabled = false,
-                                label = {
-                                    Text(
-                                        if (privilege.name.trim().lowercase(Locale.getDefault()) in setOf("leitor da sentinela", "leitor sentinela"))
-                                            "Leitor da Sentinela → também pode ler o Livro"
-                                        else "Leitor do Livro"
-                                    )
-                                }
-                            )
-                        }
-                        Text("Irmãos autorizados", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                        filteredBrothers.forEach { brother ->
-                            val directAuthorization = privilege.id in brother.privileges
-                            val inheritedFromSentinel = !directAuthorization &&
-                                privilege.name.trim().lowercase(Locale.getDefault()) in setOf("leitor do livro", "leitor livro") &&
-                                vm.privileges.value.any { p ->
-                                    p.name.trim().lowercase(Locale.getDefault()) in setOf("leitor da sentinela", "leitor sentinela") &&
-                                        p.id in brother.privileges
-                                }
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
-                            ) {
-                                Column(Modifier.weight(1f)) {
-                                    Text(brother.name)
-                                    if (inheritedFromSentinel) {
-                                        Text(
-                                            "Autorizado automaticamente por ser Leitor da Sentinela",
-                                            style = MaterialTheme.typography.labelSmall
-                                        )
-                                    }
-                                }
-                                Checkbox(
-                                    checked = directAuthorization || inheritedFromSentinel,
-                                    onCheckedChange = {
-                                        if (!inheritedFromSentinel) {
-                                            vm.togglePrivilege(brother.id, privilege.id)
-                                        }
-                                    },
-                                    enabled = !inheritedFromSentinel
-                                )
-                            }
-                        }
-                        if (filteredBrothers.isEmpty()) Text("Nenhum irmão encontrado.", style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            }
-        }
-    }
-    error?.let { message -> AlertDialog(onDismissRequest = { error = null }, title = { Text("Não foi possível salvar") }, text = { Text(message) }, confirmButton = { TextButton({ error = null }) { Text("OK") } }) }
-    editing?.let { privilege -> EditPrivilegeDialog(privilege, { n, q -> error = vm.updatePrivilege(privilege.id, n, q); if (error == null) editing = null }, { editing = null }) }
-    deleting?.let { privilege -> AlertDialog(onDismissRequest = { deleting = null }, title = { Text("Excluir privilégio?") }, text = { Text("O privilégio " + privilege.name + " será removido do cadastro e deixará de estar autorizado para os irmãos.") }, confirmButton = { TextButton({ vm.deletePrivilege(privilege.id); deleting = null }) { Text("Excluir") } }, dismissButton = { TextButton({ deleting = null }) { Text("Cancelar") } }) }
-}
-@Composable
-private fun HistoryScreen(vm: AppViewModel) {
-    var confirmDelete by remember { mutableStateOf<Meeting?>(null) }
-    LazyColumn(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item {
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Filled.History, contentDescription = null)
-                Text("Histórico", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            }
-            Text("${vm.meetings.value.size} reunião(ões) registrada(s)")
-        }
-        items(vm.meetings.value.sortedByDescending { parseDateForSort(it.date) }, key = { it.id }) { meeting ->
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp)) {
-                    Text(meeting.date, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text(meeting.type, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                    Text("${meeting.assignments.size} designação(ões)")
-                    meeting.assignments.forEach { a ->
-                        val brother = vm.brothers.value.find { it.id == a.brotherId }
-                        val privilege = vm.privileges.value.find { it.id == a.privilegeId }
-                        Text("${privilege?.name}: ${brother?.name ?: "Irmão removido"}")
-                    }
-                    TextButton({ confirmDelete = meeting }) { Text("Excluir registro") }
-                }
-            }
-        }
-    }
-    confirmDelete?.let { meeting ->
-        AlertDialog(
-            onDismissRequest = { confirmDelete = null },
-            title = { Text("Excluir histórico?") },
-            text = { Text("A reunião ${meeting.type} de ${meeting.date} será removida do histórico.") },
-            confirmButton = { TextButton({ vm.deleteMeeting(meeting.id); confirmDelete = null }) { Text("Excluir") } },
-            dismissButton = { TextButton({ confirmDelete = null }) { Text("Cancelar") } }
-        )
-    }
-}
-
-@Composable
-private fun SettingsScreen(themeIndex: Int, onThemeChange: (Int) -> Unit, onSignOut: () -> Unit) {
-    val themes = listOf(
-        "Azul" to androidx.compose.ui.graphics.Color(0xFF1565C0),
-        "Verde" to androidx.compose.ui.graphics.Color(0xFF2E7D32),
-        "Roxo" to androidx.compose.ui.graphics.Color(0xFF6A1B9A),
-        "Laranja" to androidx.compose.ui.graphics.Color(0xFFEF6C00),
-        "Vinho" to androidx.compose.ui.graphics.Color(0xFF8E244D)
-    )
-    LazyColumn(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item {
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Filled.Settings, contentDescription = null)
-                Text("Configurações", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            }
-            Text("Personalize a aparência do aplicativo.", style = MaterialTheme.typography.bodyMedium)
-        }
-        item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Cor do aplicativo", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    themes.forEachIndexed { index, item ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Surface(Modifier.size(28.dp), shape = MaterialTheme.shapes.small, color = item.second) {}
-                                Text(item.first)
-                            }
-                            RadioButton(selected = themeIndex == index, onClick = { onThemeChange(index) })
-                        }
-                    }
-                }
-            }
-        }
-        item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Conta", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text("Sua sessão é protegida pelo Firebase Authentication.", style = MaterialTheme.typography.bodyMedium)
-                    OutlinedButton(onClick = onSignOut, modifier = Modifier.fillMaxWidth()) { Text("Sair da conta") }
-                }
-            }
-        }
-        item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Regras de leitura", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text("Na tela Privilégios, marque os dias permitidos. Assim, um Leitor do livro pode ficar somente na quarta, enquanto um Leitor da Sentinela pode ficar somente no sábado.")
-                }
-            }
-        }
-    }
-}
-
-private fun parseDateForSort(value: String): java.time.LocalDate = runCatching {
-    java.time.LocalDate.parse(value, java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"))
-}.getOrElse { java.time.LocalDate.MIN }
-
-@Composable
-private fun BlockBrothersDialog(
-    brothers: List<Brother>,
-    selected: Set<Long>,
-    onToggle: (Long) -> Unit,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Indisponíveis nesta reunião") },
-        text = {
-            Column {
-                if (brothers.isEmpty()) Text("Cadastre irmãos ativos primeiro.")
-                brothers.forEach { brother ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(brother.name)
-                        Checkbox(brother.id in selected, { onToggle(brother.id) })
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onDismiss) { Text("Concluir") } }
-    )
-}
 
 @Composable
 private fun ReplaceDialog(candidates: List<Brother>, onSelect: (Long) -> Unit, onDismiss: () -> Unit) {
     var search by remember { mutableStateOf("") }
     val filtered = candidates.filter { it.name.contains(search.trim(), ignoreCase = true) }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("Trocar designação") },
-        text = { Column {
-            OutlinedTextField(search, { search = it }, label = { Text("Buscar irmão") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(8.dp))
-            if (filtered.isEmpty()) Text("Não há outro irmão autorizado e disponível.")
-            filtered.forEach { brother -> TextButton({ onSelect(brother.id) }, Modifier.fillMaxWidth()) { Text(brother.name) } }
-        } },
-        confirmButton = { TextButton(onDismiss) { Text("Cancelar") } })
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Trocar designação") },
+        text = {
+            Column {
+                OutlinedTextField(search, { search = it }, label = { Text("Buscar irmão") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
+                if (filtered.isEmpty()) Text("Não há outro irmão autorizado e disponível.")
+                filtered.forEach { brother -> TextButton({ onSelect(brother.id) }, Modifier.fillMaxWidth()) { Text(brother.name) } }
+            }
+        },
+        confirmButton = { TextButton(onDismiss) { Text("Cancelar") } }
+    )
 }
 
 @Composable
@@ -1209,7 +2017,7 @@ private fun BrotherUnavailabilityDialog(
                         Row(
                             Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text("${u.startDate} a ${u.endDate}${if (u.reason.isNotBlank()) " (${u.reason})" else ""}", style = MaterialTheme.typography.bodySmall)
                             IconButton(onClick = { onRemove(u.id) }) {
@@ -1253,9 +2061,9 @@ private fun EditPrivilegeDialog(privilege: Privilege, onSave: (String, Int) -> U
         onDismissRequest = onDismiss,
         title = { Text("Editar privilégio") },
         text = {
-            Column {
-                OutlinedTextField(name, { name = it }, label = { Text("Nome") })
-                OutlinedTextField(quantity, { quantity = it.filter(Char::isDigit) }, label = { Text("Quantidade") })
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(name, { name = it }, label = { Text("Nome") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(quantity, { quantity = it.filter(Char::isDigit) }, label = { Text("Quantidade") }, modifier = Modifier.fillMaxWidth())
             }
         },
         confirmButton = { TextButton({ onSave(name, quantity.toIntOrNull() ?: 1) }) { Text("Salvar") } },
