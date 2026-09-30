@@ -203,6 +203,54 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
+     * Importa uma semana diretamente da tela "Reuniões".
+     *
+     * Se a reunião de meio de semana já existir na data informada, apenas atualiza
+     * o tema e o programa, preservando as designações existentes.
+     * Caso contrário, cria a reunião para que ela possa ser designada posteriormente.
+     */
+    fun importMwbWeek(meetingDate: LocalDate, onResult: (String?) -> Unit) {
+        Thread {
+            val error = runCatching {
+                val program = MwbProgramImporter.fetch(meetingDate)
+                val items = program.parts.mapIndexed { index, part ->
+                    "${index + 1}. ${part.label}"
+                }
+                val dateText = meetingDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+                val current = meetings.value
+                val existing = current.firstOrNull {
+                    it.date == dateText && it.type.contains("meio de semana", ignoreCase = true)
+                }
+
+                val updated = if (existing != null) {
+                    current.map {
+                        if (it.id == existing.id) {
+                            it.copy(theme = program.theme, program = items)
+                        } else it
+                    }
+                } else {
+                    current + Meeting(
+                        id = AssignmentGenerator.nextId(),
+                        date = dateText,
+                        type = "Reunião de Meio de Semana",
+                        assignments = emptyList(),
+                        blockedBrotherIds = emptySet(),
+                        theme = program.theme,
+                        program = items
+                    )
+                }
+
+                val sorted = updated.sortedBy { AssignmentGenerator.parseDate(it.date) }
+                meetings.value = sorted
+                repo.saveMeetings(sorted)
+                null
+            }.exceptionOrNull()?.message ?: "Não foi possível importar o programa do jw.org."
+
+            onResult(error)
+        }.start()
+    }
+
+    /**
      * Baixa o programa da Reunião Vida e Ministério da semana no jw.org e grava
      * tema + itens na reunião. [onResult] recebe null em sucesso, ou a mensagem de erro.
      */
