@@ -1,5 +1,6 @@
 package br.com.willendary.designacoesjw
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -38,6 +39,7 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
+import java.time.temporal.ChronoUnit
 import java.util.Locale
 
 private val weekdays = listOf(
@@ -71,6 +73,27 @@ private val avatarColors = listOf(
 private fun getAvatarColor(name: String): Color {
     val hash = kotlin.math.abs(name.hashCode())
     return avatarColors[hash % avatarColors.size]
+}
+
+private fun shareText(context: Context, title: String, text: String) {
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_SUBJECT, title)
+        putExtra(Intent.EXTRA_TEXT, text)
+    }
+    context.startActivity(Intent.createChooser(intent, title))
+}
+
+private fun getNextMeetingInfo(meetings: List<Meeting>): Pair<Meeting, Long>? {
+    val today = LocalDate.now()
+    val upcoming = meetings.mapNotNull { m ->
+        val date = AssignmentGenerator.parseDate(m.date)
+        if (date != LocalDate.MIN && !date.isBefore(today)) {
+            val daysUntil = ChronoUnit.DAYS.between(today, date)
+            Pair(m, daysUntil)
+        } else null
+    }
+    return upcoming.minByOrNull { it.second }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -142,7 +165,7 @@ fun App(
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
             when (tab) {
-                0 -> SettingsScreen(themeIndex, onThemeChange, onSignOut)
+                0 -> SettingsScreen(vm, themeIndex, onThemeChange, onSignOut)
                 1 -> HistoryScreen(vm)
                 2 -> BrothersScreen(vm)
                 3 -> HomeScreen(vm)
@@ -211,12 +234,15 @@ private fun HomeScreen(vm: AppViewModel) {
     var showMeetingDaysDialog by remember { mutableStateOf(false) }
     var showExportMenu by remember { mutableStateOf(false) }
 
-    val monthMeetings = vm.meetings.value.filter {
+    val allMeetings = vm.meetings.value
+    val monthMeetings = allMeetings.filter {
         runCatching {
             val p = it.date.split("/")
             p.size == 3 && p[1].toInt() == month.monthValue && p[2].toInt() == month.year
         }.getOrDefault(false)
     }.sortedBy { it.date }
+
+    val nextMeetingInfo = remember(allMeetings) { getNextMeetingInfo(allMeetings) }
 
     val monthName = month.month.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))
         .replaceFirstChar { it.uppercase() }
@@ -226,6 +252,81 @@ private fun HomeScreen(vm: AppViewModel) {
         verticalArrangement = Arrangement.spacedBy(14.dp),
         contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp)
     ) {
+        // --- 0. BANNER INTELIGENTE: PRÓXIMA REUNIÃO DA CONGREGAÇÃO ---
+        nextMeetingInfo?.let { (nextMeeting, daysUntil) ->
+            item {
+                Card(
+                    Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f))
+                ) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(Icons.Filled.Event, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Text("Próxima Reunião", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                            }
+                            Badge(
+                                containerColor = if (daysUntil == 0L) MaterialTheme.colorScheme.error
+                                else if (daysUntil == 1L) MaterialTheme.colorScheme.tertiary
+                                else MaterialTheme.colorScheme.primary
+                            ) {
+                                Text(
+                                    when (daysUntil) {
+                                        0L -> "HOJE"
+                                        1L -> "AMANHÃ"
+                                        else -> "Em $daysUntil dias"
+                                    },
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        Text(
+                            "${nextMeeting.date} — ${nextMeeting.type}",
+                            fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+
+                        // Resumo dos irmãos designados
+                        val brotherNames = nextMeeting.assignments.mapNotNull { a ->
+                            vm.brothers.value.find { it.id == a.brotherId }?.name
+                        }.take(4)
+
+                        if (brotherNames.isNotEmpty()) {
+                            Text(
+                                "Designados: " + brotherNames.joinToString(", ") + if (nextMeeting.assignments.size > 4) "..." else "",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            Button(
+                                onClick = {
+                                    val missing = vm.missingAssignments(nextMeeting)
+                                    val msg = WhatsAppHelper.buildMeetingBroadcastMessage(
+                                        null, nextMeeting, vm.brothers.value, vm.privileges.value, missing
+                                    )
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(WhatsAppHelper.buildUniversalLink("", msg))))
+                                },
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Avisar no WhatsApp", style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // --- 1. CABEÇALHO DO MÊS & NAVEGAÇÃO COMPACTA ---
         item {
             Card(
@@ -506,6 +607,7 @@ private fun MeetingCardView(
     val context = LocalContext.current
     val missing = vm.missingAssignments(meeting)
     var replaceTarget by remember { mutableStateOf<Triple<Long, Long, Long>?>(null) }
+    var showQuickUnavailability by remember { mutableStateOf(false) }
 
     val dateParts = meeting.date.split("/")
     val dayNum = dateParts.getOrNull(0) ?: "--"
@@ -680,24 +782,49 @@ private fun MeetingCardView(
                     }
                 }
 
-                FilledTonalButton(
-                    onClick = {
-                        val ok = MeetingReminderHelper.notifyMeeting(context, meeting, vm.brothers.value, vm.privileges.value)
-                        if (ok) {
-                            Toast.makeText(context, "Lembrete enviado para a barra de notificações!", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(context, "Ative as notificações para o aplicativo nas configurações do aparelho.", Toast.LENGTH_LONG).show()
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    contentPadding = PaddingValues(vertical = 8.dp)
-                ) {
-                    Icon(Icons.Filled.Notifications, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Criar lembrete nas notificações", style = MaterialTheme.typography.labelMedium)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = { showQuickUnavailability = true },
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(vertical = 8.dp)
+                    ) {
+                        Icon(Icons.Filled.PersonOff, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Quem falta?", style = MaterialTheme.typography.labelMedium)
+                    }
+
+                    FilledTonalButton(
+                        onClick = {
+                            val ok = MeetingReminderHelper.notifyMeeting(context, meeting, vm.brothers.value, vm.privileges.value)
+                            if (ok) {
+                                Toast.makeText(context, "Lembrete enviado para a barra de notificações!", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "Ative as notificações para o aplicativo nas configurações do aparelho.", Toast.LENGTH_LONG).show()
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(vertical = 8.dp)
+                    ) {
+                        Icon(Icons.Filled.Notifications, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Notificação", style = MaterialTheme.typography.labelMedium)
+                    }
                 }
             }
         }
+    }
+
+    if (showQuickUnavailability) {
+        QuickMeetingUnavailabilityDialog(
+            meetingDate = meeting.date,
+            brothers = vm.brothers.value,
+            onAddUnavailability = { bId, start, end, reason ->
+                vm.addUnavailability(bId, start, end, reason)
+                showQuickUnavailability = false
+                Toast.makeText(context, "Ausência registrada para esta data!", Toast.LENGTH_SHORT).show()
+            },
+            onDismiss = { showQuickUnavailability = false }
+        )
     }
 
     replaceTarget?.let { target ->
@@ -711,6 +838,69 @@ private fun MeetingCardView(
             onDismiss = { replaceTarget = null }
         )
     }
+}
+
+@Composable
+private fun QuickMeetingUnavailabilityDialog(
+    meetingDate: String,
+    brothers: List<Brother>,
+    onAddUnavailability: (Long, String, String, String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var search by remember { mutableStateOf("") }
+    val filtered = brothers.filter { it.name.contains(search.trim(), ignoreCase = true) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text("Marcar Ausência em $meetingDate", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Selecione o irmão que não poderá participar desta reunião.", style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(
+                    value = search,
+                    onValueChange = { search = it },
+                    label = { Text("Buscar irmão") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    items(filtered, key = { it.id }) { b ->
+                        val alreadyUnavailable = b.unavailabilities.any { u ->
+                            u.startDate == meetingDate || (u.startDate <= meetingDate && u.endDate >= meetingDate)
+                        }
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    if (!alreadyUnavailable) {
+                                        onAddUnavailability(b.id, meetingDate, meetingDate, "Ausente na reunião")
+                                    }
+                                },
+                            shape = RoundedCornerShape(6.dp),
+                            color = if (alreadyUnavailable) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                        ) {
+                            Row(
+                                Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(b.name, fontWeight = FontWeight.Medium)
+                                if (alreadyUnavailable) {
+                                    Badge(containerColor = MaterialTheme.colorScheme.errorContainer) { Text("Já ausente") }
+                                } else {
+                                    Text("Marcar ausente", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Concluir") } }
+    )
 }
 
 @Composable
@@ -796,6 +986,7 @@ private fun MeetingDaysDialog(
 private fun BrothersScreen(vm: AppViewModel) {
     var search by remember { mutableStateOf("") }
     var selectedRoleFilter by remember { mutableStateOf<BrotherRole?>(null) }
+    var selectedBrotherForProfile by remember { mutableStateOf<Brother?>(null) }
     var editing by remember { mutableStateOf<Brother?>(null) }
     var unavailBrother by remember { mutableStateOf<Brother?>(null) }
     var deleting by remember { mutableStateOf<Brother?>(null) }
@@ -893,7 +1084,9 @@ private fun BrothersScreen(vm: AppViewModel) {
 
                 items(filtered, key = { it.id }) { brother ->
                     Card(
-                        Modifier.fillMaxWidth(),
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { selectedBrotherForProfile = brother },
                         colors = CardDefaults.cardColors(
                             containerColor = if (brother.active) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
                             else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
@@ -1006,6 +1199,15 @@ private fun BrothersScreen(vm: AppViewModel) {
         }
     }
 
+    // Ficha / Perfil Completo do Irmão
+    selectedBrotherForProfile?.let { brother ->
+        BrotherProfileDialog(
+            brother = brother,
+            vm = vm,
+            onDismiss = { selectedBrotherForProfile = null }
+        )
+    }
+
     // Diálogo Modal para Cadastrar Irmão
     if (showAddDialog) {
         AddBrotherDialog(
@@ -1067,6 +1269,156 @@ private fun BrothersScreen(vm: AppViewModel) {
             dismissButton = { TextButton({ deleting = null }) { Text("Cancelar") } }
         )
     }
+}
+
+@Composable
+private fun BrotherProfileDialog(
+    brother: Brother,
+    vm: AppViewModel,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val brotherMeetings = vm.meetings.value.filter { m ->
+        m.assignments.any { it.brotherId == brother.id }
+    }.sortedByDescending { AssignmentGenerator.parseDate(it.date) }
+
+    val totalAssignments = brotherMeetings.sumOf { m ->
+        m.assignments.count { it.brotherId == brother.id }
+    }
+
+    val privilegeCounts = mutableMapOf<String, Int>()
+    brotherMeetings.forEach { m ->
+        m.assignments.filter { it.brotherId == brother.id }.forEach { a ->
+            val pName = vm.privileges.value.find { it.id == a.privilegeId }?.name ?: "Privilégio"
+            privilegeCounts[pName] = (privilegeCounts[pName] ?: 0) + 1
+        }
+    }
+
+    val lastMeeting = brotherMeetings.firstOrNull()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Box(
+                    modifier = Modifier
+                        .size(50.dp)
+                        .background(getAvatarColor(brother.name), shape = CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(getInitials(brother.name), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                }
+                Column {
+                    Text(brother.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Badge { Text(brother.role.label) }
+                        if (brother.active) {
+                            Badge(containerColor = MaterialTheme.colorScheme.primaryContainer) { Text("Ativo") }
+                        } else {
+                            Badge(containerColor = MaterialTheme.colorScheme.errorContainer) { Text("Inativo") }
+                        }
+                    }
+                }
+            }
+        },
+        text = {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Estatísticas Rápidas
+                item {
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))) {
+                        Row(Modifier.padding(12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("$totalAssignments", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
+                                Text("Total de partes", style = MaterialTheme.typography.labelSmall)
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("${brotherMeetings.size}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
+                                Text("Reuniões", style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
+                }
+
+                // Última participação
+                lastMeeting?.let { m ->
+                    val myAssignment = m.assignments.find { it.brotherId == brother.id }
+                    val privName = vm.privileges.value.find { it.id == myAssignment?.privilegeId }?.name ?: "Designação"
+                    item {
+                        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f))) {
+                            Column(Modifier.padding(10.dp)) {
+                                Text("Última designação:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                                Text("${m.date} — $privName (${m.type})", style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                    }
+                }
+
+                // Frequência por Privilégio
+                if (privilegeCounts.isNotEmpty()) {
+                    item {
+                        Text("Distribuição por Privilégio:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                    }
+                    items(privilegeCounts.entries.toList()) { (priv, count) ->
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(priv, style = MaterialTheme.typography.bodySmall)
+                                Text("$count vez(es)", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+
+                // Privilégios autorizados
+                val authorizedPrivileges = vm.privileges.value.filter { p ->
+                    val direct = p.id in brother.privileges
+                    val isBook = AssignmentGenerator.isBookReaderPrivilege(p)
+                    val inherited = !direct && isBook && vm.privileges.value.any {
+                        AssignmentGenerator.isSentinelReaderPrivilege(it) && it.id in brother.privileges
+                    }
+                    direct || inherited
+                }
+                if (authorizedPrivileges.isNotEmpty()) {
+                    item {
+                        Text("Privilégios habilitados:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            authorizedPrivileges.forEach { p ->
+                                AssistChip(onClick = {}, enabled = false, label = { Text(p.name) })
+                            }
+                        }
+                    }
+                }
+
+                // Botão de WhatsApp direto
+                if (brother.phone.isNotBlank()) {
+                    item {
+                        OutlinedButton(
+                            onClick = {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(WhatsAppHelper.buildUniversalLink(brother.phone, "Olá irmão ${brother.name}!"))))
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Filled.Share, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Abrir conversa no WhatsApp")
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Fechar") } }
+    )
 }
 
 @Composable
@@ -1593,7 +1945,17 @@ private fun HistoryScreen(vm: AppViewModel) {
 }
 
 @Composable
-private fun SettingsScreen(themeIndex: Int, onThemeChange: (Int) -> Unit, onSignOut: () -> Unit) {
+private fun SettingsScreen(
+    vm: AppViewModel,
+    themeIndex: Int,
+    onThemeChange: (Int) -> Unit,
+    onSignOut: () -> Unit
+) {
+    val context = LocalContext.current
+    var showImportDialog by remember { mutableStateOf(false) }
+    var importCsvText by remember { mutableStateOf("") }
+    var message by remember { mutableStateOf<String?>(null) }
+
     val themes = listOf(
         "Azul" to androidx.compose.ui.graphics.Color(0xFF1565C0),
         "Verde" to androidx.compose.ui.graphics.Color(0xFF2E7D32),
@@ -1601,14 +1963,60 @@ private fun SettingsScreen(themeIndex: Int, onThemeChange: (Int) -> Unit, onSign
         "Laranja" to androidx.compose.ui.graphics.Color(0xFFEF6C00),
         "Vinho" to androidx.compose.ui.graphics.Color(0xFF8E244D)
     )
+
     LazyColumn(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.Filled.Settings, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Text("Configurações", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             }
-            Text("Personalize a aparência do aplicativo.", style = MaterialTheme.typography.bodyMedium)
+            Text("Personalize o aplicativo e gerencie backups.", style = MaterialTheme.typography.bodyMedium)
         }
+
+        // Backup e Exportação
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Filled.Backup, null, tint = MaterialTheme.colorScheme.primary)
+                        Text("Backup e Exportação (CSV)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    }
+                    Text("Guarde cópias de segurança ou compartilhe cadastros.", style = MaterialTheme.typography.bodySmall)
+
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = {
+                                val csv = vm.exportBrothersCsv()
+                                shareText(context, "irmaos.csv", csv)
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Exportar Irmãos")
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                val csv = vm.exportMeetingsCsv()
+                                shareText(context, "escala.csv", csv)
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Exportar Escala")
+                        }
+                    }
+
+                    Button(
+                        onClick = { showImportDialog = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Filled.FileDownload, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Importar Irmãos via CSV")
+                    }
+                }
+            }
+        }
+
+        // Aparência
         item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1625,6 +2033,19 @@ private fun SettingsScreen(themeIndex: Int, onThemeChange: (Int) -> Unit, onSign
                 }
             }
         }
+
+        // Regras Teocráticas
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Regras teocráticas de leitores", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("• Leitor do Livro (EBC): Atua nas reuniões de meio de semana (quarta-feira). Irmãos qualificados como Leitor da Sentinela são elegíveis automaticamente.")
+                    Text("• Leitor da Sentinela: Atua nas reuniões de fim de semana (sábado/domingo). Irmãos que apenas leem o livro nunca leem a Sentinela.")
+                }
+            }
+        }
+
+        // Conta
         item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1634,15 +2055,46 @@ private fun SettingsScreen(themeIndex: Int, onThemeChange: (Int) -> Unit, onSign
                 }
             }
         }
-        item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Regras teocráticas de leitores", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text("• Leitor do Livro (EBC): Atua exclusivamente nas reuniões de meio de semana (quarta-feira). Irmãos habilitados como Leitor da Sentinela podem ler o Livro automaticamente.")
-                    Text("• Leitor da Sentinela: Atua nas reuniões de fim de semana (sábado/domingo). Irmãos que apenas leem o livro nunca leem a Sentinela.")
+    }
+
+    if (showImportDialog) {
+        AlertDialog(
+            onDismissRequest = { showImportDialog = false },
+            title = { Text("Importar Irmãos (CSV)") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Cole o conteúdo do arquivo CSV abaixo:", style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(
+                        value = importCsvText,
+                        onValueChange = { importCsvText = it },
+                        label = { Text("Conteúdo CSV") },
+                        modifier = Modifier.fillMaxWidth().height(160.dp),
+                        maxLines = 8
+                    )
                 }
-            }
-        }
+            },
+            confirmButton = {
+                Button(
+                    enabled = importCsvText.isNotBlank(),
+                    onClick = {
+                        val count = vm.importBrothersCsv(importCsvText)
+                        showImportDialog = false
+                        importCsvText = ""
+                        message = if (count > 0) "$count irmão(s) importado(s) com sucesso!" else "Nenhum irmão novo encontrado no CSV."
+                    }
+                ) { Text("Importar") }
+            },
+            dismissButton = { TextButton(onClick = { showImportDialog = false }) { Text("Cancelar") } }
+        )
+    }
+
+    message?.let { msg ->
+        AlertDialog(
+            onDismissRequest = { message = null },
+            title = { Text("Aviso") },
+            text = { Text(msg) },
+            confirmButton = { TextButton(onClick = { message = null }) { Text("OK") } }
+        )
     }
 }
 
