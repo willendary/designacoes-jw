@@ -22,7 +22,7 @@ compose.desktop {
                 org.jetbrains.compose.desktop.application.dsl.TargetFormat.Msi
             )
             packageName = "DesignacoesJW"
-            packageVersion = "0.2.6"
+            packageVersion = "0.2.7"
         }
     }
 }

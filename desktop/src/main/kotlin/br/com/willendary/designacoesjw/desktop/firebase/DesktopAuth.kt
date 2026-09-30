@@ -143,6 +143,8 @@ object DesktopAuthManager {
         runCatching { sessionFile.delete() }
     }
 
+    fun saveSessionPublic(session: AuthSession) = saveSession(session)
+
     private fun saveSession(session: AuthSession) {
         currentSession = session
         runCatching {

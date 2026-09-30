@@ -1,7 +1,9 @@
 package br.com.willendary.designacoesjw.desktop.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -100,32 +102,123 @@ fun DesktopLoginDialog(
     var password by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
+    var googleLoading by remember { mutableStateOf(false) }
+    var statusMessage by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
-        onDismissRequest = { if (!isLoading) onDismiss() },
+        onDismissRequest = { if (!isLoading && !googleLoading) onDismiss() },
         title = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.Default.CloudSync, null, tint = MaterialTheme.colorScheme.primary)
-                Text("Entrar com Firebase", fontWeight = FontWeight.Bold)
+                Text("Entrar na Conta", fontWeight = FontWeight.Bold)
             }
         },
         text = {
             Column(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.width(380.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.width(400.dp)
             ) {
                 Text(
-                    "Faça login com a mesma conta de e-mail e senha cadastrada no aplicativo Android para acessar os dados da congregação em tempo real.",
+                    "Sincronize seus dados com a nuvem. Use a mesma conta do aplicativo Android.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
+                // ── Botão Google ─────────────────────────────────────────
+                Surface(
+                    onClick = {
+                        if (!isLoading && !googleLoading) {
+                            googleLoading = true
+                            errorMessage = null
+                            statusMessage = "Abrindo navegador para login com Google…"
+                            c.loginWithGoogle { err ->
+                                googleLoading = false
+                                statusMessage = null
+                                if (err == null) {
+                                    onDismiss()
+                                } else {
+                                    errorMessage = err
+                                }
+                            }
+                        }
+                    },
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                        .border(
+                            1.dp,
+                            MaterialTheme.colorScheme.outlineVariant,
+                            RoundedCornerShape(8.dp)
+                        ),
+                    color = MaterialTheme.colorScheme.surface
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        if (googleLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text("Aguardando Google…", fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                        } else {
+                            // Ícone "G" do Google com cores oficiais
+                            Box(
+                                modifier = Modifier.size(24.dp).background(Color.White, CircleShape)
+                                    .border(1.dp, Color(0xFFDDDDDD), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    "G",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF4285F4)
+                                )
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Text("Continuar com Google", fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                        }
+                    }
+                }
+
+                // Status do Google login (mensagem informativa)
+                statusMessage?.let { msg ->
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                            Text(msg, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+
+                // ── Divisor ──────────────────────────────────────────────
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Divider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
+                    Text("ou entre com e-mail", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                    Divider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
+                }
+
+                // ── Formulário E-mail/Senha ───────────────────────────────
                 OutlinedTextField(
                     value = email,
                     onValueChange = { email = it; errorMessage = null },
                     label = { Text("E-mail") },
+                    leadingIcon = { Icon(Icons.Default.Email, null, modifier = Modifier.size(18.dp)) },
                     singleLine = true,
-                    enabled = !isLoading,
+                    enabled = !isLoading && !googleLoading,
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -133,23 +226,36 @@ fun DesktopLoginDialog(
                     value = password,
                     onValueChange = { password = it; errorMessage = null },
                     label = { Text("Senha") },
+                    leadingIcon = { Icon(Icons.Default.Lock, null, modifier = Modifier.size(18.dp)) },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
-                    enabled = !isLoading,
+                    enabled = !isLoading && !googleLoading,
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                // ── Mensagem de Erro ─────────────────────────────────────
                 errorMessage?.let { err ->
                     Card(
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(
-                            text = err,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(10.dp)
-                        )
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Error,
+                                null,
+                                tint = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = err,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
                     }
                 }
             }
@@ -173,21 +279,23 @@ fun DesktopLoginDialog(
                         }
                     }
                 },
-                enabled = !isLoading
+                enabled = !isLoading && !googleLoading && email.isNotBlank() && password.isNotBlank()
             ) {
                 if (isLoading) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
                     Spacer(Modifier.width(8.dp))
-                    Text("Entrando...")
+                    Text("Entrando…")
                 } else {
-                    Text("Entrar")
+                    Icon(Icons.Default.Login, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Entrar com E-mail")
                 }
             }
         },
         dismissButton = {
             TextButton(
                 onClick = onDismiss,
-                enabled = !isLoading
+                enabled = !isLoading && !googleLoading
             ) {
                 Text("Cancelar")
             }

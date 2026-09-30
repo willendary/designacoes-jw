@@ -29,6 +29,11 @@ import br.com.willendary.designacoesjw.desktop.components.CloudSyncBar
 import br.com.willendary.designacoesjw.desktop.export.ImageExportHelper
 import br.com.willendary.designacoesjw.desktop.firebase.DesktopAuthManager
 import br.com.willendary.designacoesjw.desktop.firebase.DesktopFirestoreClient
+import br.com.willendary.designacoesjw.desktop.firebase.GoogleDesktopAuth
+import br.com.willendary.designacoesjw.desktop.screens.DesktopEquityScreen
+import br.com.willendary.designacoesjw.desktop.screens.DesktopKioskScreen
+import br.com.willendary.designacoesjw.desktop.screens.DesktopPrintReportScreen
+import br.com.willendary.designacoesjw.desktop.screens.DesktopUnavailabilityScreen
 import br.com.willendary.designacoesjw.desktop.screens.GroupsAndCleaningScreen
 import br.com.willendary.designacoesjw.desktop.screens.PublicTalksScreen
 import br.com.willendary.designacoesjw.export.CsvDataHandler
@@ -130,11 +135,32 @@ class StoreController {
         return res.fold(
             onSuccess = { session ->
                 authSession = session
+                DesktopAuthManager.saveSessionPublic(session)
                 syncWithCloud()
                 null
             },
             onFailure = { it.message ?: "Falha ao entrar" }
         )
+    }
+
+    /**
+     * Inicia o fluxo OAuth Google no browser e persiste a sessão.
+     * Deve ser chamado em uma thread de background.
+     * Retorna null em caso de sucesso, ou a mensagem de erro.
+     */
+    fun loginWithGoogle(onResult: (error: String?) -> Unit) {
+        kotlin.concurrent.thread {
+            val result = GoogleDesktopAuth.signInWithGoogle()
+            if (result.session != null) {
+                DesktopAuthManager.saveSessionPublic(result.session)
+                authSession = result.session
+                syncWithCloud { ok, err ->
+                    onResult(if (ok) null else err)
+                }
+            } else {
+                onResult(result.error ?: "Falha ao entrar com Google.")
+            }
+        }
     }
 
     fun logout() {
@@ -723,48 +749,324 @@ private fun UpdateDialog(info: WindowsUpdateInfo, onDismiss: () -> Unit) {
 @Composable
 fun DesktopApp(c: StoreController, onShowUpdate: (WindowsUpdateInfo) -> Unit = {}) {
     var tab by remember { mutableIntStateOf(0) }
-    val labels = listOf("Início", "Irmãos", "Privilégios", "Discursos", "Limpeza", "Histórico", "Configurações")
-    val icons = listOf(
-        Icons.Default.Home,
-        Icons.Default.Groups,
-        Icons.Default.Work,
-        Icons.Default.RecordVoiceOver,
-        Icons.Default.CleaningServices,
-        Icons.Default.History,
-        Icons.Default.Settings
-    )
 
-    Row(Modifier.fillMaxSize()) {
-        NavigationRail {
-            Text("DJW", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(16.dp))
-            labels.forEachIndexed { i, label ->
-                NavigationRailItem(
-                    selected = tab == i,
-                    onClick = { tab = i },
-                    icon = { Icon(icons[i], label) },
-                    label = { Text(label) }
-                )
+    if (tab == 2) {
+        // Modo Telão (Kiosk) em tela cheia da janela
+        DesktopKioskScreen(c = c, onExit = { tab = 0 })
+    } else {
+        Row(Modifier.fillMaxSize()) {
+            DesktopSidebar(
+                selectedTab = tab,
+                onSelectTab = { tab = it },
+                c = c
+            )
+            VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            Column(Modifier.fillMaxSize().padding(24.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Icon(Icons.Default.CalendarMonth, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
+                    Text("Designações JW", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.weight(1f))
+                    CloudSyncBar(c)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Versão $CURRENT_VERSION", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.outline)
+                }
+                Spacer(Modifier.height(16.dp))
+                when (tab) {
+                    0 -> Home(c)
+                    1 -> History(c)
+                    3 -> PublicTalksScreen(c)
+                    4 -> GroupsAndCleaningScreen(c)
+                    5 -> DesktopPrintReportScreen(c)
+                    6 -> Brothers(c)
+                    7 -> DesktopUnavailabilityScreen(c)
+                    8 -> Privileges(c)
+                    9 -> DesktopEquityScreen(c)
+                    10 -> Settings(c, onShowUpdate = onShowUpdate)
+                }
             }
         }
-        VerticalDivider()
-        Column(Modifier.fillMaxSize().padding(24.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Icon(Icons.Default.CalendarMonth, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
-                Text("Designações JW", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.weight(1f))
-                CloudSyncBar(c)
-                Spacer(Modifier.width(12.dp))
-                Text("Versão $CURRENT_VERSION", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.outline)
+    }
+}
+
+@Composable
+private fun DesktopSidebar(
+    selectedTab: Int,
+    onSelectTab: (Int) -> Unit,
+    c: StoreController
+) {
+    Surface(
+        modifier = Modifier.width(260.dp).fillMaxHeight(),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // Header Teocrático
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        Icons.Default.CalendarMonth,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Column {
+                        Text(
+                            "Designações JW",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Text(
+                            "Quadro Teocrático",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
+                        )
+                    }
+                }
             }
-            Spacer(Modifier.height(16.dp))
-            when (tab) {
-                0 -> Home(c)
-                1 -> Brothers(c)
-                2 -> Privileges(c)
-                3 -> PublicTalksScreen(c)
-                4 -> GroupsAndCleaningScreen(c)
-                5 -> History(c)
-                6 -> Settings(c, onShowUpdate = onShowUpdate)
+
+            // Lista rolável de categorias da Sidebar
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                // Seção 1: REUNIÕES
+                item {
+                    Text(
+                        "REUNIÕES & ESCALAS",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 4.dp)
+                    )
+                }
+                item {
+                    DesktopSidebarItem(
+                        label = "Início (Quadro)",
+                        icon = Icons.Default.Home,
+                        selected = selectedTab == 0,
+                        onClick = { onSelectTab(0) }
+                    )
+                }
+                item {
+                    DesktopSidebarItem(
+                        label = "Histórico",
+                        icon = Icons.Default.History,
+                        selected = selectedTab == 1,
+                        onClick = { onSelectTab(1) }
+                    )
+                }
+                item {
+                    DesktopSidebarItem(
+                        label = "Modo Telão (Kiosk)",
+                        icon = Icons.Default.Tv,
+                        selected = selectedTab == 2,
+                        badge = "TV",
+                        onClick = { onSelectTab(2) }
+                    )
+                }
+
+                // Seção 2: PROGRAMAÇÃO ESPECIAL
+                item {
+                    Spacer(Modifier.height(6.dp))
+                    Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), modifier = Modifier.padding(horizontal = 4.dp))
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "PROGRAMAÇÃO ESPECIAL",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(start = 8.dp, top = 4.dp, bottom = 4.dp)
+                    )
+                }
+                item {
+                    DesktopSidebarItem(
+                        label = "Discursos Públicos",
+                        icon = Icons.Default.RecordVoiceOver,
+                        selected = selectedTab == 3,
+                        onClick = { onSelectTab(3) }
+                    )
+                }
+                item {
+                    DesktopSidebarItem(
+                        label = "Grupos & Limpeza",
+                        icon = Icons.Default.CleaningServices,
+                        selected = selectedTab == 4,
+                        onClick = { onSelectTab(4) }
+                    )
+                }
+                item {
+                    DesktopSidebarItem(
+                        label = "Relatório A4 / Imprimir",
+                        icon = Icons.Default.Print,
+                        selected = selectedTab == 5,
+                        onClick = { onSelectTab(5) }
+                    )
+                }
+
+                // Seção 3: CONGREGAÇÃO
+                item {
+                    Spacer(Modifier.height(6.dp))
+                    Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), modifier = Modifier.padding(horizontal = 4.dp))
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "CONGREGAÇÃO",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(start = 8.dp, top = 4.dp, bottom = 4.dp)
+                    )
+                }
+                item {
+                    DesktopSidebarItem(
+                        label = "Irmãos & Irmãs",
+                        icon = Icons.Default.Groups,
+                        selected = selectedTab == 6,
+                        onClick = { onSelectTab(6) }
+                    )
+                }
+                item {
+                    DesktopSidebarItem(
+                        label = "Férias & Ausências",
+                        icon = Icons.Default.EventBusy,
+                        selected = selectedTab == 7,
+                        onClick = { onSelectTab(7) }
+                    )
+                }
+                item {
+                    DesktopSidebarItem(
+                        label = "Privilégios",
+                        icon = Icons.Default.Work,
+                        selected = selectedTab == 8,
+                        onClick = { onSelectTab(8) }
+                    )
+                }
+                item {
+                    DesktopSidebarItem(
+                        label = "Estatísticas de Equidade",
+                        icon = Icons.Default.BarChart,
+                        selected = selectedTab == 9,
+                        onClick = { onSelectTab(9) }
+                    )
+                }
+
+                // Seção 4: SISTEMA
+                item {
+                    Spacer(Modifier.height(6.dp))
+                    Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), modifier = Modifier.padding(horizontal = 4.dp))
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "SISTEMA",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(start = 8.dp, top = 4.dp, bottom = 4.dp)
+                    )
+                }
+                item {
+                    DesktopSidebarItem(
+                        label = "Configurações",
+                        icon = Icons.Default.Settings,
+                        selected = selectedTab == 10,
+                        onClick = { onSelectTab(10) }
+                    )
+                }
+            }
+
+            // Rodapé da Sidebar
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            ) {
+                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Box(
+                            modifier = Modifier.size(8.dp).background(
+                                if (c.authSession != null) Color(0xFF4CAF50) else Color(0xFFFF9800),
+                                CircleShape
+                            )
+                        )
+                        Text(
+                            c.authSession?.email ?: "Modo Offline",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("v$CURRENT_VERSION", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                        if (c.isSyncing) {
+                            Text("Sincronizando...", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        } else {
+                            Text(c.syncStatus ?: "Pronto", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DesktopSidebarItem(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit,
+    badge: String? = null
+) {
+    val bg = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+    val contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+    val weight = if (selected) FontWeight.Bold else FontWeight.Medium
+
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(8.dp),
+        color = bg,
+        modifier = Modifier.fillMaxWidth().height(42.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(icon, null, tint = contentColor, modifier = Modifier.size(20.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = weight,
+                color = contentColor,
+                modifier = Modifier.weight(1f)
+            )
+            if (badge != null) {
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer
+                ) {
+                    Text(
+                        badge,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
             }
         }
     }

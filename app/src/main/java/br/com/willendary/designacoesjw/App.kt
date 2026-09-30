@@ -120,57 +120,331 @@ fun App(
         refreshUpdate()
     }
 
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     var tab by remember { mutableIntStateOf(3) }
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Image(
-                            painter = painterResource(id = R.drawable.ic_logo),
-                            contentDescription = "Logo Designações JW",
-                            modifier = Modifier.size(34.dp)
-                        )
-                        Column {
-                            Text("Designações JW", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                            Text("Congregação", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+    val currentTitle = when (tab) {
+        0 -> "Configurações"
+        1 -> "Histórico de Reuniões"
+        2 -> "Irmãos & Irmãs"
+        3 -> "Quadro de Reuniões"
+        4 -> "Privilégios"
+        5 -> "Usuários & Acesso"
+        11 -> "Discursos Públicos"
+        12 -> "Grupos & Limpeza"
+        13 -> "Relatório de Impressão A4"
+        14 -> "Férias & Ausências"
+        15 -> "Estatísticas de Equidade"
+        else -> "Designações JW"
+    }
+
+    if (tab == 10) {
+        br.com.willendary.designacoesjw.screens.KioskScreen(vm, onClose = { tab = 3 })
+    } else {
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            drawerContent = {
+                ModalDrawerSheet(
+                    modifier = Modifier.width(300.dp),
+                    drawerContainerColor = MaterialTheme.colorScheme.surface
+                ) {
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        // Cabeçalho do Menu
+                        item {
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                color = MaterialTheme.colorScheme.primaryContainer
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(20.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Image(
+                                            painter = painterResource(id = R.drawable.ic_logo),
+                                            contentDescription = "Logo",
+                                            modifier = Modifier.size(44.dp).clip(CircleShape)
+                                        )
+                                        Column {
+                                            Text(
+                                                "Designações JW",
+                                                style = MaterialTheme.typography.titleLarge,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                            Text(
+                                                "Quadro Teocrático",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                                            )
+                                        }
+                                    }
+
+                                    vm.currentUserProfile.value?.let { profile ->
+                                        Divider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.15f))
+                                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            Text(
+                                                profile.name.ifBlank { profile.email },
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                Text(
+                                                    profile.email,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                                                )
+                                                if (profile.role == "admin") {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        color = MaterialTheme.colorScheme.primary
+                                                    ) {
+                                                        Text(
+                                                            "Admin",
+                                                            color = MaterialTheme.colorScheme.onPrimary,
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                        }
+
+                        // Seção 1: REUNIÕES & ESCALAS
+                        item {
+                            Text(
+                                "REUNIÕES & ESCALAS",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                            )
+                        }
+                        item {
+                            NavigationDrawerItem(
+                                label = { Text("Início (Quadro Semanal)") },
+                                icon = { Icon(Icons.Filled.Home, null) },
+                                selected = tab == 3,
+                                onClick = { tab = 3; scope.launch { drawerState.close() } },
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                            )
+                        }
+                        item {
+                            NavigationDrawerItem(
+                                label = { Text("Histórico de Reuniões") },
+                                icon = { Icon(Icons.Filled.History, null) },
+                                selected = tab == 1,
+                                onClick = { tab = 1; scope.launch { drawerState.close() } },
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                            )
+                        }
+                        item {
+                            NavigationDrawerItem(
+                                label = { Text("Modo Telão (Kiosk)") },
+                                icon = { Icon(Icons.Filled.Tv, null) },
+                                badge = {
+                                    Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.tertiaryContainer) {
+                                        Text("TV", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 4.dp))
+                                    }
+                                },
+                                selected = false,
+                                onClick = { tab = 10; scope.launch { drawerState.close() } },
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                            )
+                        }
+
+                        // Seção 2: PROGRAMAÇÃO ESPECIAL
+                        item {
+                            Spacer(Modifier.height(8.dp))
+                            Divider(modifier = Modifier.padding(horizontal = 16.dp))
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "PROGRAMAÇÃO ESPECIAL",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                            )
+                        }
+                        item {
+                            NavigationDrawerItem(
+                                label = { Text("Discursos Públicos") },
+                                icon = { Icon(Icons.Filled.RecordVoiceOver, null) },
+                                selected = tab == 11,
+                                onClick = { tab = 11; scope.launch { drawerState.close() } },
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                            )
+                        }
+                        item {
+                            NavigationDrawerItem(
+                                label = { Text("Grupos & Limpeza") },
+                                icon = { Icon(Icons.Filled.CleaningServices, null) },
+                                selected = tab == 12,
+                                onClick = { tab = 12; scope.launch { drawerState.close() } },
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                            )
+                        }
+                        item {
+                            NavigationDrawerItem(
+                                label = { Text("Relatório Diagramado A4") },
+                                icon = { Icon(Icons.Filled.Print, null) },
+                                selected = tab == 13,
+                                onClick = { tab = 13; scope.launch { drawerState.close() } },
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                            )
+                        }
+
+                        // Seção 3: PESSOAS & EQUIDADE
+                        item {
+                            Spacer(Modifier.height(8.dp))
+                            Divider(modifier = Modifier.padding(horizontal = 16.dp))
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "PESSOAS & EQUIDADE",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                            )
+                        }
+                        item {
+                            NavigationDrawerItem(
+                                label = { Text("Irmãos & Irmãs") },
+                                icon = { Icon(Icons.Filled.Groups, null) },
+                                selected = tab == 2,
+                                onClick = { tab = 2; scope.launch { drawerState.close() } },
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                            )
+                        }
+                        item {
+                            NavigationDrawerItem(
+                                label = { Text("Férias & Ausências") },
+                                icon = { Icon(Icons.Filled.EventBusy, null) },
+                                selected = tab == 14,
+                                onClick = { tab = 14; scope.launch { drawerState.close() } },
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                            )
+                        }
+                        item {
+                            NavigationDrawerItem(
+                                label = { Text("Privilégios da Reunião") },
+                                icon = { Icon(Icons.Filled.Work, null) },
+                                selected = tab == 4,
+                                onClick = { tab = 4; scope.launch { drawerState.close() } },
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                            )
+                        }
+                        item {
+                            NavigationDrawerItem(
+                                label = { Text("Estatísticas de Equidade") },
+                                icon = { Icon(Icons.Filled.BarChart, null) },
+                                selected = tab == 15,
+                                onClick = { tab = 15; scope.launch { drawerState.close() } },
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                            )
+                        }
+
+                        // Seção 4: ADMINISTRAÇÃO
+                        item {
+                            Spacer(Modifier.height(8.dp))
+                            Divider(modifier = Modifier.padding(horizontal = 16.dp))
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "ADMINISTRAÇÃO",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                            )
+                        }
+                        item {
+                            NavigationDrawerItem(
+                                label = { Text("Configurações") },
+                                icon = { Icon(Icons.Filled.Settings, null) },
+                                selected = tab == 0,
+                                onClick = { tab = 0; scope.launch { drawerState.close() } },
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                            )
+                        }
+                        if (vm.can(AppPermissions.MANAGE_USERS)) {
+                            item {
+                                NavigationDrawerItem(
+                                    label = { Text("Usuários & Acesso") },
+                                    icon = { Icon(Icons.Filled.AdminPanelSettings, null) },
+                                    selected = tab == 5,
+                                    onClick = { tab = 5; scope.launch { drawerState.close() } },
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+
+                        // Rodapé do Drawer
+                        item {
+                            Spacer(Modifier.height(16.dp))
+                            Divider(modifier = Modifier.padding(horizontal = 16.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                TextButton(onClick = onSignOut) {
+                                    Icon(Icons.Filled.Logout, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.error)
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Sair", color = MaterialTheme.colorScheme.error)
+                                }
+                                Text("v0.2.7", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                            }
                         }
                     }
                 }
-            )
-        },
-        bottomBar = {
-            NavigationBar {
-                val navItems = buildList {
-                    if (vm.can(AppPermissions.MANAGE_SETTINGS)) add(Triple(0, "Configurações", Icons.Filled.Settings))
-                    add(Triple(1, "Histórico", Icons.Filled.History))
-                    if (vm.can(AppPermissions.MANAGE_BROTHERS)) add(Triple(2, "Irmãos", Icons.Filled.Groups))
-                    add(Triple(3, "Início", Icons.Filled.Home))
-                    if (vm.can(AppPermissions.MANAGE_PRIVILEGES)) add(Triple(4, "Privilégios", Icons.Filled.Work))
-                    if (vm.can(AppPermissions.MANAGE_USERS)) add(Triple(5, "Usuários", Icons.Filled.AdminPanelSettings))
-                }
-                navItems.forEach { (key, label, icon) ->
-                    NavigationBarItem(
-                        selected = tab == key,
-                        onClick = { tab = key },
-                        icon = { Icon(icon, contentDescription = label) },
-                        label = { Text(label) }
+            }
+        ) {
+            Scaffold(
+                topBar = {
+                    TopAppBar(
+                        title = {
+                            Column {
+                                Text(currentTitle, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                                Text("Designações JW", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                Icon(Icons.Filled.Menu, contentDescription = "Menu lateral")
+                            }
+                        },
+                        actions = {
+                            IconButton(onClick = { tab = 10 }) {
+                                Icon(Icons.Filled.Tv, contentDescription = "Modo Telão")
+                            }
+                        }
                     )
                 }
-            }
-        }
-    ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
-            when (tab) {
-                0 -> SettingsScreen(vm, themeIndex, onThemeChange, onSignOut)
-                1 -> HistoryScreen(vm)
-                2 -> BrothersScreen(vm)
-                3 -> HomeScreen(vm)
-                4 -> PrivilegesScreen(vm)
-                5 -> UserManagementScreen(vm)
+            ) { padding ->
+                Box(Modifier.padding(padding).fillMaxSize()) {
+                    when (tab) {
+                        0 -> SettingsScreen(vm, themeIndex, onThemeChange, onSignOut)
+                        1 -> HistoryScreen(vm)
+                        2 -> BrothersScreen(vm)
+                        3 -> HomeScreen(vm)
+                        4 -> PrivilegesScreen(vm)
+                        5 -> UserManagementScreen(vm)
+                        11 -> br.com.willendary.designacoesjw.screens.PublicTalksAndroidScreen(vm)
+                        12 -> br.com.willendary.designacoesjw.screens.GroupsAndCleaningAndroidScreen(vm)
+                        13 -> br.com.willendary.designacoesjw.screens.PrintReportScreen(vm)
+                        14 -> br.com.willendary.designacoesjw.screens.UnavailabilityScreen(vm)
+                        15 -> br.com.willendary.designacoesjw.screens.EquityStatisticsScreen(vm)
+                    }
+                }
             }
         }
     }

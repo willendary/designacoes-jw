@@ -27,6 +27,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var privileges = mutableStateOf(repo.loadPrivileges()); private set
     var meetings = mutableStateOf(repo.loadMeetings()); private set
     var schedule = mutableStateOf(repo.loadSchedule()); private set
+    var publicTalks = mutableStateOf(repo.loadPublicTalks()); private set
+    var fieldServiceGroups = mutableStateOf(repo.loadFieldServiceGroups()); private set
+    var cleaningSchedules = mutableStateOf(repo.loadCleaningSchedules()); private set
 
     init {
         FirebaseAuth.getInstance().currentUser?.let { user ->
@@ -53,7 +56,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             onBrothers = { brothers.value = it },
             onPrivileges = { privileges.value = it },
             onMeetings = { meetings.value = it },
-            onSchedule = { schedule.value = it }
+            onSchedule = { schedule.value = it },
+            onPublicTalks = { publicTalks.value = it },
+            onGroups = { fieldServiceGroups.value = it },
+            onCleaning = { cleaningSchedules.value = it }
         )
     }
 
@@ -272,6 +278,100 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             repo.saveBrothers(brothers.value)
         }
         return count
+    }
+
+    fun setBrotherGender(id: Long, gender: Gender) {
+        brothers.value = brothers.value.map { if (it.id == id) it.copy(gender = gender) else it }
+        repo.saveBrothers(brothers.value)
+    }
+
+    fun addOrUpdatePublicTalk(talk: PublicTalk) {
+        val current = publicTalks.value
+        val index = current.indexOfFirst { it.id == talk.id }
+        val updated = if (index >= 0) {
+            current.toMutableList().apply { set(index, talk) }
+        } else {
+            val id = if (talk.id == 0L) AssignmentGenerator.nextId() else talk.id
+            current + talk.copy(id = id)
+        }
+        publicTalks.value = updated.sortedByDescending { AssignmentGenerator.parseDate(it.date) }
+        repo.savePublicTalks(publicTalks.value)
+    }
+
+    fun deletePublicTalk(id: Long) {
+        publicTalks.value = publicTalks.value.filterNot { it.id == id }
+        repo.savePublicTalks(publicTalks.value)
+    }
+
+    fun addOrUpdateGroup(group: FieldServiceGroup) {
+        val current = fieldServiceGroups.value
+        val index = current.indexOfFirst { it.id == group.id }
+        val updated = if (index >= 0) {
+            current.toMutableList().apply { set(index, group) }
+        } else {
+            val id = if (group.id == 0L) AssignmentGenerator.nextId() else group.id
+            current + group.copy(id = id)
+        }
+        fieldServiceGroups.value = updated.sortedBy { it.number }
+        repo.saveFieldServiceGroups(fieldServiceGroups.value)
+    }
+
+    fun deleteGroup(id: Long) {
+        fieldServiceGroups.value = fieldServiceGroups.value.filterNot { it.id == id }
+        repo.saveFieldServiceGroups(fieldServiceGroups.value)
+    }
+
+    fun addOrUpdateCleaningSchedule(scheduleItem: CleaningSchedule) {
+        val current = cleaningSchedules.value
+        val index = current.indexOfFirst { it.id == scheduleItem.id }
+        val updated = if (index >= 0) {
+            current.toMutableList().apply { set(index, scheduleItem) }
+        } else {
+            val id = if (scheduleItem.id == 0L) AssignmentGenerator.nextId() else scheduleItem.id
+            current + scheduleItem.copy(id = id)
+        }
+        cleaningSchedules.value = updated.sortedBy { AssignmentGenerator.parseDate(it.weekDate) }
+        repo.saveCleaningSchedules(cleaningSchedules.value)
+    }
+
+    fun deleteCleaningSchedule(id: Long) {
+        cleaningSchedules.value = cleaningSchedules.value.filterNot { it.id == id }
+        repo.saveCleaningSchedules(cleaningSchedules.value)
+    }
+
+    fun generateMonthCleaning(yearMonth: YearMonth) {
+        val groups = fieldServiceGroups.value.sortedBy { it.number }
+        if (groups.isEmpty()) return
+
+        val dates = (1..yearMonth.lengthOfMonth())
+            .map { yearMonth.atDay(it) }
+            .filter { it.dayOfWeek == java.time.DayOfWeek.SATURDAY }
+
+        val existing = cleaningSchedules.value.toMutableList()
+        var groupIdx = 0
+
+        dates.forEach { date ->
+            val dateStr = date.format(AssignmentGenerator.DATE_FORMATTER)
+            val group = groups[groupIdx % groups.size]
+            groupIdx++
+
+            val existingIdx = existing.indexOfFirst { it.weekDate == dateStr }
+            if (existingIdx >= 0) {
+                existing[existingIdx] = existing[existingIdx].copy(groupId = group.id)
+            } else {
+                existing.add(
+                    CleaningSchedule(
+                        id = AssignmentGenerator.nextId(),
+                        weekDate = dateStr,
+                        groupId = group.id,
+                        details = "Limpeza do Salão pelo Grupo ${group.number}"
+                    )
+                )
+            }
+        }
+
+        cleaningSchedules.value = existing.sortedBy { AssignmentGenerator.parseDate(it.weekDate) }
+        repo.saveCleaningSchedules(cleaningSchedules.value)
     }
 
     private fun normalizeName(value: String): String = AssignmentGenerator.normalizeName(value)
