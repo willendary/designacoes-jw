@@ -74,7 +74,7 @@ jobs:
 
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             echo "Criando release $TAG..."
-            gh release create "$TAG" --title "Designações JW $TAG" --generate-notes
+            gh release create "$TAG" --title "Designações JW $TAG" --generate-notes || true
           else
             echo "Release $TAG já existe."
           fi
