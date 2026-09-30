@@ -14,10 +14,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import br.com.willendary.designacoesjw.data.*
 import br.com.willendary.designacoesjw.export.CsvDataHandler
 import br.com.willendary.designacoesjw.export.HtmlReportGenerator
+import br.com.willendary.designacoesjw.export.IcsExportHelper
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
+import br.com.willendary.designacoesjw.stats.EquityStatisticsHelper
 import br.com.willendary.designacoesjw.util.WhatsAppHelper
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -212,6 +217,16 @@ class StoreController {
         return file
     }
 
+    fun exportIcsReport(month: YearMonth): File {
+        val prefix = month.format(java.time.format.DateTimeFormatter.ofPattern("MM/yyyy"))
+        val monthMeetings = data.meetings.filter { it.date.endsWith("/$prefix") }
+        val ics = IcsExportHelper.generateIcs(monthMeetings, data.brothers, data.privileges)
+        val dir = File(System.getProperty("user.home"), ".designacoes-jw/calendarios").apply { mkdirs() }
+        val file = File(dir, "designacoes-${month.year}-${month.monthValue.toString().padStart(2, '0')}.ics")
+        file.writeText(ics, Charsets.UTF_8)
+        return file
+    }
+
     fun exportBrothersCsv(): File {
         val csv = CsvDataHandler.exportBrothersToCsv(data.brothers, data.privileges)
         val dir = File(System.getProperty("user.home"), ".designacoes-jw").apply { mkdirs() }
@@ -344,6 +359,8 @@ private fun Home(c: StoreController) {
     var selectedMeetingId by remember { mutableStateOf<Long?>(null) }
     var replaceTarget by remember { mutableStateOf<Triple<Long, Long, Long>?>(null) }
     var infoMessage by remember { mutableStateOf<String?>(null) }
+    var viewMode by remember { mutableStateOf("LIST") } // "LIST" or "CALENDAR"
+    var showEquityStats by remember { mutableStateOf(false) }
 
     val prefix = month.format(java.time.format.DateTimeFormatter.ofPattern("MM/yyyy"))
     val meetings = c.data.meetings.filter { it.date.endsWith("/$prefix") }.sortedBy { AssignmentGenerator.parseDate(it.date) }
@@ -362,25 +379,62 @@ private fun Home(c: StoreController) {
             Stat("Reuniões no mês", meetings.size)
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Button({ c.generateMonth(month); selectedMeetingId = null }) {
-                Icon(Icons.Default.AutoAwesome, null)
-                Spacer(Modifier.width(6.dp))
-                Text(if (meetings.isEmpty()) "Gerar designações do mês" else "Regenerar mês")
-            }
-            OutlinedButton(
-                enabled = meetings.isNotEmpty(),
-                onClick = {
-                    val file = c.exportHtmlReport(month)
-                    if (Desktop.isDesktopSupported()) Desktop.getDesktop().open(file)
-                    infoMessage = "Relatório HTML gerado em: ${file.absolutePath}"
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Button({ c.generateMonth(month); selectedMeetingId = null }) {
+                    Icon(Icons.Default.AutoAwesome, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (meetings.isEmpty()) "Gerar designações do mês" else "Regenerar mês")
                 }
-            ) {
-                Icon(Icons.Default.Print, null)
-                Spacer(Modifier.width(6.dp))
-                Text("Imprimir / Relatório HTML")
+                OutlinedButton(
+                    enabled = meetings.isNotEmpty(),
+                    onClick = {
+                        val file = c.exportHtmlReport(month)
+                        if (Desktop.isDesktopSupported()) Desktop.getDesktop().open(file)
+                        infoMessage = "Relatório HTML gerado em: ${file.absolutePath}"
+                    }
+                ) {
+                    Icon(Icons.Default.Print, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Imprimir / HTML")
+                }
+                OutlinedButton(
+                    enabled = meetings.isNotEmpty(),
+                    onClick = {
+                        val file = c.exportIcsReport(month)
+                        infoMessage = "Calendário iCal exportado para: ${file.absolutePath}"
+                    }
+                ) {
+                    Icon(Icons.Default.CalendarToday, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Exportar (.ics)")
+                }
+                OutlinedButton(
+                    enabled = meetings.isNotEmpty(),
+                    onClick = { showEquityStats = true }
+                ) {
+                    Icon(Icons.Default.BarChart, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Equidade")
+                }
             }
-            Text("Dias: " + dayName(c.data.firstDay) + " e " + dayName(c.data.secondDay), style = MaterialTheme.typography.bodyMedium)
+
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { viewMode = "LIST" }) {
+                    Icon(
+                        Icons.Default.ViewList,
+                        contentDescription = "Lista",
+                        tint = if (viewMode == "LIST") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                    )
+                }
+                IconButton(onClick = { viewMode = "CALENDAR" }) {
+                    Icon(
+                        Icons.Default.CalendarMonth,
+                        contentDescription = "Grade Calendário",
+                        tint = if (viewMode == "CALENDAR") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                    )
+                }
+            }
         }
 
         infoMessage?.let { msg ->
@@ -392,76 +446,47 @@ private fun Home(c: StoreController) {
             }
         }
 
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(meetings) { m ->
-                val missing = c.missingAssignments(m)
-                val isSelected = m.id == selectedMeetingId
-                Card(
-                    Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+        if (viewMode == "CALENDAR") {
+            DesktopCalendarGrid(
+                month = month,
+                meetings = meetings,
+                selectedMeetingId = selectedMeetingId,
+                onSelectMeeting = { selectedMeetingId = if (selectedMeetingId == it) null else it }
+            )
+
+            val selectedMeeting = meetings.find { it.id == selectedMeetingId }
+            if (selectedMeeting != null) {
+                MeetingCardItem(
+                    m = selectedMeeting,
+                    isSelected = true,
+                    c = c,
+                    onToggleSelect = { selectedMeetingId = null },
+                    onReplace = { target -> replaceTarget = target }
+                )
+            }
+        } else {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(meetings) { m ->
+                    MeetingCardItem(
+                        m = m,
+                        isSelected = m.id == selectedMeetingId,
+                        c = c,
+                        onToggleSelect = { selectedMeetingId = if (selectedMeetingId == m.id) null else m.id },
+                        onReplace = { target -> replaceTarget = target }
                     )
-                ) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Column {
-                                Text(m.date + " — " + m.type, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                Text("${m.assignments.size} designação(ões)")
-                            }
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Button({
-                                    val text = WhatsAppHelper.buildMeetingBroadcastMessage(
-                                        c.data.whatsappMeetingTemplate, m, c.data.brothers, c.data.privileges, missing
-                                    )
-                                    val url = WhatsAppHelper.buildWebLink("", text)
-                                    if (Desktop.isDesktopSupported()) Desktop.getDesktop().browse(URI.create(url))
-                                }) {
-                                    Icon(Icons.Default.Share, null)
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("WhatsApp da reunião")
-                                }
-                                OutlinedButton({ selectedMeetingId = if (isSelected) null else m.id }) {
-                                    Text(if (isSelected) "Ocultar" else "Ver detalhes")
-                                }
-                            }
-                        }
-
-                        if (missing.isNotEmpty()) {
-                            Text("⚠ Faltaram candidatos para: " + missing.joinToString { it.name }, color = MaterialTheme.colorScheme.error)
-                        }
-
-                        if (isSelected) {
-                            HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                            m.assignments.forEach { a ->
-                                val p = c.data.privileges.find { it.id == a.privilegeId }
-                                val b = c.data.brothers.find { it.id == a.brotherId }
-                                Row(
-                                    Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("• ${p?.name ?: "Privilégio"}: ${b?.name ?: "Irmão"}", fontWeight = FontWeight.SemiBold)
-                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        if (b?.phone?.isNotBlank() == true) {
-                                            TextButton({
-                                                if (p != null) {
-                                                    val text = WhatsAppHelper.buildSingleMessage(c.data.whatsappSingleTemplate, b, p, m)
-                                                    val url = WhatsAppHelper.buildWebLink(b.phone, text)
-                                                    if (Desktop.isDesktopSupported()) Desktop.getDesktop().browse(URI.create(url))
-                                                }
-                                            }) { Text("Avisar no WhatsApp") }
-                                        }
-                                        IconButton({ replaceTarget = Triple(m.id, a.privilegeId, a.brotherId) }) {
-                                            Icon(Icons.Default.SwapHoriz, "Trocar")
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
             }
         }
+    }
+
+    if (showEquityStats) {
+        DesktopEquityDialog(
+            month = month,
+            meetings = c.data.meetings,
+            brothers = c.data.brothers,
+            privileges = c.data.privileges,
+            onDismiss = { showEquityStats = false }
+        )
     }
 
     replaceTarget?.let { target ->
@@ -487,6 +512,304 @@ private fun Home(c: StoreController) {
             confirmButton = { TextButton({ replaceTarget = null }) { Text("Fechar") } }
         )
     }
+}
+
+@Composable
+private fun MeetingCardItem(
+    m: Meeting,
+    isSelected: Boolean,
+    c: StoreController,
+    onToggleSelect: () -> Unit,
+    onReplace: (Triple<Long, Long, Long>) -> Unit
+) {
+    val missing = c.missingAssignments(m)
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column {
+                    Text(m.date + " — " + m.type, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("${m.assignments.size} designação(ões)")
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Button({
+                        val text = WhatsAppHelper.buildMeetingBroadcastMessage(
+                            c.data.whatsappMeetingTemplate, m, c.data.brothers, c.data.privileges, missing
+                        )
+                        val url = WhatsAppHelper.buildWebLink("", text)
+                        if (Desktop.isDesktopSupported()) Desktop.getDesktop().browse(URI.create(url))
+                    }) {
+                        Icon(Icons.Default.Share, null)
+                        Spacer(Modifier.width(4.dp))
+                        Text("WhatsApp da reunião")
+                    }
+                    OutlinedButton(onClick = onToggleSelect) {
+                        Text(if (isSelected) "Ocultar" else "Ver detalhes")
+                    }
+                }
+            }
+
+            if (missing.isNotEmpty()) {
+                Text("⚠ Faltaram candidatos para: " + missing.joinToString { it.name }, color = MaterialTheme.colorScheme.error)
+            }
+
+            if (isSelected) {
+                HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                m.assignments.forEach { a ->
+                    val p = c.data.privileges.find { it.id == a.privilegeId }
+                    val b = c.data.brothers.find { it.id == a.brotherId }
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("• ${p?.name ?: "Privilégio"}: ${b?.name ?: "Irmão"}", fontWeight = FontWeight.SemiBold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            if (b?.phone?.isNotBlank() == true) {
+                                TextButton({
+                                    if (p != null) {
+                                        val text = WhatsAppHelper.buildSingleMessage(c.data.whatsappSingleTemplate, b, p, m)
+                                        val url = WhatsAppHelper.buildWebLink(b.phone, text)
+                                        if (Desktop.isDesktopSupported()) Desktop.getDesktop().browse(URI.create(url))
+                                    }
+                                }) { Text("Avisar no WhatsApp") }
+                            }
+                            IconButton({ onReplace(Triple(m.id, a.privilegeId, a.brotherId)) }) {
+                                Icon(Icons.Default.SwapHoriz, "Trocar")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DesktopCalendarGrid(
+    month: YearMonth,
+    meetings: List<Meeting>,
+    selectedMeetingId: Long?,
+    onSelectMeeting: (Long) -> Unit
+) {
+    val daysOfWeek = listOf("Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb")
+    val firstDayOfWeek = month.atDay(1).dayOfWeek.value % 7
+    val daysInMonth = month.lengthOfMonth()
+    val totalCells = firstDayOfWeek + daysInMonth
+    val totalRows = (totalCells + 6) / 7
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                daysOfWeek.forEach { dayName ->
+                    Text(
+                        text = dayName,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
+            HorizontalDivider(Modifier.padding(vertical = 4.dp))
+
+            for (row in 0 until totalRows) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for (col in 0..6) {
+                        val cellIndex = row * 7 + col
+                        val dayNumber = cellIndex - firstDayOfWeek + 1
+                        if (dayNumber in 1..daysInMonth) {
+                            val dayStr = dayNumber.toString().padStart(2, '0')
+                            val meeting = meetings.find { it.date.startsWith("$dayStr/") }
+                            val isSelected = meeting != null && meeting.id == selectedMeetingId
+
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(72.dp)
+                                    .then(
+                                        if (meeting != null) {
+                                            Modifier
+                                                .background(
+                                                    if (isSelected) MaterialTheme.colorScheme.primary
+                                                    else MaterialTheme.colorScheme.primaryContainer,
+                                                    shape = RoundedCornerShape(8.dp)
+                                                )
+                                                .clickable { onSelectMeeting(meeting.id) }
+                                        } else {
+                                            Modifier.background(
+                                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
+                                                shape = RoundedCornerShape(8.dp)
+                                            )
+                                        }
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        text = dayNumber.toString(),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = if (meeting != null) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary
+                                        else if (meeting != null) MaterialTheme.colorScheme.onPrimaryContainer
+                                        else MaterialTheme.colorScheme.onSurface
+                                    )
+                                    if (meeting != null) {
+                                        Text(
+                                            text = "${meeting.assignments.size} designações",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (isSelected) MaterialTheme.colorScheme.onPrimary
+                                            else MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            Spacer(Modifier.weight(1f).height(72.dp))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DesktopEquityDialog(
+    month: YearMonth,
+    meetings: List<Meeting>,
+    brothers: List<Brother>,
+    privileges: List<Privilege>,
+    onDismiss: () -> Unit
+) {
+    val report = remember(month, meetings, brothers, privileges) {
+        EquityStatisticsHelper.calculateMonthStats(month, meetings, brothers, privileges)
+    }
+    val monthName = month.month.getDisplayName(TextStyle.FULL, Locale("pt", "BR")).replaceFirstChar { it.uppercase() }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Default.BarChart, null, tint = MaterialTheme.colorScheme.primary)
+                Text("Equidade e Estatísticas ($monthName ${month.year})", style = MaterialTheme.typography.titleLarge)
+            }
+        },
+        text = {
+            LazyColumn(Modifier.width(600.dp).heightIn(max = 500.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                item {
+                    Card(
+                        Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                    ) {
+                        Row(Modifier.padding(14.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("${report.totalMeetings}", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                                Text("Reuniões", style = MaterialTheme.typography.labelMedium)
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("${report.totalAssignments}", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                                Text("Designações", style = MaterialTheme.typography.labelMedium)
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                val avg = if (report.ranking.isNotEmpty()) {
+                                    String.format(Locale.US, "%.1f", report.totalAssignments.toFloat() / report.ranking.size)
+                                } else "0.0"
+                                Text(avg, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                                Text("Média/Irmão", style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    }
+                }
+
+                if (report.unassignedActiveBrothers.isNotEmpty()) {
+                    item {
+                        Card(
+                            Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f))
+                        ) {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    "⚠ ${report.unassignedActiveBrothers.size} irmão(s) ativo(s) sem designação no mês:",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                                Text(
+                                    report.unassignedActiveBrothers.joinToString(", ") { "${it.name} (${it.role.label})" },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    Text("Ranking de Participações", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                }
+
+                items(report.ranking) { item ->
+                    Card(
+                        Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (item.count == 0) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            else MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(item.brother.name, fontWeight = FontWeight.Bold)
+                                    Badge { Text(item.brother.role.label) }
+                                }
+                                Text("${item.count} vez(es)", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            }
+                            if (item.privilegesCount.isNotEmpty()) {
+                                Text(
+                                    item.privilegesCount.entries.joinToString(" • ") { "${it.key}: ${it.value}" },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (report.privilegeTotals.isNotEmpty()) {
+                    item {
+                        Text("Totais por Privilégio", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    }
+                    item {
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                report.privilegeTotals.forEach { (priv, count) ->
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text(priv, style = MaterialTheme.typography.bodyMedium)
+                                        Text("$count", fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Fechar") }
+        }
+    )
 }
 
 @Composable

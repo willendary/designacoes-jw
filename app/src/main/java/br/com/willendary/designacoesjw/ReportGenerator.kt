@@ -21,6 +21,9 @@ object ReportGenerator {
     fun shareDocx(context: Context, month: YearMonth, meetings: List<Meeting>, brothers: List<Brother>, privileges: List<Privilege>) =
         share(context, generateDoc(context, month, meetings, brothers, privileges), "application/msword")
 
+    fun shareIcs(context: Context, month: YearMonth, meetings: List<Meeting>, brothers: List<Brother>, privileges: List<Privilege>) =
+        share(context, generateIcs(context, month, meetings, brothers, privileges), "text/calendar")
+
     private fun generatePdf(context: Context, month: YearMonth, meetings: List<Meeting>, brothers: List<Brother>, privileges: List<Privilege>): File {
         val dir = File(context.cacheDir, "reports").apply { mkdirs() }
         val file = File(dir, "designacoes-${month.year}-${month.monthValue.toString().padStart(2, '0')}.pdf")
@@ -91,6 +94,14 @@ object ReportGenerator {
         val file = File(dir, "designacoes-${month.year}-${month.monthValue.toString().padStart(2, '0')}.doc")
         val html = br.com.willendary.designacoesjw.export.HtmlReportGenerator.generateHtml(month, meetings, brothers, privileges)
         file.writeText(html, Charsets.UTF_8)
+        return file
+    }
+
+    private fun generateIcs(context: Context, month: YearMonth, meetings: List<Meeting>, brothers: List<Brother>, privileges: List<Privilege>): File {
+        val dir = File(context.cacheDir, "reports").apply { mkdirs() }
+        val file = File(dir, "designacoes-${month.year}-${month.monthValue.toString().padStart(2, '0')}.ics")
+        val ics = br.com.willendary.designacoesjw.export.IcsExportHelper.generateIcs(meetings, brothers, privileges)
+        file.writeText(ics, Charsets.UTF_8)
         return file
     }
 

@@ -8,7 +8,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.Image
 import androidx.compose.material3.*
-import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.History
@@ -22,6 +27,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.runtime.*
+import br.com.willendary.designacoesjw.notification.MeetingReminderHelper
+import br.com.willendary.designacoesjw.stats.EquityStatisticsHelper
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -169,6 +176,8 @@ private fun HomeScreen(vm: AppViewModel) {
     var month by remember { mutableStateOf(YearMonth.now()) }
     var selectedMeetingId by remember { mutableStateOf<Long?>(null) }
     var showRegenerateConfirm by remember { mutableStateOf(false) }
+    var viewMode by remember { mutableStateOf("LIST") } // "LIST" or "CALENDAR"
+    var showEquityDialog by remember { mutableStateOf(false) }
 
     val monthMeetings = vm.meetings.value.filter {
         runCatching {
@@ -214,62 +223,61 @@ private fun HomeScreen(vm: AppViewModel) {
         }
 
         if (vm.can(AppPermissions.MANAGE_SETTINGS)) {
-        item {
-            var firstExpanded by remember { mutableStateOf(false) }
-            var secondExpanded by remember { mutableStateOf(false) }
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Dias de reunião", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text("Escolha os dois dias da semana em que há reunião.", style = MaterialTheme.typography.bodySmall)
+            item {
+                var firstExpanded by remember { mutableStateOf(false) }
+                var secondExpanded by remember { mutableStateOf(false) }
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("Dias de reunião", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("Escolha os dois dias da semana em que há reunião.", style = MaterialTheme.typography.bodySmall)
 
-                    Text("Primeiro dia", style = MaterialTheme.typography.labelLarge)
-                    Box {
-                        OutlinedButton({ firstExpanded = true }, Modifier.fillMaxWidth()) {
-                            Text(dayLabel(vm.schedule.value.firstDay))
-                        }
-                        DropdownMenu(expanded = firstExpanded, onDismissRequest = { firstExpanded = false }) {
-                            weekdays.forEach { (day, label) ->
-                                DropdownMenuItem(
-                                    text = { Text(label) },
-                                    onClick = {
-                                        if (day.value != vm.schedule.value.secondDay) {
-                                            vm.setMeetingDays(day.value, vm.schedule.value.secondDay)
+                        Text("Primeiro dia", style = MaterialTheme.typography.labelLarge)
+                        Box {
+                            OutlinedButton({ firstExpanded = true }, Modifier.fillMaxWidth()) {
+                                Text(dayLabel(vm.schedule.value.firstDay))
+                            }
+                            DropdownMenu(expanded = firstExpanded, onDismissRequest = { firstExpanded = false }) {
+                                weekdays.forEach { (day, label) ->
+                                    DropdownMenuItem(
+                                        text = { Text(label) },
+                                        onClick = {
+                                            if (day.value != vm.schedule.value.secondDay) {
+                                                vm.setMeetingDays(day.value, vm.schedule.value.secondDay)
+                                            }
+                                            firstExpanded = false
                                         }
-                                        firstExpanded = false
-                                    }
-                                )
+                                    )
+                                }
                             }
                         }
-                    }
 
-                    Text("Segundo dia", style = MaterialTheme.typography.labelLarge)
-                    Box {
-                        OutlinedButton({ secondExpanded = true }, Modifier.fillMaxWidth()) {
-                            Text(dayLabel(vm.schedule.value.secondDay))
-                        }
-                        DropdownMenu(expanded = secondExpanded, onDismissRequest = { secondExpanded = false }) {
-                            weekdays.forEach { (day, label) ->
-                                DropdownMenuItem(
-                                    text = { Text(label) },
-                                    onClick = {
-                                        if (day.value != vm.schedule.value.firstDay) {
-                                            vm.setMeetingDays(vm.schedule.value.firstDay, day.value)
+                        Text("Segundo dia", style = MaterialTheme.typography.labelLarge)
+                        Box {
+                            OutlinedButton({ secondExpanded = true }, Modifier.fillMaxWidth()) {
+                                Text(dayLabel(vm.schedule.value.secondDay))
+                            }
+                            DropdownMenu(expanded = secondExpanded, onDismissRequest = { secondExpanded = false }) {
+                                weekdays.forEach { (day, label) ->
+                                    DropdownMenuItem(
+                                        text = { Text(label) },
+                                        onClick = {
+                                            if (day.value != vm.schedule.value.firstDay) {
+                                                vm.setMeetingDays(vm.schedule.value.firstDay, day.value)
+                                            }
+                                            secondExpanded = false
                                         }
-                                        secondExpanded = false
-                                    }
-                                )
+                                    )
+                                }
                             }
                         }
-                    }
 
-                    Text(
-                        "Reuniões: ${dayLabel(vm.schedule.value.firstDay)} e ${dayLabel(vm.schedule.value.secondDay)}",
-                        style = MaterialTheme.typography.labelLarge
-                    )
+                        Text(
+                            "Reuniões: ${dayLabel(vm.schedule.value.firstDay)} e ${dayLabel(vm.schedule.value.secondDay)}",
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
                 }
             }
-        }
-
         }
 
         item {
@@ -297,8 +305,8 @@ private fun HomeScreen(vm: AppViewModel) {
         if (monthMeetings.isNotEmpty()) {
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Relatório do mês", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text("Gere uma tabela com as datas nas linhas e os privilégios nas colunas.", style = MaterialTheme.typography.bodySmall)
+                    Text("Exportar e Relatórios", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text("Compartilhe a escala do mês em PDF, Word ou adicione aos calendários.", style = MaterialTheme.typography.bodySmall)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(
                             enabled = vm.can(AppPermissions.EXPORT_REPORTS),
@@ -310,22 +318,73 @@ private fun HomeScreen(vm: AppViewModel) {
                             onClick = { ReportGenerator.shareDocx(context, month, monthMeetings, vm.brothers.value, vm.privileges.value) },
                             modifier = Modifier.weight(1f)
                         ) { Text("Word") }
+                        OutlinedButton(
+                            enabled = vm.can(AppPermissions.EXPORT_REPORTS),
+                            onClick = { ReportGenerator.shareIcs(context, month, monthMeetings, vm.brothers.value, vm.privileges.value) },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("iCal (.ics)") }
                     }
                 }
             }
+
             item {
-                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Filled.CalendarMonth, contentDescription = null)
-                    Text("Reuniões de ${monthName}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Icon(Icons.Filled.CalendarMonth, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Text("Reuniões de $monthName", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        OutlinedButton(
+                            onClick = { showEquityDialog = true },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Filled.BarChart, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Equidade", style = MaterialTheme.typography.labelMedium)
+                        }
+                        IconButton(onClick = { viewMode = "LIST" }) {
+                            Icon(
+                                Icons.Filled.ViewList,
+                                contentDescription = "Lista",
+                                tint = if (viewMode == "LIST") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                            )
+                        }
+                        IconButton(onClick = { viewMode = "CALENDAR" }) {
+                            Icon(
+                                Icons.Filled.CalendarMonth,
+                                contentDescription = "Grade Calendário",
+                                tint = if (viewMode == "CALENDAR") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                            )
+                        }
+                    }
                 }
             }
-            items(monthMeetings, key = { it.id }) { meeting ->
-                MeetingSummaryCard(vm, meeting, meeting.id == selectedMeetingId) {
-                    selectedMeetingId = meeting.id
+
+            if (viewMode == "CALENDAR") {
+                item {
+                    CalendarGridView(
+                        month = month,
+                        meetings = monthMeetings,
+                        selectedMeetingId = selectedMeetingId,
+                        onSelectMeeting = { selectedMeetingId = if (selectedMeetingId == it) null else it }
+                    )
                 }
-            }
-            monthMeetings.find { it.id == selectedMeetingId }?.let { selected ->
-                item { MeetingResult(vm, selected, context) {} }
+                monthMeetings.find { it.id == selectedMeetingId }?.let { selected ->
+                    item { MeetingResult(vm, selected, context) {} }
+                }
+            } else {
+                items(monthMeetings, key = { it.id }) { meeting ->
+                    MeetingSummaryCard(vm, meeting, meeting.id == selectedMeetingId) {
+                        selectedMeetingId = if (selectedMeetingId == meeting.id) null else meeting.id
+                    }
+                }
+                monthMeetings.find { it.id == selectedMeetingId }?.let { selected ->
+                    item { MeetingResult(vm, selected, context) {} }
+                }
             }
         } else {
             item {
@@ -352,6 +411,16 @@ private fun HomeScreen(vm: AppViewModel) {
                 }) { Text("Regenerar") }
             },
             dismissButton = { TextButton({ showRegenerateConfirm = false }) { Text("Cancelar") } }
+        )
+    }
+
+    if (showEquityDialog) {
+        EquityStatisticsDialog(
+            month = month,
+            meetings = vm.meetings.value,
+            brothers = vm.brothers.value,
+            privileges = vm.privileges.value,
+            onDismiss = { showEquityDialog = false }
         )
     }
 }
@@ -439,6 +508,21 @@ private fun MeetingResult(vm: AppViewModel, meeting: Meeting, context: android.c
             )
             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(WhatsAppHelper.buildUniversalLink("", msg))))
         }, Modifier.fillMaxWidth()) { Text("Compartilhar no WhatsApp") }
+        FilledTonalButton(
+            onClick = {
+                val ok = MeetingReminderHelper.notifyMeeting(context, meeting, vm.brothers.value, vm.privileges.value)
+                if (ok) {
+                    Toast.makeText(context, "Lembrete enviado para as notificações do aparelho!", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "Ative as notificações para o aplicativo nas configurações do aparelho.", Toast.LENGTH_LONG).show()
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Filled.Notifications, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Lembrete na barra de notificações")
+        }
         meeting.assignments.mapNotNull { a -> vm.brothers.value.find { it.id == a.brotherId } }.distinctBy { it.id }.forEach { brother ->
             if (brother.phone.isNotBlank()) {
                 val privilege = vm.privileges.value.find { p -> meeting.assignments.any { it.brotherId == brother.id && it.privilegeId == p.id } }
@@ -455,6 +539,242 @@ private fun MeetingResult(vm: AppViewModel, meeting: Meeting, context: android.c
         val candidates = vm.candidatesFor(meeting, target.second, target.third)
         ReplaceDialog(candidates, { newId -> vm.replaceAssignment(target.first, target.second, target.third, newId); replaceTarget = null }, { replaceTarget = null })
     }
+}
+
+@Composable
+private fun CalendarGridView(
+    month: YearMonth,
+    meetings: List<Meeting>,
+    selectedMeetingId: Long?,
+    onSelectMeeting: (Long) -> Unit
+) {
+    val daysOfWeek = listOf("Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb")
+    val firstDayOfWeek = month.atDay(1).dayOfWeek.value % 7
+    val daysInMonth = month.lengthOfMonth()
+    val totalCells = firstDayOfWeek + daysInMonth
+    val totalRows = (totalCells + 6) / 7
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                daysOfWeek.forEach { dayName ->
+                    Text(
+                        text = dayName,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
+            HorizontalDivider(Modifier.padding(vertical = 2.dp))
+
+            for (row in 0 until totalRows) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    for (col in 0..6) {
+                        val cellIndex = row * 7 + col
+                        val dayNumber = cellIndex - firstDayOfWeek + 1
+                        if (dayNumber in 1..daysInMonth) {
+                            val dayStr = dayNumber.toString().padStart(2, '0')
+                            val meeting = meetings.find { it.date.startsWith("$dayStr/") }
+                            val isSelected = meeting != null && meeting.id == selectedMeetingId
+
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .aspectRatio(1f)
+                                    .then(
+                                        if (meeting != null) {
+                                            Modifier
+                                                .background(
+                                                    if (isSelected) MaterialTheme.colorScheme.primary
+                                                    else MaterialTheme.colorScheme.primaryContainer,
+                                                    shape = RoundedCornerShape(8.dp)
+                                                )
+                                                .clickable { onSelectMeeting(meeting.id) }
+                                        } else {
+                                            Modifier.background(
+                                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+                                                shape = RoundedCornerShape(8.dp)
+                                            )
+                                        }
+                                    ),
+                                contentAlignment = androidx.compose.ui.Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        text = dayNumber.toString(),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = if (meeting != null) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary
+                                        else if (meeting != null) MaterialTheme.colorScheme.onPrimaryContainer
+                                        else MaterialTheme.colorScheme.onSurface
+                                    )
+                                    if (meeting != null) {
+                                        Text(
+                                            text = "${meeting.assignments.size} des.",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontSize = androidx.compose.ui.unit.TextUnit(8.5f, androidx.compose.ui.unit.TextUnitType.Sp),
+                                            color = if (isSelected) MaterialTheme.colorScheme.onPrimary
+                                            else MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            Spacer(Modifier.weight(1f).aspectRatio(1f))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EquityStatisticsDialog(
+    month: YearMonth,
+    meetings: List<Meeting>,
+    brothers: List<Brother>,
+    privileges: List<Privilege>,
+    onDismiss: () -> Unit
+) {
+    val report = remember(month, meetings, brothers, privileges) {
+        EquityStatisticsHelper.calculateMonthStats(month, meetings, brothers, privileges)
+    }
+    val monthName = month.month.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))
+        .replaceFirstChar { it.uppercase() }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Filled.BarChart, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Text("Equidade e Estatísticas", style = MaterialTheme.typography.titleLarge)
+            }
+        },
+        text = {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().heightIn(max = 500.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                item {
+                    Text("$monthName ${month.year}", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                }
+                item {
+                    Card(
+                        Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                    ) {
+                        Row(
+                            Modifier.padding(12.dp).fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceAround
+                        ) {
+                            Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                                Text("${report.totalMeetings}", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                                Text("Reuniões", style = MaterialTheme.typography.labelMedium)
+                            }
+                            Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                                Text("${report.totalAssignments}", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                                Text("Designações", style = MaterialTheme.typography.labelMedium)
+                            }
+                            Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                                val avg = if (report.ranking.isNotEmpty()) {
+                                    String.format(Locale.US, "%.1f", report.totalAssignments.toFloat() / report.ranking.size)
+                                } else "0.0"
+                                Text(avg, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                                Text("Média/Irmão", style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    }
+                }
+
+                if (report.unassignedActiveBrothers.isNotEmpty()) {
+                    item {
+                        Card(
+                            Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f))
+                        ) {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    "⚠ ${report.unassignedActiveBrothers.size} irmão(s) ativo(s) sem designação no mês:",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                                Text(
+                                    report.unassignedActiveBrothers.joinToString(", ") { "${it.name} (${it.role.label})" },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    Text("Ranking de Participação", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                }
+
+                items(report.ranking) { item ->
+                    Card(
+                        Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (item.count == 0) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            else MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(item.brother.name, fontWeight = FontWeight.Bold)
+                                    Text(item.brother.role.label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                                }
+                                Badge(containerColor = if (item.count > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline) {
+                                    Text("${item.count} vez(es)", modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                                }
+                            }
+                            if (item.privilegesCount.isNotEmpty()) {
+                                Text(
+                                    item.privilegesCount.entries.joinToString(" • ") { "${it.key}: ${it.value}" },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (report.privilegeTotals.isNotEmpty()) {
+                    item {
+                        Text("Distribuição por Privilégio", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    }
+                    item {
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                report.privilegeTotals.forEach { (priv, count) ->
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text(priv, style = MaterialTheme.typography.bodyMedium)
+                                        Text("$count", fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Fechar") }
+        }
+    )
 }
 @Composable
 private fun BrothersScreen(vm: AppViewModel) {
