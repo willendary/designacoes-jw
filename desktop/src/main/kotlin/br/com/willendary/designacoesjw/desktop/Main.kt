@@ -512,11 +512,10 @@ fun main() = application {
                 surface = Color.White
             )
         ) {
-            DesktopApp(c)
+            DesktopApp(c, onShowUpdate = { updateInfo = it })
             if (!checkingUpdate && updateInfo != null) {
                 UpdateDialog(
                     info = updateInfo!!,
-                    onUpdate = { WindowsUpdateManager.downloadAndInstall(updateInfo!!) },
                     onDismiss = { updateInfo = null }
                 )
             }
@@ -525,25 +524,204 @@ fun main() = application {
 }
 
 @Composable
-private fun UpdateDialog(info: WindowsUpdateInfo, onUpdate: () -> Unit, onDismiss: () -> Unit) {
+private fun UpdateDialog(info: WindowsUpdateInfo, onDismiss: () -> Unit) {
+    var updateState by remember { mutableStateOf<UpdateState>(UpdateState.Idle) }
+
     AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Nova versão disponível") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Uma nova versão do Designações JW está disponível.")
-                Text("Instalada: $CURRENT_VERSION")
-                Text("Nova versão: ${info.version}", fontWeight = FontWeight.Bold)
-                Text("O aplicativo será fechado e reaberto automaticamente durante a atualização.")
+        onDismissRequest = {
+            if (updateState !is UpdateState.Downloading && updateState !is UpdateState.Installing) {
+                onDismiss()
             }
         },
-        confirmButton = { Button(onClick = onUpdate) { Text("Atualizar agora") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Depois") } }
+        icon = {
+            when (updateState) {
+                is UpdateState.Error -> Icon(Icons.Default.Error, null, tint = MaterialTheme.colorScheme.error)
+                is UpdateState.Downloading, is UpdateState.Installing -> Icon(Icons.Default.Download, null, tint = MaterialTheme.colorScheme.primary)
+                else -> Icon(Icons.Default.SystemUpdate, null, tint = MaterialTheme.colorScheme.primary)
+            }
+        },
+        title = {
+            Text(
+                when (updateState) {
+                    is UpdateState.Downloading -> "Baixando Atualização..."
+                    is UpdateState.Installing -> "Instalando..."
+                    is UpdateState.Error -> "Falha na Atualização"
+                    else -> "Nova Versão Disponível"
+                }
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                when (val state = updateState) {
+                    is UpdateState.Idle -> {
+                        Text("Uma nova versão do Designações JW está disponível para instalação.")
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text("Versão instalada: v$CURRENT_VERSION", style = MaterialTheme.typography.bodySmall)
+                                Text("Nova versão: v${info.version}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                if (info.sizeBytes > 0) {
+                                    Text("Tamanho aproximado: ${WindowsUpdateManager.formatBytes(info.sizeBytes)}", style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        }
+                        Text(
+                            "Ao clicar em \"Atualizar agora\", o aplicativo baixará o instalador oficial e iniciará a instalação automaticamente.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    is UpdateState.Downloading -> {
+                        val progressFraction = if (state.totalBytes > 0) {
+                            (state.bytesDownloaded.toFloat() / state.totalBytes.toFloat()).coerceIn(0f, 1f)
+                        } else 0f
+
+                        if (state.totalBytes > 0) {
+                            LinearProgressIndicator(
+                                progress = { progressFraction },
+                                modifier = Modifier.fillMaxWidth().height(8.dp)
+                            )
+                        } else {
+                            LinearProgressIndicator(
+                                modifier = Modifier.fillMaxWidth().height(8.dp)
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                "${WindowsUpdateManager.formatBytes(state.bytesDownloaded)} / ${WindowsUpdateManager.formatBytes(state.totalBytes)}",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Text(
+                                "${state.percent}%",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Text(
+                            "Baixando pacote oficial de atualização... Por favor, aguarde.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    is UpdateState.Installing -> {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                            Text("Iniciando instalador... O aplicativo fechará automaticamente.", style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                    is UpdateState.Error -> {
+                        Text("Não foi possível concluir o download automático:", color = MaterialTheme.colorScheme.error)
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                state.message,
+                                modifier = Modifier.padding(10.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                        Text(
+                            "Você pode tentar novamente ou baixar diretamente pelo navegador:",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            when (updateState) {
+                is UpdateState.Idle -> {
+                    Button(
+                        onClick = {
+                            updateState = UpdateState.Downloading(0L, info.sizeBytes, 0)
+                            WindowsUpdateManager.downloadAndInstall(
+                                info = info,
+                                onProgress = { downloaded, total, pct ->
+                                    updateState = UpdateState.Downloading(downloaded, total, pct)
+                                },
+                                onInstalling = {
+                                    updateState = UpdateState.Installing
+                                },
+                                onError = { msg ->
+                                    updateState = UpdateState.Error(msg)
+                                }
+                            )
+                        }
+                    ) {
+                        Icon(Icons.Default.Download, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Atualizar agora")
+                    }
+                }
+                is UpdateState.Error -> {
+                    Button(
+                        onClick = {
+                            updateState = UpdateState.Downloading(0L, info.sizeBytes, 0)
+                            WindowsUpdateManager.downloadAndInstall(
+                                info = info,
+                                onProgress = { downloaded, total, pct ->
+                                    updateState = UpdateState.Downloading(downloaded, total, pct)
+                                },
+                                onInstalling = {
+                                    updateState = UpdateState.Installing
+                                },
+                                onError = { msg ->
+                                    updateState = UpdateState.Error(msg)
+                                }
+                            )
+                        }
+                    ) {
+                        Text("Tentar novamente")
+                    }
+                }
+                else -> Unit
+            }
+        },
+        dismissButton = {
+            when (updateState) {
+                is UpdateState.Idle -> {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { WindowsUpdateManager.openInBrowser(info.releasePageUrl.ifBlank { info.downloadUrl }) }) {
+                            Icon(Icons.Default.OpenInBrowser, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Abrir página")
+                        }
+                        TextButton(onClick = onDismiss) {
+                            Text("Depois")
+                        }
+                    }
+                }
+                is UpdateState.Error -> {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { WindowsUpdateManager.openInBrowser(info.releasePageUrl.ifBlank { info.downloadUrl }) }) {
+                            Icon(Icons.Default.OpenInBrowser, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Baixar no Navegador")
+                        }
+                        TextButton(onClick = onDismiss) {
+                            Text("Fechar")
+                        }
+                    }
+                }
+                else -> Unit
+            }
+        }
     )
 }
 
 @Composable
-fun DesktopApp(c: StoreController) {
+fun DesktopApp(c: StoreController, onShowUpdate: (WindowsUpdateInfo) -> Unit = {}) {
     var tab by remember { mutableIntStateOf(0) }
     val labels = listOf("Início", "Irmãos", "Privilégios", "Discursos", "Limpeza", "Histórico", "Configurações")
     val icons = listOf(
@@ -586,7 +764,7 @@ fun DesktopApp(c: StoreController) {
                 3 -> PublicTalksScreen(c)
                 4 -> GroupsAndCleaningScreen(c)
                 5 -> History(c)
-                6 -> Settings(c)
+                6 -> Settings(c, onShowUpdate = onShowUpdate)
             }
         }
     }
@@ -2280,12 +2458,14 @@ private fun History(c: StoreController) {
 }
 
 @Composable
-private fun Settings(c: StoreController) {
+private fun Settings(c: StoreController, onShowUpdate: (WindowsUpdateInfo) -> Unit = {}) {
     var first by remember { mutableIntStateOf(c.data.firstDay) }
     var second by remember { mutableIntStateOf(c.data.secondDay) }
     var singleTmpl by remember { mutableStateOf(c.data.whatsappSingleTemplate.ifBlank { WhatsAppHelper.DEFAULT_SINGLE_TEMPLATE }) }
     var meetingTmpl by remember { mutableStateOf(c.data.whatsappMeetingTemplate.ifBlank { WhatsAppHelper.DEFAULT_MEETING_TEMPLATE }) }
     var statusMsg by remember { mutableStateOf<String?>(null) }
+    var isCheckingUpdateManual by remember { mutableStateOf(false) }
+    var manualUpdateFeedback by remember { mutableStateOf<String?>(null) }
 
     LazyColumn(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
@@ -2375,10 +2555,43 @@ private fun Settings(c: StoreController) {
         }
         item {
             Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Armazenamento local do Windows", style = MaterialTheme.typography.labelLarge)
-                    Text(c.file.absolutePath, style = MaterialTheme.typography.bodySmall)
-                    Text("Designações JW versão $CURRENT_VERSION", style = MaterialTheme.typography.labelMedium)
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Atualizações e Armazenamento", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Armazenamento local do Windows: ${c.file.absolutePath}", style = MaterialTheme.typography.bodySmall)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Versão instalada: $CURRENT_VERSION", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        if (isCheckingUpdateManual) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                Text("Verificando...", style = MaterialTheme.typography.bodySmall)
+                            }
+                        } else {
+                            OutlinedButton(onClick = {
+                                isCheckingUpdateManual = true
+                                manualUpdateFeedback = null
+                                kotlin.concurrent.thread(isDaemon = true) {
+                                    val info = WindowsUpdateManager.checkForUpdate()
+                                    isCheckingUpdateManual = false
+                                    if (info != null) {
+                                        onShowUpdate(info)
+                                    } else {
+                                        manualUpdateFeedback = "Você já está utilizando a versão mais recente ($CURRENT_VERSION)."
+                                    }
+                                }
+                            }) {
+                                Icon(Icons.Default.Refresh, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Verificar atualizações")
+                            }
+                        }
+                    }
+                    manualUpdateFeedback?.let { feedback ->
+                        Text(feedback, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
+                    }
                 }
             }
         }
