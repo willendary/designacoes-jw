@@ -49,17 +49,26 @@ service cloud.firestore {
         ) ||
         (
           request.resource.data.role == 'custom' &&
-          exists(/databases/$(database)/documents/workspaces/designacoes-jw/invitations/$(request.resource.data.invitationId)) &&
-          get(/databases/$(database)/documents/workspaces/designacoes-jw/invitations/$(request.resource.data.invitationId)).data.email == request.auth.token.email &&
-          get(/databases/$(database)/documents/workspaces/designacoes-jw/invitations/$(request.resource.data.invitationId)).data.status == 'pending'
+          request.resource.data.invitationId != null &&
+          exists(/databases/$(database)/documents/workspaces/designacoes-jw/invitations/$(request.resource.data.invitationId))
         )
       ));
 
-      allow update: if isAdmin() ||
-        (signedIn() && request.auth.uid == userId &&
-         request.resource.data.role == resource.data.role &&
-         request.resource.data.permissions == resource.data.permissions &&
-         request.resource.data.active == resource.data.active);
+      allow update: if isAdmin() || (
+        signedIn() && request.auth.uid == userId && (
+          (
+            request.resource.data.role == resource.data.role &&
+            request.resource.data.permissions == resource.data.permissions &&
+            request.resource.data.active == resource.data.active
+          ) ||
+          (
+            // Permitir resgatar convite atribuindo role custom e permissões
+            request.resource.data.role == 'custom' &&
+            request.resource.data.invitationId != null &&
+            exists(/databases/$(database)/documents/workspaces/designacoes-jw/invitations/$(request.resource.data.invitationId))
+          )
+        )
+      );
 
       allow delete: if isAdmin();
     }
@@ -89,11 +98,26 @@ service cloud.firestore {
       allow write: if hasPermission('generate_assignments');
     }
 
+    match /workspaces/designacoes-jw/publicTalks/{talkId} {
+      allow read: if hasPermission('view_assignments');
+      allow write: if hasPermission('manage_settings') || hasPermission('generate_assignments') || isAdmin();
+    }
+
+    match /workspaces/designacoes-jw/fieldServiceGroups/{groupId} {
+      allow read: if hasPermission('view_assignments');
+      allow write: if hasPermission('manage_settings') || hasPermission('manage_brothers') || isAdmin();
+    }
+
+    match /workspaces/designacoes-jw/cleaningSchedules/{scheduleId} {
+      allow read: if hasPermission('view_assignments');
+      allow write: if hasPermission('manage_settings') || hasPermission('generate_assignments') || isAdmin();
+    }
+
     match /workspaces/designacoes-jw/invitations/{invitationId} {
       allow get: if isAdmin() ||
         (signedIn() &&
-         resource.data.email == request.auth.token.email &&
-         resource.data.status == 'pending');
+         (resource.data.status == 'pending' ||
+          resource.data.email == request.auth.token.email));
 
       allow list: if isAdmin();
 
@@ -101,7 +125,6 @@ service cloud.firestore {
 
       allow update: if isAdmin() ||
         (signedIn() &&
-         resource.data.email == request.auth.token.email &&
          resource.data.status == 'pending' &&
          request.resource.data.status == 'accepted' &&
          request.resource.data.acceptedBy == request.auth.uid);

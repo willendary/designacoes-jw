@@ -14,7 +14,10 @@ h1{margin:0 0 10px;font-size:28px}p{line-height:1.55;color:#5d6670}
 .button{display:block;width:100%;padding:14px 18px;border:0;border-radius:12px;background:#1565C0;color:white;font-size:16px;font-weight:700;text-decoration:none;margin-top:20px;cursor:pointer}
 .secondary{background:#e8eef7;color:#174a7c}.small{font-size:13px;margin-top:20px}
 #emailBox{display:none;margin-top:20px;text-align:left}label{font-size:14px;font-weight:600}input{width:100%;padding:13px;border:1px solid #cbd3dc;border-radius:10px;margin-top:7px;font-size:16px}
-.status{margin-top:18px;font-weight:600}
+.status{margin-top:18px;font-weight:600;padding:12px;border-radius:10px;display:none}
+.status.success{display:block;background:#e8f5e9;color:#2e7d32}
+.status.error{display:block;background:#ffebee;color:#c62828}
+.status.info{display:block;background:#e3f2fd;color:#1565c0}
 </style>
 </head>
 <body>
@@ -24,7 +27,7 @@ h1{margin:0 0 10px;font-size:28px}p{line-height:1.55;color:#5d6670}
 <p>Este convite permite que você participe do <strong>Designações JW</strong> com as permissões definidas pelo administrador da congregação.</p>
 <div id="webFallback">
 <button class="button secondary" id="showEmail">Continuar pelo navegador</button>
-<p class="small">Se o aplicativo estiver instalado, o link original deverá abri-lo automaticamente. Se isso não acontecer, abra o aplicativo e tente novamente pelo e-mail.</p>
+<p class="small">Se o aplicativo estiver instalado, o link original deverá abri-lo automaticamente. Se isso não acontecer, continue por esta página.</p>
 </div>
 <div id="emailBox">
 <label for="email">Confirme o e-mail que recebeu o convite</label>
@@ -32,76 +35,144 @@ h1{margin:0 0 10px;font-size:28px}p{line-height:1.55;color:#5d6670}
 <button class="button" id="finish">Aceitar convite</button>
 </div>
 <div class="status" id="status"></div>
-<p class="small">Por segurança, o Firebase exige que o endereço informado corresponda ao e-mail que recebeu o convite.</p>
+<p class="small">Por segurança, o endereço informado deve corresponder ao e-mail que recebeu o convite.</p>
 </main>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
-import { getAuth, isSignInWithEmailLink, signInWithEmailLink } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, writeBatch } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+import { getAuth, isSignInWithEmailLink, signInWithEmailLink, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
-const firebaseConfig={
-  apiKey:"AIzaSyDpLo4zAsQ8Tl4V6MJ-lp5hgnQSaaZvD_0",
-  authDomain:"designacoes-jw.firebaseapp.com",
-  projectId:"designacoes-jw",
-  storageBucket:"designacoes-jw.firebasestorage.app",
-  messagingSenderId:"859002390487",
+const firebaseConfig = {
+  apiKey: "AIzaSyDpLo4zAsQ8Tl4V6MJ-lp5hgnQSaaZvD_0",
+  authDomain: "designacoes-jw.firebaseapp.com",
+  projectId: "designacoes-jw",
+  storageBucket: "designacoes-jw.firebasestorage.app",
+  messagingSenderId: "859002390487",
 };
-const app=initializeApp(firebaseConfig);
-const auth=getAuth(app);
-const db=getFirestore(app);
-const statusEl=document.getElementById("status");
-const emailBox=document.getElementById("emailBox");
-const webFallback=document.getElementById("webFallback");
-const params=new URLSearchParams(location.search);
-const inviteId=params.get("inviteId")||"";
-const currentLink=location.href;
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const statusEl = document.getElementById("status");
+const emailBox = document.getElementById("emailBox");
+const webFallback = document.getElementById("webFallback");
+const params = new URLSearchParams(location.search);
+const inviteId = params.get("inviteId") || "";
+const currentLink = location.href;
 
-document.getElementById("showEmail").onclick=()=>{emailBox.style.display="block";webFallback.style.display="none";document.getElementById("email").focus()};
+function showStatus(text, type = "info") {
+  statusEl.textContent = text;
+  statusEl.className = "status " + type;
+}
 
-async function claim(invitationId,user,email){
-  const ref=doc(db,"workspaces","designacoes-jw","invitations",invitationId);
-  const snap=await getDoc(ref);
-  if(!snap.exists()) throw new Error("Convite não encontrado ou expirado.");
-  const data=snap.data();
-  if((data.email||"").trim().toLowerCase()!==email.trim().toLowerCase()) throw new Error("O e-mail informado não corresponde ao convite.");
-  if(data.status!=="pending") throw new Error("Este convite já foi utilizado.");
-  const profile={
-    email:email.trim().toLowerCase(),
-    name:data.name||"",
-    role:"custom",
-    permissions:Array.isArray(data.permissions)?data.permissions:[],
-    active:true,
-    invitationId
+document.getElementById("showEmail").onclick = () => {
+  emailBox.style.display = "block";
+  webFallback.style.display = "none";
+  document.getElementById("email").focus();
+};
+
+async function claim(invitationId, user, email) {
+  if (!invitationId) throw new Error("ID do convite não identificado no link.");
+  const ref = doc(db, "workspaces", "designacoes-jw", "invitations", invitationId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw new Error("Convite não encontrado ou expirado.");
+  const data = snap.data();
+
+  const invEmail = (data.email || "").trim().toLowerCase();
+  const userEmail = email.trim().toLowerCase();
+  if (invEmail !== userEmail) {
+    throw new Error(`O e-mail digitado (${userEmail}) não corresponde ao convite (${invEmail}).`);
+  }
+
+  if (data.status === "accepted" && data.acceptedBy === user.uid) {
+    return; // Já aceito com sucesso por este usuário
+  }
+  if (data.status !== "pending") {
+    throw new Error("Este convite já foi utilizado ou cancelado.");
+  }
+
+  const profile = {
+    email: userEmail,
+    name: data.name || "",
+    role: "custom",
+    permissions: Array.isArray(data.permissions) ? data.permissions : [],
+    active: true,
+    invitationId: invitationId
   };
-  const batch=writeBatch(db);
-  batch.set(doc(db,"users",user.uid),profile,{merge:true});
-  batch.update(ref,{status:"accepted",acceptedBy:user.uid,acceptedAt:Date.now()});
-  await batch.commit();
+
+  // 1. Grava perfil do usuário
+  await setDoc(doc(db, "users", user.uid), profile, { merge: true });
+
+  // 2. Atualiza status do convite
+  await updateDoc(ref, {
+    status: "accepted",
+    acceptedBy: user.uid,
+    acceptedAt: Date.now()
+  });
 }
 
-async function finish(){
-  const email=document.getElementById("email").value.trim().toLowerCase();
-  if(!email){statusEl.textContent="Informe o e-mail que recebeu o convite.";return}
-  if(!isSignInWithEmailLink(auth,currentLink)){
-    statusEl.textContent="Abra o link original recebido por e-mail para concluir o convite.";
-    return
+async function finish() {
+  const email = document.getElementById("email").value.trim().toLowerCase();
+  if (!email) {
+    showStatus("Informe o e-mail que recebeu o convite.", "error");
+    return;
   }
-  statusEl.textContent="Validando convite...";
-  try{
-    const result=await signInWithEmailLink(auth,email,currentLink);
-    await claim(inviteId,result.user,email);
-    statusEl.textContent="Convite aceito! Sua conta foi criada. Agora você pode abrir o aplicativo.";
-    document.getElementById("finish").disabled=true;
-  }catch(e){
-    statusEl.textContent=e?.message||"Não foi possível concluir o convite.";
+
+  showStatus("Validando convite e autenticando...", "info");
+  const finishBtn = document.getElementById("finish");
+  finishBtn.disabled = true;
+
+  try {
+    let currentUser = auth.currentUser;
+
+    // Se não há usuário logado correspondente, autentica via link
+    if (!currentUser || (currentUser.email || "").toLowerCase() !== email) {
+      if (isSignInWithEmailLink(auth, currentLink)) {
+        try {
+          const result = await signInWithEmailLink(auth, email, currentLink);
+          currentUser = result.user;
+        } catch (authErr) {
+          // Se o código já foi consumido anteriormente mas o usuário já está logado
+          if (authErr.code === "auth/invalid-action-code" && auth.currentUser) {
+            currentUser = auth.currentUser;
+          } else {
+            throw authErr;
+          }
+        }
+      } else if (!currentUser) {
+        throw new Error("Abra o link original recebido no seu e-mail para validar o convite.");
+      }
+    }
+
+    if (!currentUser) throw new Error("Falha na autenticação do usuário.");
+
+    await claim(inviteId, currentUser, email);
+
+    showStatus("Convite aceito com sucesso! Sua conta foi ativada. Você já pode acessar o sistema ou abrir o aplicativo.", "success");
+    localStorage.removeItem("emailForSignIn");
+  } catch (e) {
+    finishBtn.disabled = false;
+    let msg = e?.message || "Não foi possível concluir o convite.";
+    if (e?.code === "auth/invalid-action-code") {
+      msg = "Este link de convite já foi utilizado ou expirou. Se você já clicou nele antes, entre normalmente com seu e-mail no aplicativo ou na versão web.";
+    }
+    showStatus(msg, "error");
   }
 }
-document.getElementById("finish").onclick=finish;
-if(isSignInWithEmailLink(auth,currentLink)){
-  emailBox.style.display="block";
-  webFallback.style.display="none";
-  const saved=localStorage.getItem("emailForSignIn");
-  if(saved)document.getElementById("email").value=saved;
+
+document.getElementById("finish").onclick = finish;
+
+onAuthStateChanged(auth, (user) => {
+  if (user && user.email) {
+    const emailInput = document.getElementById("email");
+    if (!emailInput.value) emailInput.value = user.email;
+  }
+});
+
+if (isSignInWithEmailLink(auth, currentLink)) {
+  emailBox.style.display = "block";
+  webFallback.style.display = "none";
+  const saved = localStorage.getItem("emailForSignIn");
+  if (saved) document.getElementById("email").value = saved;
 }
 </script>
 </body>

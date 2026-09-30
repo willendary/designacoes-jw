@@ -145,7 +145,11 @@ class UserAccessRepository {
                 }
                 val invitedEmail = data["email"]?.toString()?.trim()?.lowercase()
                 if (invitedEmail != email.trim().lowercase()) {
-                    onResult("O e-mail desta conta não corresponde ao convite.")
+                    onResult("O e-mail desta conta ($email) não corresponde ao convite ($invitedEmail).")
+                    return@addOnSuccessListener
+                }
+                if (data["status"]?.toString() == "accepted" && data["acceptedBy"]?.toString() == uid) {
+                    onResult(null)
                     return@addOnSuccessListener
                 }
                 if (data["status"]?.toString() != "pending") {
@@ -163,15 +167,15 @@ class UserAccessRepository {
                     active = true,
                     invitationId = invitationId
                 )
-                val batch = firestore.batch()
-                batch.set(users.document(uid), toMap(profile), SetOptions.merge())
-                batch.update(invitations.document(invitationId), mapOf(
-                    "status" to "accepted",
-                    "acceptedBy" to uid,
-                    "acceptedAt" to System.currentTimeMillis()
-                ))
-                batch.commit()
-                    .addOnSuccessListener { onResult(null) }
+                users.document(uid).set(toMap(profile), SetOptions.merge())
+                    .addOnSuccessListener {
+                        invitations.document(invitationId).update(mapOf(
+                            "status" to "accepted",
+                            "acceptedBy" to uid,
+                            "acceptedAt" to System.currentTimeMillis()
+                        )).addOnSuccessListener { onResult(null) }
+                          .addOnFailureListener { onResult(null) }
+                    }
                     .addOnFailureListener { onResult(it.localizedMessage ?: "Não foi possível aceitar o convite.") }
             }
             .addOnFailureListener { onResult(it.localizedMessage ?: "Não foi possível validar o convite.") }

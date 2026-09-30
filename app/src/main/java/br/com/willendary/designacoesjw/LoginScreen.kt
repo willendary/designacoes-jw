@@ -126,39 +126,67 @@ fun LoginScreen(onInviteClaimFinished: () -> Unit = {}) {
                         runAuth {
                             if (inviteMode && pendingEmailLink != null) {
                                 prefs.edit().putBoolean("invite_claim_in_progress", true).apply()
-                                auth.signInWithEmailLink(email, pendingEmailLink!!)
-                                    .addOnCompleteListener { task ->
-                                        loading = false
-                                        if (task.isSuccessful) {
-                                            val uid = task.result?.user?.uid
-                                            val inviteId = runCatching {
-                                                val outer = android.net.Uri.parse(pendingEmailLink!!)
-                                                val continueUrl = outer.getQueryParameter("continueUrl")
-                                                android.net.Uri.parse(continueUrl ?: "").getQueryParameter("inviteId")
-                                            }.getOrNull()
-                                            if (uid != null && !inviteId.isNullOrBlank()) {
-                                                UserAccessRepository().claimInvitation(inviteId, uid, email) { claimError ->
-                                                    if (claimError != null) {
-                                                        error = claimError
-                                                        prefs.edit().putBoolean("invite_claim_in_progress", false).apply()
-                                                        onInviteClaimFinished()
-                                                    } else {
-                                                        prefs.edit().remove("pending_email_link").remove("last_invitation_email").putBoolean("invite_claim_in_progress", false).apply()
-                                                        pendingEmailLink = null
-                                                        onInviteClaimFinished()
-                                                    }
-                                                }
+                                val currentUser = auth.currentUser
+                                val inviteId = runCatching {
+                                    val outer = android.net.Uri.parse(pendingEmailLink!!)
+                                    val continueUrl = outer.getQueryParameter("continueUrl")
+                                    android.net.Uri.parse(continueUrl ?: "").getQueryParameter("inviteId")
+                                }.getOrNull()
+
+                                fun executeClaim(uid: String) {
+                                    if (!inviteId.isNullOrBlank()) {
+                                        UserAccessRepository().claimInvitation(inviteId, uid, email) { claimError ->
+                                            loading = false
+                                            if (claimError != null) {
+                                                error = claimError
+                                                prefs.edit().putBoolean("invite_claim_in_progress", false).apply()
+                                                onInviteClaimFinished()
                                             } else {
                                                 prefs.edit().remove("pending_email_link").remove("last_invitation_email").putBoolean("invite_claim_in_progress", false).apply()
                                                 pendingEmailLink = null
                                                 onInviteClaimFinished()
                                             }
-                                        } else {
-                                            prefs.edit().putBoolean("invite_claim_in_progress", false).apply()
-                                            onInviteClaimFinished()
-                                            error = firebaseErrorMessage(task.exception ?: Exception())
                                         }
+                                    } else {
+                                        loading = false
+                                        prefs.edit().remove("pending_email_link").remove("last_invitation_email").putBoolean("invite_claim_in_progress", false).apply()
+                                        pendingEmailLink = null
+                                        onInviteClaimFinished()
                                     }
+                                }
+
+                                if (currentUser != null && currentUser.email?.equals(email, ignoreCase = true) == true) {
+                                    executeClaim(currentUser.uid)
+                                } else {
+                                    auth.signInWithEmailLink(email, pendingEmailLink!!)
+                                        .addOnCompleteListener { task ->
+                                            if (task.isSuccessful) {
+                                                val uid = task.result?.user?.uid
+                                                if (uid != null) {
+                                                    executeClaim(uid)
+                                                } else {
+                                                    loading = false
+                                                    prefs.edit().putBoolean("invite_claim_in_progress", false).apply()
+                                                    onInviteClaimFinished()
+                                                }
+                                            } else {
+                                                val activeUser = auth.currentUser
+                                                if (activeUser != null && activeUser.email?.equals(email, ignoreCase = true) == true) {
+                                                    executeClaim(activeUser.uid)
+                                                } else {
+                                                    loading = false
+                                                    prefs.edit().putBoolean("invite_claim_in_progress", false).apply()
+                                                    onInviteClaimFinished()
+                                                    val ex = task.exception
+                                                    error = if ((ex as? com.google.firebase.auth.FirebaseAuthException)?.errorCode == "ERROR_INVALID_ACTION_CODE") {
+                                                        "Este link de convite já foi utilizado ou expirou. Se você já clicou nele antes, acesse com sua conta normalmente."
+                                                    } else {
+                                                        firebaseErrorMessage(ex ?: Exception())
+                                                    }
+                                                }
+                                            }
+                                        }
+                                }
                             } else if (showRegister) {
                                 auth.createUserWithEmailAndPassword(email, password)
                                     .addOnCompleteListener { task ->
