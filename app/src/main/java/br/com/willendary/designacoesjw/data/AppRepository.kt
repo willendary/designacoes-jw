@@ -598,7 +598,17 @@ class AppRepository(context: Context) {
             Assignment(privilegeId, brotherId)
         } ?: emptyList()
         val blocked = (d["blockedBrotherIds"] as? List<*>)?.mapNotNull { (it as? Number)?.toLong() }?.toSet() ?: emptySet()
-        return Meeting(id, d["date"]?.toString() ?: return null, d["type"]?.toString() ?: "Reunião", assignments, blocked)
+        val theme = d["theme"]?.toString() ?: ""
+        val program = (d["program"] as? List<*>)?.mapNotNull { it?.toString()?.takeIf(String::isNotBlank) } ?: emptyList()
+        return Meeting(
+            id = id,
+            date = d["date"]?.toString() ?: return null,
+            type = d["type"]?.toString() ?: "Reunião",
+            assignments = assignments,
+            blockedBrotherIds = blocked,
+            theme = theme,
+            program = program
+        )
     }
 
     private fun publicTalkFromDocument(document: com.google.firebase.firestore.DocumentSnapshot): PublicTalk? {
