@@ -51,27 +51,39 @@ jobs:
 
       - name: Publicar EXE e MSI no GitHub Release
         if: success() && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-        shell: pwsh
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = if (startsWith('${{ github.ref }}', 'refs/tags/v')) {
-            "${{ github.ref_name }}"
-          } else {
-            $v = (Select-String -Path "desktop/build.gradle.kts" -Pattern 'packageVersion\s*=\s*"([^"]+)"').Matches.Groups[1].Value
-            "v$v"
-          }
-          $msi = Get-ChildItem "desktop/build/compose/binaries/main/msi/*.msi" | Select-Object -First 1
-          $exe = Get-ChildItem "desktop/build/compose/binaries/main/exe/*.exe" | Select-Object -First 1
-          if (-not $msi -and -not $exe) {
-            throw "Binários Windows não encontrados."
-          }
+          set -e
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            TAG="${{ github.ref_name }}"
+          else
+            VERSION=$(grep 'packageVersion' desktop/build.gradle.kts | sed -E 's/.*"([^"]+)".*/\1/')
+            TAG="v$VERSION"
+          fi
+          echo "Publicando para a tag: $TAG"
 
-          try {
-            gh release create $tag --title "Designações JW $tag" --generate-notes
-          } catch {
-            Write-Host "Release $tag já existente ou gerada em paralelo."
-          }
+          MSI=$(find desktop/build/compose/binaries/main/msi -name "*.msi" | head -n 1)
+          EXE=$(find desktop/build/compose/binaries/main/exe -name "*.exe" | head -n 1)
 
-          if ($msi) { gh release upload $tag $msi.FullName --clobber }
-          if ($exe) { gh release upload $tag $exe.FullName --clobber }
+          if [ -z "$MSI" ] && [ -z "$EXE" ]; then
+            echo "::error::Binários Windows não encontrados."
+            exit 1
+          fi
+
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Criando release $TAG..."
+            gh release create "$TAG" --title "Designações JW $TAG" --generate-notes
+          else
+            echo "Release $TAG já existe."
+          fi
+
+          if [ -n "$MSI" ] && [ -f "$MSI" ]; then
+            echo "Fazendo upload do MSI: $MSI"
+            gh release upload "$TAG" "$MSI" --clobber
+          fi
+          if [ -n "$EXE" ] && [ -f "$EXE" ]; then
+            echo "Fazendo upload do EXE: $EXE"
+            gh release upload "$TAG" "$EXE" --clobber
+          fi
