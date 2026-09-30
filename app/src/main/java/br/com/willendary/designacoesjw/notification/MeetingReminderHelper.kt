@@ -33,6 +33,7 @@ object MeetingReminderHelper {
         }
     }
 
+    @android.annotation.SuppressLint("MissingPermission")
     fun notifyMeeting(
         context: Context,
         meeting: Meeting,
@@ -82,7 +83,7 @@ object MeetingReminderHelper {
         return try {
             managerCompat.notify(meeting.id.toInt(), notification)
             true
-        } catch (_: SecurityException) {
+        } catch (e: Exception) {
             false
         }
     }

@@ -67,8 +67,8 @@ jobs:
             throw "Binários Windows não encontrados."
           }
 
-          gh release view $tag 2>$null
-          if ($LASTEXITCODE -ne 0) {
+          $existingReleases = gh release list --json tagName -q ".[].tagName"
+          if ($existingReleases -notcontains $tag) {
             gh release create $tag --target "${{ github.sha }}" --title "Designações JW $tag" --generate-notes
           }
 

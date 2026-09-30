@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.viewmodel.compose.viewModel
 import br.com.willendary.designacoesjw.data.*
@@ -621,7 +622,7 @@ private fun CalendarGridView(
                                         Text(
                                             text = "${meeting.assignments.size} des.",
                                             style = MaterialTheme.typography.labelSmall,
-                                            fontSize = androidx.compose.ui.unit.TextUnit(8.5f, androidx.compose.ui.unit.TextUnitType.Sp),
+                                            fontSize = 9.sp,
                                             color = if (isSelected) MaterialTheme.colorScheme.onPrimary
                                             else MaterialTheme.colorScheme.primary
                                         )
