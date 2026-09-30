@@ -76,10 +76,9 @@ jobs:
         run: |
           VERSION=$(grep 'versionName' app/build.gradle.kts | sed -E 's/.*"([^"]+)".*/\1/')
           TAG="v$VERSION"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG já existe."
-          else
-            gh release create "$TAG" app/build/outputs/apk/debug/designacoes-jw.apk --target "$GITHUB_SHA" --title "Designações JW $TAG" --generate-notes
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "Designações JW $TAG" --generate-notes
           fi
+          gh release upload "$TAG" app/build/outputs/apk/debug/designacoes-jw.apk --clobber
 
 # Invitation flow validation build.
