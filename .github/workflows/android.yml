@@ -4,6 +4,7 @@ name: Android APK
 on:
   push:
     branches: ["main"]
+    tags: ["v*"]
   pull_request:
     branches: ["main"]
     tags: ["v*"]
@@ -37,9 +38,8 @@ jobs:
       - name: Build APK
         shell: bash
         run: |
-          set +e
-          gradle assembleDebug 2>&1 | tee build.log
-          exit ${PIPESTATUS[0]}
+          set -o pipefail
+          gradle assembleDebug 2>&1 | tee build.log || { echo "=== BUILD FAILED ==="; tail -n 150 build.log; exit 1; }
 
       - name: Upload build log
         if: always()
@@ -77,7 +77,7 @@ jobs:
           VERSION=$(grep 'versionName' app/build.gradle.kts | sed -E 's/.*"([^"]+)".*/\1/')
           TAG="v$VERSION"
           if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --target "$GITHUB_SHA" --title "Designações JW $TAG" --generate-notes
+            gh release create "$TAG" --title "Designações JW $TAG" --generate-notes
           fi
           gh release upload "$TAG" app/build/outputs/apk/debug/designacoes-jw.apk --clobber
 

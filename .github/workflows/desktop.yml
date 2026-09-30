@@ -67,9 +67,10 @@ jobs:
             throw "Binários Windows não encontrados."
           }
 
-          $existingReleases = gh release list --json tagName -q ".[].tagName"
-          if ($existingReleases -notcontains $tag) {
-            gh release create $tag --target "${{ github.sha }}" --title "Designações JW $tag" --generate-notes
+          try {
+            gh release create $tag --title "Designações JW $tag" --generate-notes
+          } catch {
+            Write-Host "Release $tag já existente ou gerada em paralelo."
           }
 
           if ($msi) { gh release upload $tag $msi.FullName --clobber }
