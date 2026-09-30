@@ -81,9 +81,9 @@ jobs:
 
           if [ -n "$MSI" ] && [ -f "$MSI" ]; then
             echo "Fazendo upload do MSI: $MSI"
-            gh release upload "$TAG" "$MSI" --clobber
+            gh release upload "$TAG" "$MSI" --clobber || true
           fi
           if [ -n "$EXE" ] && [ -f "$EXE" ]; then
             echo "Fazendo upload do EXE: $EXE"
-            gh release upload "$TAG" "$EXE" --clobber
+            gh release upload "$TAG" "$EXE" --clobber || true
           fi
