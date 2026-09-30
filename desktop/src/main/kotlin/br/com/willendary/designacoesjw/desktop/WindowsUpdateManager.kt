@@ -10,7 +10,7 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import kotlin.concurrent.thread
 
-const val CURRENT_VERSION = "0.2.3"
+const val CURRENT_VERSION = "0.2.4"
 private const val GITHUB_RELEASES_URL = "https://api.github.com/repos/willendary/designacoes-jw/releases?per_page=20"
 
 @Serializable

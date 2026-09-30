@@ -25,6 +25,12 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import br.com.willendary.designacoesjw.data.*
+import br.com.willendary.designacoesjw.desktop.components.CloudSyncBar
+import br.com.willendary.designacoesjw.desktop.export.ImageExportHelper
+import br.com.willendary.designacoesjw.desktop.firebase.DesktopAuthManager
+import br.com.willendary.designacoesjw.desktop.firebase.DesktopFirestoreClient
+import br.com.willendary.designacoesjw.desktop.screens.GroupsAndCleaningScreen
+import br.com.willendary.designacoesjw.desktop.screens.PublicTalksScreen
 import br.com.willendary.designacoesjw.export.CsvDataHandler
 import br.com.willendary.designacoesjw.export.HtmlReportGenerator
 import br.com.willendary.designacoesjw.export.IcsExportHelper
@@ -89,17 +95,99 @@ class StoreController {
     var data by mutableStateOf(load())
         private set
 
+    var authSession by mutableStateOf(DesktopAuthManager.loadSession())
+        private set
+    var syncStatus by mutableStateOf<String?>(if (DesktopAuthManager.currentSession != null) "Conectado à nuvem" else "Offline")
+        private set
+    var isSyncing by mutableStateOf(false)
+        private set
+
+    init {
+        if (authSession != null) {
+            syncWithCloud()
+        }
+    }
+
     private fun load() = runCatching {
         if (file.exists()) json.decodeFromString<Store>(file.readText()) else Store()
     }.getOrDefault(Store())
 
     private fun save(s: Store) {
         data = s
+        saveLocal(s)
+        authSession?.let { session ->
+            kotlin.concurrent.thread { pushToCloud(session.idToken) }
+        }
+    }
+
+    private fun saveLocal(s: Store) {
         file.parentFile?.mkdirs()
         file.writeText(json.encodeToString(s))
     }
 
-    fun addBrother(name: String, phone: String, role: BrotherRole = BrotherRole.PUBLISHER): String? {
+    fun login(email: String, pass: String): String? {
+        val res = DesktopAuthManager.signInWithEmail(email, pass)
+        return res.fold(
+            onSuccess = { session ->
+                authSession = session
+                syncWithCloud()
+                null
+            },
+            onFailure = { it.message ?: "Falha ao entrar" }
+        )
+    }
+
+    fun logout() {
+        DesktopAuthManager.logout()
+        authSession = null
+        syncStatus = "Desconectado"
+    }
+
+    fun syncWithCloud(onComplete: ((Boolean, String?) -> Unit)? = null) {
+        val session = authSession ?: DesktopAuthManager.loadSession()
+        if (session == null) {
+            syncStatus = "Offline"
+            onComplete?.invoke(false, "Usuário não autenticado.")
+            return
+        }
+        authSession = session
+        isSyncing = true
+        syncStatus = "Sincronizando..."
+
+        kotlin.concurrent.thread {
+            val res = DesktopFirestoreClient.fetchCloudStore(session.idToken)
+            res.fold(
+                onSuccess = { cloudStore ->
+                    if (cloudStore.brothers.isNotEmpty() || cloudStore.meetings.isNotEmpty() || cloudStore.privileges.isNotEmpty()) {
+                        data = cloudStore.copy(themeMode = data.themeMode)
+                        saveLocal(data)
+                    } else {
+                        pushToCloud(session.idToken)
+                    }
+                    syncStatus = "Sincronizado"
+                    isSyncing = false
+                    onComplete?.invoke(true, null)
+                },
+                onFailure = { err ->
+                    syncStatus = "Erro de sincronização"
+                    isSyncing = false
+                    onComplete?.invoke(false, err.message)
+                }
+            )
+        }
+    }
+
+    private fun pushToCloud(token: String) {
+        DesktopFirestoreClient.pushBrothers(token, data.brothers)
+        DesktopFirestoreClient.pushPrivileges(token, data.privileges)
+        DesktopFirestoreClient.pushMeetings(token, data.meetings)
+        DesktopFirestoreClient.pushPublicTalks(token, data.publicTalks)
+        DesktopFirestoreClient.pushFieldServiceGroups(token, data.fieldServiceGroups)
+        DesktopFirestoreClient.pushCleaningSchedules(token, data.cleaningSchedules)
+        DesktopFirestoreClient.pushScheduleSettings(token, data.firstDay, data.secondDay)
+    }
+
+    fun addBrother(name: String, phone: String, role: BrotherRole = BrotherRole.PUBLISHER, gender: Gender = Gender.MALE, groupId: Long? = null): String? {
         val norm = AssignmentGenerator.normalizeName(name)
         if (norm.isBlank()) return "Informe o nome do irmão."
         if (data.brothers.any { AssignmentGenerator.normalizeName(it.name) == norm }) {
@@ -109,20 +197,22 @@ class StoreController {
             id = AssignmentGenerator.nextId(),
             name = name.trim(),
             phone = phone.trim(),
-            role = role
+            role = role,
+            gender = gender,
+            groupId = groupId
         )
         save(data.copy(brothers = (data.brothers + newBrother).sortedBy { AssignmentGenerator.normalizeName(it.name) }))
         return null
     }
 
-    fun updateBrother(id: Long, name: String, phone: String, role: BrotherRole): String? {
+    fun updateBrother(id: Long, name: String, phone: String, role: BrotherRole, gender: Gender = Gender.MALE, groupId: Long? = null): String? {
         val norm = AssignmentGenerator.normalizeName(name)
         if (norm.isBlank()) return "Informe o nome do irmão."
         if (data.brothers.any { it.id != id && AssignmentGenerator.normalizeName(it.name) == norm }) {
             return "Já existe outro irmão com esse nome."
         }
         save(data.copy(brothers = data.brothers.map {
-            if (it.id == id) it.copy(name = name.trim(), phone = phone.trim(), role = role) else it
+            if (it.id == id) it.copy(name = name.trim(), phone = phone.trim(), role = role, gender = gender, groupId = groupId) else it
         }))
         return null
     }
@@ -151,25 +241,25 @@ class StoreController {
         }))
     }
 
-    fun addPrivilege(name: String, quantity: Int, minRole: BrotherRole = BrotherRole.PUBLISHER): String? {
+    fun addPrivilege(name: String, quantity: Int, minRole: BrotherRole = BrotherRole.PUBLISHER, maleOnly: Boolean = true): String? {
         val norm = AssignmentGenerator.normalizeName(name)
         if (norm.isBlank()) return "Informe o nome do privilégio."
         if (data.privileges.any { AssignmentGenerator.normalizeName(it.name) == norm }) {
             return "Já existe um privilégio com esse nome."
         }
-        val p = Privilege(AssignmentGenerator.nextId(), name.trim(), quantity.coerceAtLeast(1), minRole = minRole)
+        val p = Privilege(AssignmentGenerator.nextId(), name.trim(), quantity.coerceAtLeast(1), minRole = minRole, maleOnly = maleOnly)
         save(data.copy(privileges = (data.privileges + p).sortedBy { AssignmentGenerator.normalizeName(it.name) }))
         return null
     }
 
-    fun updatePrivilege(id: Long, name: String, quantity: Int, minRole: BrotherRole): String? {
+    fun updatePrivilege(id: Long, name: String, quantity: Int, minRole: BrotherRole, maleOnly: Boolean = true): String? {
         val norm = AssignmentGenerator.normalizeName(name)
         if (norm.isBlank()) return "Informe o nome do privilégio."
         if (data.privileges.any { it.id != id && AssignmentGenerator.normalizeName(it.name) == norm }) {
             return "Já existe outro privilégio com esse nome."
         }
         save(data.copy(privileges = data.privileges.map {
-            if (it.id == id) it.copy(name = name.trim(), quantity = quantity.coerceAtLeast(1), minRole = minRole) else it
+            if (it.id == id) it.copy(name = name.trim(), quantity = quantity.coerceAtLeast(1), minRole = minRole, maleOnly = maleOnly) else it
         }))
         return null
     }
@@ -248,6 +338,77 @@ class StoreController {
     fun missingAssignments(meeting: Meeting) =
         AssignmentGenerator.missingAssignments(meeting, data.privileges)
 
+    fun addOrUpdatePublicTalk(talk: PublicTalk) {
+        val existingIndex = data.publicTalks.indexOfFirst { it.id == talk.id }
+        val updated = if (existingIndex >= 0) {
+            data.publicTalks.toMutableList().apply { set(existingIndex, talk) }
+        } else {
+            data.publicTalks + talk
+        }
+        save(data.copy(publicTalks = updated.sortedByDescending { AssignmentGenerator.parseDate(it.date) }))
+    }
+
+    fun deletePublicTalk(id: Long) {
+        save(data.copy(publicTalks = data.publicTalks.filterNot { it.id == id }))
+    }
+
+    fun addOrUpdateGroup(group: FieldServiceGroup) {
+        val existingIndex = data.fieldServiceGroups.indexOfFirst { it.id == group.id }
+        val updated = if (existingIndex >= 0) {
+            data.fieldServiceGroups.toMutableList().apply { set(existingIndex, group) }
+        } else {
+            data.fieldServiceGroups + group
+        }
+        save(data.copy(fieldServiceGroups = updated.sortedBy { it.number }))
+    }
+
+    fun deleteGroup(id: Long) {
+        save(data.copy(
+            fieldServiceGroups = data.fieldServiceGroups.filterNot { it.id == id },
+            brothers = data.brothers.map { if (it.groupId == id) it.copy(groupId = null) else it }
+        ))
+    }
+
+    fun addOrUpdateCleaningSchedule(schedule: CleaningSchedule) {
+        val existingIndex = data.cleaningSchedules.indexOfFirst { it.id == schedule.id }
+        val updated = if (existingIndex >= 0) {
+            data.cleaningSchedules.toMutableList().apply { set(existingIndex, schedule) }
+        } else {
+            data.cleaningSchedules + schedule
+        }
+        save(data.copy(cleaningSchedules = updated.sortedBy { AssignmentGenerator.parseDate(it.weekDate) }))
+    }
+
+    fun deleteCleaningSchedule(id: Long) {
+        save(data.copy(cleaningSchedules = data.cleaningSchedules.filterNot { it.id == id }))
+    }
+
+    fun generateCleaningRotation(month: YearMonth) {
+        if (data.fieldServiceGroups.isEmpty()) return
+        val prefix = month.format(DateTimeFormatter.ofPattern("MM/yyyy"))
+        val monthMeetings = data.meetings.filter { it.date.endsWith("/$prefix") }.sortedBy { AssignmentGenerator.parseDate(it.date) }
+        if (monthMeetings.isEmpty()) return
+
+        val sortedGroups = data.fieldServiceGroups.sortedBy { it.number }
+        val newSchedules = monthMeetings.mapIndexed { index, m ->
+            val group = sortedGroups[index % sortedGroups.size]
+            CleaningSchedule(
+                id = AssignmentGenerator.nextId(),
+                weekDate = m.date,
+                groupId = group.id,
+                details = "Limpeza após ${m.type}",
+                completed = false
+            )
+        }
+
+        val keep = data.cleaningSchedules.filterNot { it.weekDate.endsWith("/$prefix") }
+        save(data.copy(cleaningSchedules = keep + newSchedules))
+    }
+
+    fun setThemeMode(mode: ThemeMode) {
+        save(data.copy(themeMode = mode))
+    }
+
     fun exportHtmlReport(month: YearMonth): File {
         val prefix = month.format(DateTimeFormatter.ofPattern("MM/yyyy"))
         val monthMeetings = data.meetings.filter { it.date.endsWith("/$prefix") }
@@ -320,12 +481,37 @@ fun main() = application {
         checkingUpdate = false
     }
 
+    val isDark = when (c.data.themeMode) {
+        ThemeMode.DARK -> true
+        ThemeMode.LIGHT -> false
+        ThemeMode.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
+    }
+
     Window(
         onCloseRequest = ::exitApplication,
         title = "Designações JW $CURRENT_VERSION",
         state = rememberWindowState(width = 1280.dp, height = 800.dp)
     ) {
-        MaterialTheme {
+        MaterialTheme(
+            colorScheme = if (isDark) darkColorScheme(
+                primary = Color(0xFF90CAF9),
+                onPrimary = Color(0xFF0D47A1),
+                primaryContainer = Color(0xFF1E3A5F),
+                onPrimaryContainer = Color(0xFFE3F2FD),
+                secondary = Color(0xFF81D4FA),
+                background = Color(0xFF121212),
+                surface = Color(0xFF1E1E1E),
+                surfaceVariant = Color(0xFF2C2C2C)
+            ) else lightColorScheme(
+                primary = Color(0xFF1565C0),
+                onPrimary = Color.White,
+                primaryContainer = Color(0xFFE3F2FD),
+                onPrimaryContainer = Color(0xFF0D47A1),
+                secondary = Color(0xFF0288D1),
+                background = Color(0xFFF5F7FB),
+                surface = Color.White
+            )
+        ) {
             DesktopApp(c)
             if (!checkingUpdate && updateInfo != null) {
                 UpdateDialog(
@@ -359,8 +545,16 @@ private fun UpdateDialog(info: WindowsUpdateInfo, onUpdate: () -> Unit, onDismis
 @Composable
 fun DesktopApp(c: StoreController) {
     var tab by remember { mutableIntStateOf(0) }
-    val labels = listOf("Início", "Irmãos", "Privilégios", "Histórico", "Configurações")
-    val icons = listOf(Icons.Default.Home, Icons.Default.Groups, Icons.Default.Work, Icons.Default.History, Icons.Default.Settings)
+    val labels = listOf("Início", "Irmãos", "Privilégios", "Discursos", "Limpeza", "Histórico", "Configurações")
+    val icons = listOf(
+        Icons.Default.Home,
+        Icons.Default.Groups,
+        Icons.Default.Work,
+        Icons.Default.RecordVoiceOver,
+        Icons.Default.CleaningServices,
+        Icons.Default.History,
+        Icons.Default.Settings
+    )
 
     Row(Modifier.fillMaxSize()) {
         NavigationRail {
@@ -380,6 +574,8 @@ fun DesktopApp(c: StoreController) {
                 Icon(Icons.Default.CalendarMonth, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
                 Text("Designações JW", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.weight(1f))
+                CloudSyncBar(c)
+                Spacer(Modifier.width(12.dp))
                 Text("Versão $CURRENT_VERSION", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.outline)
             }
             Spacer(Modifier.height(16.dp))
@@ -387,8 +583,10 @@ fun DesktopApp(c: StoreController) {
                 0 -> Home(c)
                 1 -> Brothers(c)
                 2 -> Privileges(c)
-                3 -> History(c)
-                4 -> Settings(c)
+                3 -> PublicTalksScreen(c)
+                4 -> GroupsAndCleaningScreen(c)
+                5 -> History(c)
+                6 -> Settings(c)
             }
         }
     }
@@ -813,6 +1011,28 @@ private fun MeetingCardItem(
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedButton(onClick = {
+                        val talk = c.data.publicTalks.find { it.date == m.date }
+                        val clean = c.data.cleaningSchedules.find { it.weekDate == m.date }
+                        val group = c.data.fieldServiceGroups.find { it.id == clean?.groupId }
+                        val img = ImageExportHelper.generateMeetingCard(
+                            meeting = m,
+                            brothers = c.data.brothers,
+                            privileges = c.data.privileges,
+                            publicTalk = talk,
+                            cleaningSchedule = clean,
+                            cleaningGroup = group
+                        )
+                        ImageExportHelper.copyImageToClipboard(img)
+                        val cardDir = File(System.getProperty("user.home"), ".designacoes-jw/cards").apply { mkdirs() }
+                        val dateSafe = m.date.replace("/", "-")
+                        ImageExportHelper.saveToPngFile(img, File(cardDir, "card-reuniao-$dateSafe.png"))
+                    }) {
+                        Icon(Icons.Default.Image, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Imagem PNG")
+                    }
+
                     Button(onClick = {
                         val text = WhatsAppHelper.buildMeetingBroadcastMessage(
                             c.data.whatsappMeetingTemplate, m, c.data.brothers, c.data.privileges, missing
@@ -1334,8 +1554,9 @@ private fun Brothers(c: StoreController) {
 
     if (showAddBrotherDialog) {
         DesktopAddBrotherDialog(
-            onSave = { n, p, r ->
-                errorMsg = c.addBrother(n, p, r)
+            groups = c.data.fieldServiceGroups,
+            onSave = { n, p, r, g, gid ->
+                errorMsg = c.addBrother(n, p, r, g, gid)
                 if (errorMsg == null) showAddBrotherDialog = false
             },
             onDismiss = { showAddBrotherDialog = false }
@@ -1346,20 +1567,60 @@ private fun Brothers(c: StoreController) {
         var editName by remember { mutableStateOf(b.name) }
         var editPhone by remember { mutableStateOf(b.phone) }
         var editRole by remember { mutableStateOf(b.role) }
+        var editGender by remember { mutableStateOf(b.gender) }
+        var editGroupId by remember { mutableStateOf(b.groupId) }
         var roleDropdown by remember { mutableStateOf(false) }
+        var groupDropdown by remember { mutableStateOf(false) }
+
+        val selectedGroup = c.data.fieldServiceGroups.firstOrNull { it.id == editGroupId }
 
         AlertDialog(
             onDismissRequest = { editingBrother = null },
-            title = { Text("Editar irmão") },
+            title = { Text(if (editGender == Gender.FEMALE) "Editar irmã" else "Editar irmão") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.width(400.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.width(420.dp)) {
                     OutlinedTextField(editName, { editName = it }, label = { Text("Nome") }, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(editPhone, { editPhone = it }, label = { Text("WhatsApp") }, modifier = Modifier.fillMaxWidth())
-                    Box {
-                        OutlinedButton({ roleDropdown = true }, Modifier.fillMaxWidth()) { Text("Cargo: " + editRole.label) }
-                        DropdownMenu(roleDropdown, { roleDropdown = false }) {
-                            BrotherRole.values().forEach { r ->
-                                DropdownMenuItem(text = { Text(r.label) }, onClick = { editRole = r; roleDropdown = false })
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Gênero:", fontWeight = FontWeight.SemiBold, modifier = Modifier.width(70.dp))
+                        FilterChip(
+                            selected = editGender == Gender.MALE,
+                            onClick = { editGender = Gender.MALE },
+                            label = { Text("Irmão") }
+                        )
+                        FilterChip(
+                            selected = editGender == Gender.FEMALE,
+                            onClick = { editGender = Gender.FEMALE },
+                            label = { Text("Irmã") }
+                        )
+                    }
+
+                    if (editGender == Gender.MALE) {
+                        Box {
+                            OutlinedButton({ roleDropdown = true }, Modifier.fillMaxWidth()) { Text("Cargo: " + editRole.label) }
+                            DropdownMenu(roleDropdown, { roleDropdown = false }) {
+                                BrotherRole.values().forEach { r ->
+                                    DropdownMenuItem(text = { Text(r.label) }, onClick = { editRole = r; roleDropdown = false })
+                                }
+                            }
+                        }
+                    }
+
+                    if (c.data.fieldServiceGroups.isNotEmpty()) {
+                        Box {
+                            OutlinedButton({ groupDropdown = true }, Modifier.fillMaxWidth()) {
+                                Text(if (selectedGroup != null) "Grupo: ${selectedGroup.name}" else "Grupo de Campo: (Nenhum)")
+                            }
+                            DropdownMenu(groupDropdown, { groupDropdown = false }) {
+                                DropdownMenuItem(text = { Text("Nenhum") }, onClick = { editGroupId = null; groupDropdown = false })
+                                c.data.fieldServiceGroups.forEach { g ->
+                                    DropdownMenuItem(text = { Text(g.name) }, onClick = { editGroupId = g.id; groupDropdown = false })
+                                }
                             }
                         }
                     }
@@ -1367,7 +1628,14 @@ private fun Brothers(c: StoreController) {
             },
             confirmButton = {
                 TextButton(onClick = {
-                    errorMsg = c.updateBrother(b.id, editName, editPhone, editRole)
+                    errorMsg = c.updateBrother(
+                        id = b.id,
+                        name = editName,
+                        phone = editPhone,
+                        role = if (editGender == Gender.FEMALE) BrotherRole.PUBLISHER else editRole,
+                        gender = editGender,
+                        groupId = editGroupId
+                    )
                     if (errorMsg == null) editingBrother = null
                 }) { Text("Salvar") }
             },
@@ -1546,26 +1814,67 @@ private fun DesktopBrotherProfileDialog(
 
 @Composable
 private fun DesktopAddBrotherDialog(
-    onSave: (String, String, BrotherRole) -> Unit,
+    groups: List<FieldServiceGroup>,
+    onSave: (String, String, BrotherRole, Gender, Long?) -> Unit,
     onDismiss: () -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var role by remember { mutableStateOf(BrotherRole.PUBLISHER) }
+    var gender by remember { mutableStateOf(Gender.MALE) }
+    var groupId by remember { mutableStateOf<Long?>(null) }
     var roleDropdown by remember { mutableStateOf(false) }
+    var groupDropdown by remember { mutableStateOf(false) }
+
+    val selectedGroup = groups.firstOrNull { it.id == groupId }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Adicionar Novo Irmão") },
+        title = { Text("Adicionar Novo Publicador") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.width(400.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.width(420.dp)) {
                 OutlinedTextField(name, { name = it }, label = { Text("Nome completo") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(phone, { phone = it }, label = { Text("WhatsApp (com DDD)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Box {
-                    OutlinedButton({ roleDropdown = true }, Modifier.fillMaxWidth()) { Text("Cargo: " + role.label) }
-                    DropdownMenu(roleDropdown, { roleDropdown = false }) {
-                        BrotherRole.values().forEach { r ->
-                            DropdownMenuItem(text = { Text(r.label) }, onClick = { role = r; roleDropdown = false })
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Gênero:", fontWeight = FontWeight.SemiBold, modifier = Modifier.width(70.dp))
+                    FilterChip(
+                        selected = gender == Gender.MALE,
+                        onClick = { gender = Gender.MALE },
+                        label = { Text("Irmão (Masculino)") }
+                    )
+                    FilterChip(
+                        selected = gender == Gender.FEMALE,
+                        onClick = { gender = Gender.FEMALE },
+                        label = { Text("Irmã (Feminino)") }
+                    )
+                }
+
+                if (gender == Gender.MALE) {
+                    Box {
+                        OutlinedButton({ roleDropdown = true }, Modifier.fillMaxWidth()) { Text("Privilégio/Cargo: " + role.label) }
+                        DropdownMenu(roleDropdown, { roleDropdown = false }) {
+                            BrotherRole.values().forEach { r ->
+                                DropdownMenuItem(text = { Text(r.label) }, onClick = { role = r; roleDropdown = false })
+                            }
+                        }
+                    }
+                }
+
+                if (groups.isNotEmpty()) {
+                    Box {
+                        OutlinedButton({ groupDropdown = true }, Modifier.fillMaxWidth()) {
+                            Text(if (selectedGroup != null) "Grupo: ${selectedGroup.name}" else "Grupo de Campo: (Nenhum)")
+                        }
+                        DropdownMenu(groupDropdown, { groupDropdown = false }) {
+                            DropdownMenuItem(text = { Text("Nenhum") }, onClick = { groupId = null; groupDropdown = false })
+                            groups.forEach { g ->
+                                DropdownMenuItem(text = { Text(g.name) }, onClick = { groupId = g.id; groupDropdown = false })
+                            }
                         }
                     }
                 }
@@ -1574,7 +1883,7 @@ private fun DesktopAddBrotherDialog(
         confirmButton = {
             Button(
                 enabled = name.isNotBlank(),
-                onClick = { onSave(name, phone, role) }
+                onClick = { onSave(name, phone, if (gender == Gender.FEMALE) BrotherRole.PUBLISHER else role, gender, groupId) }
             ) { Text("Salvar") }
         },
         dismissButton = {
@@ -1989,6 +2298,25 @@ private fun Settings(c: StoreController) {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Selector("Primeiro dia", first) { first = it; c.setMeetingDays(first, second) }
                         Selector("Segundo dia", second) { second = it; c.setMeetingDays(first, second) }
+                    }
+                }
+            }
+        }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Aparência e Tema", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        ThemeMode.values().forEach { mode ->
+                            FilterChip(
+                                selected = c.data.themeMode == mode,
+                                onClick = { c.setThemeMode(mode) },
+                                label = { Text(mode.label) },
+                                leadingIcon = if (c.data.themeMode == mode) {
+                                    { Icon(Icons.Default.Check, null, modifier = Modifier.size(16.dp)) }
+                                } else null
+                            )
+                        }
                     }
                 }
             }

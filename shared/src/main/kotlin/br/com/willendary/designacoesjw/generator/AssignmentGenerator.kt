@@ -192,6 +192,11 @@ object AssignmentGenerator {
         privilege: Privilege,
         allPrivileges: List<Privilege>
     ): Boolean {
+        // Regra Teocrática JW: Tarefas congregacionais de reunião (som, leitor, indicador, orações) são para irmãos
+        if (privilege.maleOnly && brother.gender == br.com.willendary.designacoesjw.data.Gender.FEMALE) {
+            return false
+        }
+
         if (privilege.id in brother.privileges) return true
 
         // Regra JW: Leitor da Sentinela pode automaticamente ler o livro

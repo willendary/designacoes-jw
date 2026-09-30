@@ -187,4 +187,78 @@ class AssignmentGeneratorTest {
         assertTrue(message.contains("11/10/2026"))
         assertTrue(message.contains("Domingo"))
     }
+
+    @Test
+    fun testFemaleExclusionFromMalePrivileges() {
+        val soundPrivilege = Privilege(id = 1, name = "Som", maleOnly = true)
+        val cleaningPrivilege = Privilege(id = 2, name = "Limpeza", maleOnly = false)
+        val allPrivileges = listOf(soundPrivilege, cleaningPrivilege)
+
+        val sister = Brother(
+            id = 100,
+            name = "Maria Oliveira",
+            privileges = setOf(1, 2),
+            gender = Gender.FEMALE
+        )
+
+        val brother = Brother(
+            id = 101,
+            name = "João Oliveira",
+            privileges = setOf(1, 2),
+            gender = Gender.MALE
+        )
+
+        // Irmã não pode receber designação de Som (maleOnly = true)
+        assertFalse(AssignmentGenerator.isBrotherAuthorizedForPrivilege(sister, soundPrivilege, allPrivileges))
+        // Irmão pode receber Som
+        assertTrue(AssignmentGenerator.isBrotherAuthorizedForPrivilege(brother, soundPrivilege, allPrivileges))
+
+        // Irmã e Irmão podem receber Limpeza (maleOnly = false)
+        assertTrue(AssignmentGenerator.isBrotherAuthorizedForPrivilege(sister, cleaningPrivilege, allPrivileges))
+        assertTrue(AssignmentGenerator.isBrotherAuthorizedForPrivilege(brother, cleaningPrivilege, allPrivileges))
+    }
+
+    @Test
+    fun testPublicTalkAndCleaningWhatsAppTemplates() {
+        val talk = PublicTalk(
+            id = 1,
+            date = "11/10/2026",
+            themeNumber = 45,
+            themeTitle = "Ande no caminho que conduz à vida",
+            speakerName = "Carlos Souza",
+            speakerCongregation = "Central",
+            hospitalityNotes = "Almoço agendado"
+        )
+        val talkMsg = WhatsAppHelper.buildPublicTalkSpeakerMessage(
+            talk = talk,
+            hospitalityBrotherName = "Fernando Lima",
+            hospitalityBrotherPhone = "11988887777",
+            congregationName = "Jardim das Flores"
+        )
+        assertTrue(talkMsg.contains("Carlos Souza"))
+        assertTrue(talkMsg.contains("45"))
+        assertTrue(talkMsg.contains("Fernando Lima"))
+        assertTrue(talkMsg.contains("Jardim das Flores"))
+
+        val schedule = CleaningSchedule(
+            id = 1,
+            weekDate = "11/10/2026",
+            details = "Limpeza profunda dos banheiros e auditório"
+        )
+        val group = FieldServiceGroup(
+            id = 10,
+            number = 2,
+            name = "Grupo 2 (Norte)"
+        )
+        val cleanMsg = WhatsAppHelper.buildCleaningScheduleMessage(
+            schedule = schedule,
+            group = group,
+            overseerName = "Roberto Silva",
+            overseerPhone = "11999990000"
+        )
+        assertTrue(cleanMsg.contains("Grupo 2 (Norte)"))
+        assertTrue(cleanMsg.contains("Roberto Silva"))
+        assertTrue(cleanMsg.contains("Limpeza profunda"))
+    }
 }
+

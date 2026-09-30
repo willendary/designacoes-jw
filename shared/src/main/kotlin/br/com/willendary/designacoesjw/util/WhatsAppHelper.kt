@@ -72,6 +72,54 @@ object WhatsAppHelper {
             .replace("{designacoes}", assignmentsText + missingText)
     }
 
+    fun buildPublicTalkSpeakerMessage(
+        talk: br.com.willendary.designacoesjw.data.PublicTalk,
+        hospitalityBrotherName: String = "",
+        hospitalityBrotherPhone: String = "",
+        congregationName: String = ""
+    ): String {
+        val date = AssignmentGenerator.parseDate(talk.date)
+        val weekday = if (date != LocalDate.MIN) {
+            date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))
+                .removeSuffix("-feira")
+                .replaceFirstChar { it.uppercase(Locale("pt", "BR")) }
+        } else ""
+
+        val congPart = if (congregationName.isNotBlank()) " da Congregação *$congregationName*" else ""
+        val themePart = if (talk.themeNumber != null) "Nº ${talk.themeNumber} — \"${talk.themeTitle}\"" else "\"${talk.themeTitle}\""
+        val hospPart = if (hospitalityBrotherName.isNotBlank()) {
+            val phonePart = if (hospitalityBrotherPhone.isNotBlank()) " (WhatsApp: $hospitalityBrotherPhone)" else ""
+            "\n🍽 *Hospitalidade/Refeição:* Irmão $hospitalityBrotherName$phonePart"
+        } else ""
+        val notesPart = if (talk.hospitalityNotes.isNotBlank()) "\n📝 *Obs:* ${talk.hospitalityNotes}" else ""
+
+        return "🎤 *Discurso Público — Confirmação*\n\n" +
+            "Olá, irmão *${talk.speakerName}*! Tudo bem?\n" +
+            "Confirmamos com alegria a sua visita como orador público$congPart.\n\n" +
+            "📅 *Data:* ${talk.date} ($weekday)\n" +
+            "📖 *Tema:* $themePart$hospPart$notesPart\n\n" +
+            "Por favor, confirme se está tudo certo para a data. Ficamos à disposição!"
+    }
+
+    fun buildCleaningScheduleMessage(
+        schedule: br.com.willendary.designacoesjw.data.CleaningSchedule,
+        group: br.com.willendary.designacoesjw.data.FieldServiceGroup?,
+        overseerName: String = "",
+        overseerPhone: String = ""
+    ): String {
+        val groupName = group?.name ?: "Grupo Designado"
+        val overseerPart = if (overseerName.isNotBlank()) {
+            val phonePart = if (overseerPhone.isNotBlank()) " ($overseerPhone)" else ""
+            "\n👤 *Dirigente:* $overseerName$phonePart"
+        } else ""
+        val detailsPart = if (schedule.details.isNotBlank()) "\n📋 *Detalhes:* ${schedule.details}" else ""
+
+        return "🧹 *Escala de Limpeza do Salão do Reino*\n\n" +
+            "📅 *Semana:* ${schedule.weekDate}\n" +
+            "👥 *Responsável:* *$groupName*$overseerPart$detailsPart\n\n" +
+            "Agradecemos muito pelo amor e zelo de todos ao cuidarem da casa de Jeová!"
+    }
+
     fun buildWebLink(phone: String, text: String): String {
         val cleanPhone = phone.filter { it.isDigit() }
         val encodedText = URLEncoder.encode(text, StandardCharsets.UTF_8.name())
@@ -92,3 +140,4 @@ object WhatsAppHelper {
         }
     }
 }
+
