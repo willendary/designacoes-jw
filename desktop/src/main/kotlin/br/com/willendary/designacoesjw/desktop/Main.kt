@@ -176,18 +176,25 @@ class StoreController {
             onResult("Reunião não encontrada.")
             return
         }
+        val date = meeting.date
         kotlin.concurrent.thread {
-            val error = runCatching {
-                val program = MwbProgramImporter.fetch(AssignmentGenerator.parseDate(meeting.date))
-                val items = program.parts.mapIndexed { i, p ->
-                    "${i + 1}. ${p.label}"
-                }
-                save(data.copy(meetings = data.meetings.map {
-                    if (it.id == meetingId) it.copy(theme = program.theme, program = items) else it
-                }))
-                null
-            }.exceptionOrNull()?.message ?: "Não foi possível ler o programa no jw.org."
-            onResult(error)
+            // Rede fora da EDT; save() e o callback voltam para a EDT — escrever
+            // estado do Compose (data, importingId) de thread crua não recompoe.
+            val result = runCatching {
+                val program = MwbProgramImporter.fetch(AssignmentGenerator.parseDate(date))
+                program to program.parts.mapIndexed { i, p -> "${i + 1}. ${p.label}" }
+            }
+            java.awt.EventQueue.invokeLater {
+                result.fold(
+                    onSuccess = { (program, items) ->
+                        save(data.copy(meetings = data.meetings.map {
+                            if (it.id == meetingId) it.copy(theme = program.theme, program = items) else it
+                        }))
+                        onResult(null)
+                    },
+                    onFailure = { onResult(it.message ?: "Não foi possível ler o programa no jw.org.") }
+                )
+            }
         }
     }
 

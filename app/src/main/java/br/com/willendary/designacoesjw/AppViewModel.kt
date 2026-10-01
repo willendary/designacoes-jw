@@ -1,6 +1,8 @@
 package br.com.willendary.designacoesjw
 
 import android.app.Application
+import android.os.Handler
+import android.os.Looper
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.AndroidViewModel
 import br.com.willendary.designacoesjw.data.*
@@ -261,17 +263,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         Thread {
-            val error = runCatching {
+            // Rede fora da main thread; estado do Compose e o callback voltam para ela.
+            val result = runCatching {
                 val program = MwbProgramImporter.fetch(AssignmentGenerator.parseDate(meeting.date))
-                val items = program.parts.mapIndexed { i, p -> "${i + 1}. ${p.label}" }
-                val updated = meetings.value.map {
-                    if (it.id == meetingId) it.copy(theme = program.theme, program = items) else it
-                }
-                meetings.value = updated
-                repo.saveMeetings(updated)
-                null
-            }.exceptionOrNull()?.message ?: "Não foi possível ler o programa no jw.org."
-            onResult(error)
+                program to program.parts.mapIndexed { i, p -> "${i + 1}. ${p.label}" }
+            }
+            Handler(Looper.getMainLooper()).post {
+                result.fold(
+                    onSuccess = { (program, items) ->
+                        val updated = meetings.value.map {
+                            if (it.id == meetingId) it.copy(theme = program.theme, program = items) else it
+                        }
+                        meetings.value = updated
+                        repo.saveMeetings(updated)
+                        onResult(null)
+                    },
+                    onFailure = { onResult(it.message ?: "Não foi possível ler o programa no jw.org.") }
+                )
+            }
         }.start()
     }
 

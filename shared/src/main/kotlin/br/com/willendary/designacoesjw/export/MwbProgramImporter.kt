@@ -71,16 +71,21 @@ object MwbProgramImporter {
     fun fetch(date: LocalDate): Program {
         val slug = bimestreSlug(date)
         val year = Regex("""(\d{4})-mwb""").find(slug)!!.groupValues[1].toInt()
-        val index = get("https://www.jw.org$BIB$slug/")
+        val indexUrl = "https://www.jw.org$BIB$slug/"
+        val index = get(indexUrl) ?: throw IllegalStateException(
+            "O jw.org ainda não publicou o programa de ${MONTH_NAMES_PT[date.monthValue - 1]}/${year}. " +
+                "A apostila costuma sair com até 2 meses de antecedência."
+        )
         val link = findWeekLink(index, date, year)
             ?: throw IllegalArgumentException("O jw.org não tem programa publicado para a semana de $date.")
         val url = if (link.path.startsWith("http")) link.path else "https://www.jw.org${link.path}"
-        return parse(get(url), link.start, link.end, url)
+        return parse(get(url) ?: throw IllegalStateException("Não foi possível abrir a página do programa."), link.start, link.end, url)
     }
 
     // ── Net ──────────────────────────────────────────────────────────────────
 
-    private fun get(url: String): String {
+    /** null quando a página não existe (404) — o chamador decide a mensagem. */
+    private fun get(url: String): String? {
         val conn = (URI(url).toURL().openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             setRequestProperty(
@@ -91,10 +96,15 @@ object MwbProgramImporter {
             connectTimeout = 15000
             readTimeout = 15000
         }
-        if (conn.responseCode !in 200..299) {
-            throw IllegalStateException("jw.org respondeu ${conn.responseCode} para $url")
+        try {
+            if (conn.responseCode == 404) return null
+            if (conn.responseCode !in 200..299) {
+                throw IllegalStateException("jw.org respondeu ${conn.responseCode} para $url")
+            }
+            return conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+        } finally {
+            conn.disconnect()
         }
-        return conn.inputStream.bufferedReader(Charsets.UTF_8).readText()
     }
 
     // ── Parser ───────────────────────────────────────────────────────────────
