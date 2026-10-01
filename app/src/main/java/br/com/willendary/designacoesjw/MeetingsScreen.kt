@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import br.com.willendary.designacoesjw.data.Meeting
+import br.com.willendary.designacoesjw.ui.MeetingProgramList
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -155,14 +156,14 @@ fun MeetingsScreen(vm: AppViewModel) {
             }
         } else {
             items(weekMeetings, key = { it.id }) { meeting ->
-                WeeklyMeetingCard(meeting)
+                WeeklyMeetingCard(meeting, vm)
             }
         }
     }
 }
 
 @Composable
-private fun WeeklyMeetingCard(meeting: Meeting) {
+private fun WeeklyMeetingCard(meeting: Meeting, vm: AppViewModel) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -178,22 +179,11 @@ private fun WeeklyMeetingCard(meeting: Meeting) {
                 Text(meeting.theme, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             }
 
-            if (meeting.program.isEmpty()) {
-                Text(
-                    "Programa ainda não importado.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            } else {
-                Text(
-                    "${meeting.program.size} itens do programa:",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.SemiBold
-                )
-                meeting.program.forEach { item ->
-                    Text("• ${item.label}", style = MaterialTheme.typography.bodySmall)
-                }
-            }
+            MeetingProgramList(
+                meeting = meeting,
+                brothers = vm.brothers.value,
+                privileges = vm.privileges.value
+            )
 
             if (meeting.assignments.isNotEmpty()) {
                 Text("${meeting.assignments.size} designações cadastradas.", style = MaterialTheme.typography.bodySmall)

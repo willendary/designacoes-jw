@@ -400,6 +400,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         repo.savePrivileges(privileges.value)
     }
 
+    fun setPrivilegeProgramItem(id: Long, item: Int?) {
+        if (!can(AppPermissions.MANAGE_PRIVILEGES)) { lastActionError.value = denied(AppPermissions.MANAGE_PRIVILEGES, "alterar o vínculo da parte"); return }
+        privileges.value = privileges.value.map { if (it.id == id) it.copy(programItem = item) else it }
+        repo.savePrivileges(privileges.value)
+    }
+
     fun setPrivilegeAllowedStatus(id: Long, status: Set<BrotherStatus>) {
         if (!can(AppPermissions.MANAGE_PRIVILEGES)) { lastActionError.value = denied(AppPermissions.MANAGE_PRIVILEGES, "alterar privilégios"); return }
         privileges.value = privileges.value.map { if (it.id == id) it.copy(allowedStatus = status) else it }

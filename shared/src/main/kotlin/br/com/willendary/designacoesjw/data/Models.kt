@@ -80,7 +80,16 @@ data class Privilege(
     /** Quem pode fazer esta parte. Vazio = qualquer um. */
     val allowedStatus: Set<BrotherStatus> = BrotherStatus.entries.toSet(),
     /** Habilitação do irmão que concede este privilégio. NONE = só pelo conjunto `privileges`. */
-    val readerGrant: ReaderGrant = ReaderGrant.NONE
+    val readerGrant: ReaderGrant = ReaderGrant.NONE,
+    /**
+     * Item do programa a que este privilégio corresponde, 1-based.
+     *
+     * Sem esse elo o app não sabe dizer QUEM faz cada parte: `Meeting.assignments`
+     * aponta para o privilégio, e o privilégio não apontava para o item do
+     * programa. Era o que obrigava a tela a mostrar duas listas soltas.
+     * Nulo = não ligado a nenhum item (vale em qualquer semana).
+     */
+    val programItem: Int? = null
 )
 
 @Serializable

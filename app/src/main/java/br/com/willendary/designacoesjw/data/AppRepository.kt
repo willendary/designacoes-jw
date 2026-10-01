@@ -472,6 +472,7 @@ class AppRepository(context: Context) {
                 put("maleOnly", p.maleOnly)
                 put("kind", p.kind.name)
                 put("readerGrant", p.readerGrant.name)
+                p.programItem?.let { put("programItem", it) }
                 put("allowedDays", org.json.JSONArray(p.allowedDays.toList()))
                 put("allowedStatus", org.json.JSONArray(p.allowedStatus.map { it.name }))
             })
@@ -602,14 +603,16 @@ class AppRepository(context: Context) {
         groupId?.let { put("groupId", it) }
     }
 
-    private fun Privilege.toMap() = mapOf(
+    private fun Privilege.toMap(): Map<String, Any?> = mutableMapOf<String, Any?>(
         "id" to id, "name" to name, "quantity" to quantity,
         "active" to active, "allowedDays" to allowedDays.toList(),
         "minRole" to minRole.name, "maleOnly" to maleOnly,
         "kind" to kind.name,
         "allowedStatus" to allowedStatus.map { it.name },
         "readerGrant" to readerGrant.name
-    )
+    ).apply {
+        programItem?.let { put("programItem", it) }
+    }
 
     private fun Meeting.toMap() = mapOf(
         "id" to id, "date" to date, "type" to type,
@@ -706,7 +709,8 @@ class AppRepository(context: Context) {
             maleOnly = maleOnly,
             kind = kind,
             allowedStatus = status,
-            readerGrant = grant
+            readerGrant = grant,
+            programItem = (d["programItem"] as? Number)?.toInt()?.takeIf { it > 0 }
         )
     }
 

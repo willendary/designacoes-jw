@@ -42,6 +42,7 @@ import br.com.willendary.designacoesjw.export.IcsExportHelper
 import br.com.willendary.designacoesjw.export.MwbProgramImporter
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
 import br.com.willendary.designacoesjw.stats.EquityStatisticsHelper
+import br.com.willendary.designacoesjw.ui.MeetingProgramList
 import br.com.willendary.designacoesjw.util.WhatsAppHelper
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -396,6 +397,10 @@ class StoreController {
 
     fun setPrivilegeReaderGrant(id: Long, grant: ReaderGrant) = save(
         data.copy(privileges = data.privileges.map { if (it.id == id) it.copy(readerGrant = grant) else it })
+    )
+
+    fun setPrivilegeProgramItem(id: Long, item: Int?) = save(
+        data.copy(privileges = data.privileges.map { if (it.id == id) it.copy(programItem = item) else it })
     )
 
     fun setPrivilegeAllowedStatus(id: Long, status: Set<BrotherStatus>) = save(
@@ -2943,9 +2948,13 @@ private fun History(c: StoreController) {
                                     fontWeight = FontWeight.SemiBold
                                 )
                             }
-                            m.program.forEach { item ->
-                                Text("• ${item.label}", style = MaterialTheme.typography.bodySmall)
-                            }
+                            // Delegado a shared: cada tela tinha a sua
+                            // renderizacao e elas ja divergiram.
+                            MeetingProgramList(
+                                meeting = m,
+                                brothers = c.data.brothers,
+                                privileges = c.data.privileges
+                            )
 
                             if (m.type.contains("meio de semana", ignoreCase = true)) {
                                 TextButton(

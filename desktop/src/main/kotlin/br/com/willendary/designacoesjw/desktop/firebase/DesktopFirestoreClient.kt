@@ -108,6 +108,9 @@ object DesktopFirestoreClient {
                 put("maleOnly", buildJsonObject { put("booleanValue", priv.maleOnly) })
                 put("kind", buildJsonObject { put("stringValue", priv.kind.name) })
                 put("readerGrant", buildJsonObject { put("stringValue", priv.readerGrant.name) })
+                priv.programItem?.let {
+                    put("programItem", buildJsonObject { put("integerValue", it.toString()) })
+                }
                 put("allowedStatus", buildJsonObject {
                     put("arrayValue", buildJsonObject {
                         put("values", buildJsonArray {
@@ -382,7 +385,9 @@ object DesktopFirestoreClient {
         return Privilege(
             id = id, name = name, quantity = qty, active = active,
             allowedDays = allowedDays, minRole = minRole, maleOnly = maleOnly,
-            kind = kind, allowedStatus = allowedStatus, readerGrant = readerGrant
+            kind = kind, allowedStatus = allowedStatus, readerGrant = readerGrant,
+            programItem = fields["programItem"]?.jsonObject?.get("integerValue")
+                ?.jsonPrimitive?.content?.toIntOrNull()?.takeIf { it > 0 }
         )
     }
 

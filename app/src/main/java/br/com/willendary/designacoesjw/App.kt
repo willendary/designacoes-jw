@@ -30,8 +30,12 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import br.com.willendary.designacoesjw.data.*
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
+import br.com.willendary.designacoesjw.export.ImageExport
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import br.com.willendary.designacoesjw.notification.MeetingReminderHelper
 import br.com.willendary.designacoesjw.stats.EquityStatisticsHelper
+import br.com.willendary.designacoesjw.ui.MeetingProgramList
 import br.com.willendary.designacoesjw.util.WhatsAppHelper
 import kotlinx.coroutines.launch
 import java.time.DayOfWeek
@@ -424,7 +428,7 @@ fun App(
                                     Spacer(Modifier.width(6.dp))
                                     Text("Sair", color = MaterialTheme.colorScheme.error)
                                 }
-                                Text("v0.3.0", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                Text("v0.3.1", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                             }
                         }
                     }
@@ -919,6 +923,7 @@ private fun MeetingCardView(
     var showQuickUnavailability by remember { mutableStateOf(false) }
     var importing by remember { mutableStateOf(false) }
     var importError by remember { mutableStateOf<String?>(null) }
+    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
 
     val dateParts = meeting.date.split("/")
     val dayNum = dateParts.getOrNull(0) ?: "--"
@@ -1012,6 +1017,53 @@ private fun MeetingCardView(
                     Icon(Icons.Filled.Share, contentDescription = "WhatsApp", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                 }
 
+                // Exportar a imagem da reunião. No desktop isso já existia
+                // (java.awt); no celular não havia botão nem gerador, porque
+                // java.awt não existe no Android.
+                var exportingImage by remember { mutableStateOf(false) }
+                IconButton(
+                    onClick = {
+                        if (exportingImage) return@IconButton
+                        exportingImage = true
+                        coroutineScope.launch {
+                            val bitmap = withContext(Dispatchers.Main) {
+                                ImageExport.render(
+                                    context, meeting,
+                                    vm.brothers.value, vm.privileges.value
+                                )
+                            }
+                            exportingImage = false
+                            if (bitmap == null) {
+                                Toast.makeText(context, "Não consegui gerar a imagem.", Toast.LENGTH_LONG).show()
+                                return@launch
+                            }
+                            val fileName = ImageExport.fileNameFor(meeting)
+                            val uri = withContext(Dispatchers.IO) {
+                                ImageExport.saveToGallery(context, bitmap, fileName)
+                            }
+                            val share = ImageExport.shareIntent(context, bitmap, fileName)
+                            if (share != null) {
+                                context.startActivity(Intent.createChooser(share, "Enviar designações"))
+                            } else if (uri != null) {
+                                Toast.makeText(
+                                    context,
+                                    "Salvo em Imagens/Designações JW.",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            } else {
+                                Toast.makeText(context, "Não consegui salvar a imagem.", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    },
+                    enabled = !exportingImage
+                ) {
+                    if (exportingImage) {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Filled.Share, contentDescription = "Exportar imagem da reunião")
+                    }
+                }
+
                 // Importar o programa oficial. Acao de manutencao: fica como
                 // icone ao lado das outras acoes, nao como botao de largura
                 // natural no meio do conteudo do card.
@@ -1047,7 +1099,9 @@ private fun MeetingCardView(
                 }
             }
 
-            // Programa oficial da semana, importado do jw.org
+            // Programa oficial da semana, importado do jw.org.
+            // Delegado a shared: cada tela tinha a sua renderizacao e elas
+            // ja divergiram entre Android e Desktop.
             if (meeting.theme.isNotBlank()) {
                 Text(
                     "📖 ${meeting.theme}",
@@ -1055,9 +1109,11 @@ private fun MeetingCardView(
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
-            meeting.program.forEach { item ->
-                Text("• ${item.label}", style = MaterialTheme.typography.bodySmall)
-            }
+            MeetingProgramList(
+                meeting = meeting,
+                brothers = vm.brothers.value,
+                privileges = vm.privileges.value
+            )
 
             if (meeting.type.contains("meio de semana", ignoreCase = true) && importError != null) {
                 // Erro em linha, sem AlertDialog: na maioria das vezes o bimestre
@@ -2041,6 +2097,39 @@ private fun PrivilegesScreen(vm: AppViewModel) {
                                         }
                                     }
                                 }
+                            }
+
+                            // A qual item do programa este privilégio corresponde.
+                            // É o elo que faltava: sem ele o app não sabia dizer
+                            // QUEM faz cada parte, e a tela mostrava duas listas
+                            // soltas — o programa de um lado, as designações de outro.
+                            Text("Parte do programa:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                            val linkedItem = privilege.programItem
+                            val weekProgram = vm.meetings.value
+                                .filter { it.program.isNotEmpty() }
+                                .sortedBy { AssignmentGenerator.parseDate(it.date) }
+                                .firstOrNull()?.program.orEmpty()
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                FilterChip(
+                                    selected = linkedItem == null,
+                                    onClick = { vm.setPrivilegeProgramItem(privilege.id, null) },
+                                    label = { Text("Não ligar") }
+                                )
+                                weekProgram.forEachIndexed { idx, item ->
+                                    val n = item.number.takeIf { it > 0 } ?: (idx + 1)
+                                    FilterChip(
+                                        selected = linkedItem == n,
+                                        onClick = { vm.setPrivilegeProgramItem(privilege.id, n) },
+                                        label = { Text("$n. ${item.title}".take(24)) }
+                                    )
+                                }
+                            }
+                            if (linkedItem != null) {
+                                Text(
+                                    "O vínculo é pela posição no programa. Se a ordem mudar na semana seguinte, reveja aqui.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
 
                             // Tipo da parte: individual, dupla, encenação ou grupo.
