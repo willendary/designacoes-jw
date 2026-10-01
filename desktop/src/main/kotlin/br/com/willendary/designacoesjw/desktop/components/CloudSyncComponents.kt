@@ -136,14 +136,22 @@ fun DesktopLoginDialog(
                             authUrl = null
                             statusMessage = "Abrindo navegador para login com Google…"
                             c.loginWithGoogle(
-                                onAuthUrl = { url -> authUrl = url },
+                                // loginWithGoogle roda em thread de background.
+                                // Escrever estado do Compose de fora da thread de
+                                // UI não é seguro; o mesmo padrao ja usado em
+                                // Main.kt:252.
+                                onAuthUrl = { url ->
+                                    java.awt.EventQueue.invokeLater { authUrl = url }
+                                },
                                 onResult = { err ->
-                                    googleLoading = false
-                                    statusMessage = null
-                                    if (err == null) {
-                                        onDismiss()
-                                    } else {
-                                        errorMessage = err
+                                    java.awt.EventQueue.invokeLater {
+                                        googleLoading = false
+                                        statusMessage = null
+                                        if (err == null) {
+                                            onDismiss()
+                                        } else {
+                                            errorMessage = err
+                                        }
                                     }
                                 }
                             )

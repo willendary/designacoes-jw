@@ -12,7 +12,7 @@ import java.nio.file.StandardCopyOption
 import java.util.Locale
 import kotlin.concurrent.thread
 
-const val CURRENT_VERSION = "0.3.3"
+const val CURRENT_VERSION = "0.3.4"
 private const val GITHUB_RELEASES_URL = "https://api.github.com/repos/willendary/designacoes-jw/releases?per_page=10"
 
 @Serializable

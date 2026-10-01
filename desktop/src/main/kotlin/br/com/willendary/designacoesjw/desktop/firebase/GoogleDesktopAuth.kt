@@ -56,7 +56,17 @@ object GoogleDesktopAuth {
 
     private const val CALLBACK_PORT = 8181
     private const val SCOPE = "openid email profile"
-    private const val TIMEOUT_SECONDS = 300L // 5 minutos para o usuário autorizar
+    private const val TIMEOUT_SECONDS = 600L // 10 min: o Google pode pedir 2 etapas
+
+    /**
+     * O servidor fica de pé alguns segundos depois de receber o callback.
+     *
+     * Sem isso o app encerrava o servidor no mesmo instante, e o navegador
+     * recebia ERR_CONNECTION_REFUSED na requisição seguinte — tipicamente o
+     * /favicon.ico, que o Chrome pede sempre. O login chegava a ser concluído
+     * e ainda assim a aba do navegador abria em página de erro.
+     */
+    private const val SHUTDOWN_GRACE_SECONDS = 5L
 
     private val REDIRECT_URI = "http://localhost:$CALLBACK_PORT/callback"
 
@@ -137,9 +147,16 @@ object GoogleDesktopAuth {
         val latch = CountDownLatch(1)
 
         val server = try {
-            HttpServer.create(InetSocketAddress(CALLBACK_PORT), 0)
+            // Loopback IPv4 explicito. Em curinga o bind sai dual-stack e
+            // funciona nos dois, mas vincular o loopback deixa o comportamento
+            // previsivel e e o que o Google recomenda para app Desktop.
+            HttpServer.create(InetSocketAddress(java.net.InetAddress.getByName("127.0.0.1"), CALLBACK_PORT), 0)
         } catch (e: Exception) {
-            return GoogleAuthResult(error = "Não foi possível iniciar o servidor de callback (porta $CALLBACK_PORT em uso?): ${e.message}")
+            log("servidor de callback nao iniciou: ${e.message}")
+            return GoogleAuthResult(
+                error = "Não foi possível iniciar o servidor de callback na porta $CALLBACK_PORT. " +
+                    "Outro programa pode estar usando essa porta. Feche-o e tente de novo. (${e.message})"
+            )
         }
 
         server.createContext("/callback") { exchange ->
@@ -164,7 +181,30 @@ object GoogleDesktopAuth {
                 latch.countDown()
             }
         }
-        server.start()
+
+        // Qualquer outro caminho (o /favicon.ico do Chrome, por exemplo) não
+        // pode virar recusa de conexão depois que o app autenticar.
+        server.createContext("/") { exchange ->
+            try {
+                exchange.sendResponseHeaders(204, -1)
+            } catch (_: Exception) {
+                // Requisição já encerrada: nada a fazer.
+            } finally {
+                exchange.close()
+            }
+        }
+
+        try {
+            server.start()
+            log("servidor de callback ouvindo em $REDIRECT_URI")
+        } catch (e: Exception) {
+            // Sem isto a thread morre aqui e a tela fica travada em
+            // "Aguardando Google..." para sempre, sem explicação.
+            return GoogleAuthResult(
+                error = "O servidor de callback não subiu (${e.message}). " +
+                    "Tente novamente; se persistir, feche o app por completo e abra de novo."
+            )
+        }
 
         // 4. Abrir o navegador. Se falhar, seguimos esperando: a UI já recebeu a URL e
         //    oferece o botão "Abrir no navegador" — nunca mais ficamos presos sem saída.
@@ -182,7 +222,15 @@ object GoogleDesktopAuth {
             if (!received && cancelled) break
             if (!received && System.currentTimeMillis() > deadline) break
         }
+        // Só agora derruba o servidor, e ainda com uma carência: o navegador
+        // faz mais requisições depois do callback (favicon, retry) e não pode
+        // tomar recusa de conexão.
+        if (received) {
+            log("callback recebido; mantendo o servidor por ${SHUTDOWN_GRACE_SECONDS}s")
+            Thread.sleep(SHUTDOWN_GRACE_SECONDS * 1000)
+        }
         server.stop(0)
+        log("servidor de callback encerrado")
 
         if (cancelled) {
             return GoogleAuthResult(error = "Login cancelado.", authUrl = authUrl)
@@ -375,8 +423,12 @@ object GoogleDesktopAuth {
 
     // ── Páginas HTML de Retorno ───────────────────────────────────────────────
 
-    private fun successHtml() = """
-        <!DOCTYPE html>
+    /** Vai para stderr: o app empacotado não tem console, mas o launcher exibe. */
+    private fun log(message: String) {
+        System.err.println("[GoogleDesktopAuth] $message")
+    }
+
+    private fun successHtml() = """        <!DOCTYPE html>
         <html lang="pt-BR">
         <head>
           <meta charset="UTF-8">
