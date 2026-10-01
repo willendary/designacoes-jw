@@ -19,6 +19,19 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.random.Random
 
+/**
+ * Texto gravado em [Meeting.type] na reunião criada pelo import do jw.org.
+ *
+ * DIVERGENTE do gerador (`shared/.../generator/AssignmentGenerator.kt`, que grava
+ * "Reunião do meio de semana"). As duas grafias já existem em produção — na nuvem
+ * e no cache local — então trocar o valor é mudança de dado, não de código: exige
+ * migrar as reuniões antigas. Por isso a comparação é sempre por
+ * `type.contains("meio de semana", ignoreCase = true)`, que casa nas duas.
+ * Padronizar exige: (1) gravar a nova grafia no import e no gerador,
+ * (2) um script que reescreva o campo `type` das reuniões com a grafia antiga.
+ */
+private const val TIPO_REUNIAO_MWB = "Reunião de Meio de Semana"
+
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = AppRepository(app)
     private val accessRepo = UserAccessRepository()
@@ -245,75 +258,47 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * Importa uma semana diretamente da tela "Reuniões".
+     * Importa a semana de [meetingDate] a partir da tela "Reuniões".
      *
-     * Se a reunião de meio de semana já existir na data informada, apenas atualiza
-     * o tema e o programa, preservando as designações existentes.
-     * Caso contrário, cria a reunião para que ela possa ser designada posteriormente.
+     * Delega para a mesma implementação do card: se a reunião de meio de semana já
+     * existir na data, apenas o tema e o programa são atualizados, preservando as
+     * designações; caso contrário a reunião é criada para ser designada depois.
      */
     fun importMwbWeek(meetingDate: LocalDate, onResult: (String?) -> Unit) {
-        if (!can(AppPermissions.GENERATE_ASSIGNMENTS)) {
-            onResult(denied(AppPermissions.GENERATE_ASSIGNMENTS, "importar o programa"))
-            return
-        }
-        Thread {
-            val error = runCatching {
-                val program = MwbProgramImporter.fetch(meetingDate)
-                val items = program.parts.map { part ->
-                    ProgramItem(section = part.section, number = part.number, title = part.title, minutes = part.minutes)
-                }
-                val dateText = meetingDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))
-                val current = meetings.value
-                val existing = current.firstOrNull {
-                    it.date == dateText && it.type.contains("meio de semana", ignoreCase = true)
-                }
-
-                val updated = if (existing != null) {
-                    current.map {
-                        if (it.id == existing.id) {
-                            it.copy(theme = program.theme, program = items)
-                        } else it
-                    }
-                } else {
-                    current + Meeting(
-                        id = AssignmentGenerator.nextId(),
-                        date = dateText,
-                        type = "Reunião de Meio de Semana",
-                        assignments = emptyList(),
-                        blockedBrotherIds = emptySet(),
-                        theme = program.theme,
-                        program = items
-                    )
-                }
-
-                val sorted = updated.sortedBy { AssignmentGenerator.parseDate(it.date) }
-                meetings.value = sorted
-                repo.saveMeetings(sorted)
-                null
-            }.exceptionOrNull()?.message ?: "Não foi possível importar o programa do jw.org."
-
-            onResult(error)
-        }.start()
+        importMwb(meetingDate, meetingId = null, onResult = onResult)
     }
 
     /**
-     * Baixa o programa da Reunião Vida e Ministério da semana no jw.org e grava
-     * tema + itens na reunião. [onResult] recebe null em sucesso, ou a mensagem de erro.
+     * Atualiza o programa de uma reunião já existente (botão do card).
+     * [onResult] recebe null em sucesso, ou a mensagem de erro.
      */
     fun importMwbProgram(meetingId: Long, onResult: (String?) -> Unit) {
-        if (!can(AppPermissions.GENERATE_ASSIGNMENTS)) {
-            onResult(denied(AppPermissions.GENERATE_ASSIGNMENTS, "importar o programa"))
-            return
-        }
         val meeting = meetings.value.firstOrNull { it.id == meetingId }
         if (meeting == null) {
             onResult("Reunião não encontrada.")
             return
         }
+        importMwb(AssignmentGenerator.parseDate(meeting.date), meetingId, onResult)
+    }
+
+    /**
+     * Implementação única do import do jw.org (#16).
+     *
+     * A rede roda fora da main thread; montar os [ProgramItem], gravar o estado do
+     * Compose e chamar [onResult] voltam para ela — escrever `meetings.value` de
+     * dentro da thread não recomõe a tela.
+     *
+     * @param meetingId reunião a atualizar. Nulo faz o import achar a reunião de
+     *   meio de semana da data e criá-la quando ela ainda não existir.
+     */
+    private fun importMwb(date: LocalDate, meetingId: Long?, onResult: (String?) -> Unit) {
+        if (!can(AppPermissions.GENERATE_ASSIGNMENTS)) {
+            onResult(denied(AppPermissions.GENERATE_ASSIGNMENTS, "importar o programa"))
+            return
+        }
         Thread {
-            // Rede fora da main thread; estado do Compose e o callback voltam para ela.
             val result = runCatching {
-                val program = MwbProgramImporter.fetch(AssignmentGenerator.parseDate(meeting.date))
+                val program = MwbProgramImporter.fetch(date)
                 program to program.parts.map { p ->
                     ProgramItem(section = p.section, number = p.number, title = p.title, minutes = p.minutes)
                 }
@@ -321,17 +306,48 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             Handler(Looper.getMainLooper()).post {
                 result.fold(
                     onSuccess = { (program, items) ->
-                        val updated = meetings.value.map {
-                            if (it.id == meetingId) it.copy(theme = program.theme, program = items) else it
-                        }
-                        meetings.value = updated
-                        repo.saveMeetings(updated)
+                        meetings.value = applyMwbProgram(date, meetingId, program.theme, items)
+                        repo.saveMeetings(meetings.value)
                         onResult(null)
                     },
                     onFailure = { onResult(it.message ?: "Não foi possível ler o programa no jw.org.") }
                 )
             }
         }.start()
+    }
+
+    /**
+     * Grava tema e itens do programa oficial em [meetings].
+     *
+     * Com [meetingId] a reunião existente é atualizada; sem ele, a reunião de meio
+     * de semana de [date] é atualizada se existir — o que preserva as designações —,
+     * ou criada vazia se ainda não existir.
+     */
+    private fun applyMwbProgram(
+        date: LocalDate,
+        meetingId: Long?,
+        theme: String,
+        items: List<ProgramItem>
+    ): List<Meeting> {
+        val current = meetings.value
+        val dateText = date.format(AssignmentGenerator.DATE_FORMATTER)
+        val targetId = meetingId ?: current.firstOrNull {
+            it.date == dateText && it.type.contains("meio de semana", ignoreCase = true)
+        }?.id
+        val updated = if (targetId != null) {
+            current.map { if (it.id == targetId) it.copy(theme = theme, program = items) else it }
+        } else {
+            current + Meeting(
+                id = AssignmentGenerator.nextId(),
+                date = dateText,
+                type = TIPO_REUNIAO_MWB,
+                assignments = emptyList(),
+                blockedBrotherIds = emptySet(),
+                theme = theme,
+                program = items
+            )
+        }
+        return updated.sortedBy { AssignmentGenerator.parseDate(it.date) }
     }
 
     fun deleteMonth(yearMonth: YearMonth) {

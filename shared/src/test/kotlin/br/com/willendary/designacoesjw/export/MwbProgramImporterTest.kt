@@ -119,4 +119,63 @@ class MwbProgramImporterTest {
         assertEquals(LocalDate.of(2026, 10, 12), link.start)
         assertEquals(LocalDate.of(2026, 10, 18), link.end)
     }
+
+    // ---- #19: decodificacao de caminho e de entidades HTML ----
+
+    @Test
+    fun `sinal de mais no caminho nao vira espaco`() {
+        // URLDecoder trataria "+" como espaco (regra de query string) e o slug
+        // saia corrompido; em caminho, "+" e o proprio sinal de mais.
+        assertEquals(
+            "/pt/biblioteca/mwb+extra/Programa-para-5-11/",
+            MwbProgramImporter.decodePath("/pt/biblioteca/mwb+extra/Programa-para-5-11/")
+        )
+        assertEquals("a+b+c", MwbProgramImporter.decodePath("a+b+c"))
+    }
+
+    @Test
+    fun `percent encoding do caminho e decodificado`() {
+        // %C3%A7 sao os dois bytes de "ç" em UTF-8.
+        assertEquals("/pt/ção/", MwbProgramImporter.decodePath("/pt/%C3%A7%C3%A3o/"))
+        assertEquals("/pt/a b/", MwbProgramImporter.decodePath("/pt/a%20b/"))
+        assertEquals("/pt/100%/z", MwbProgramImporter.decodePath("/pt/100%25/z"))
+    }
+
+    @Test
+    fun `percent encoding malformado nao estoura`() {
+        // "%" no fim, "%" sozinho e "%ZZ" devolvem o caractere como esta.
+        assertEquals("/pt/100%", MwbProgramImporter.decodePath("/pt/100%"))
+        assertEquals("/pt/%", MwbProgramImporter.decodePath("/pt/%"))
+        assertEquals("/pt/%ZZ/", MwbProgramImporter.decodePath("/pt/%ZZ/"))
+        assertEquals("/pt/%A", MwbProgramImporter.decodePath("/pt/%A"))
+        assertEquals("", MwbProgramImporter.decodePath(""))
+    }
+
+    @Test
+    fun `link da semana preserva o sinal de mais do slug`() {
+        val html = """
+            <a href="/pt/biblioteca/jw-apostila-do-mes/setembro-outubro-2026-mwb/Programa-para-12-18-de-outubro+mensal/">12-18 de outubro</a>
+        """.trimIndent()
+        val link = assertNotNull(MwbProgramImporter.findWeekLink(html, LocalDate.of(2026, 10, 14), ano))
+        assertEquals(
+            "/pt/biblioteca/jw-apostila-do-mes/setembro-outubro-2026-mwb/Programa-para-12-18-de-outubro+mensal/",
+            link.path
+        )
+    }
+
+    @Test
+    fun `entidade html e decodificada uma vez so`() {
+        val html = """
+            <h1>5-11 de outubro</h1>
+            <h3>1. Joias &lt;espirituais&gt;</h3>
+            <h3>2. Texto &amp;lt;literal&amp;gt;</h3>
+        """.trimIndent()
+        val program = MwbProgramImporter.parse(
+            html, LocalDate.of(2026, 10, 5), LocalDate.of(2026, 10, 11), "http://x"
+        )
+        // "&lt;" e uma entidade real: vira "<".
+        assertEquals("Joias <espirituais>", program.parts.first { it.number == 1 }.title)
+        // "&amp;lt;" representa o TEXTO "&lt;": decodificar duas vezes viraria "<".
+        assertEquals("Texto &lt;literal&gt;", program.parts.first { it.number == 2 }.title)
+    }
 }

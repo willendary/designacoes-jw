@@ -3,11 +3,9 @@ package br.com.willendary.designacoesjw.desktop
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -16,7 +14,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -183,15 +180,34 @@ class StoreController {
     @Volatile
     private var pushToken: String = ""
 
+    /**
+     * Há alteração local ainda não confirmada pelo servidor?
+     *
+     * Sem isto, um sync que chega da nuvem depois de uma edição local
+     * sobrescreve a edição: o usuário mudava os dias da semana, o push ficava
+     * 2 s na carência do CoalescingWorker, o pull retornava o valor antigo da
+     * nuvem e a edição sumia da tela. O pull precisa saber que a local é mais
+     * nova.
+     */
+    @Volatile
+    private var pendingLocalChange = false
+
     private val pushWorker = CoalescingWorker<Store>(
         debounceMs = PUSH_DEBOUNCE_MS,
         current = { lastStore },
-        action = { snapshot -> pushToCloud(pushToken, snapshot) },
-        onError = { e -> System.err.println("[StoreController] push falhou: ${e.message}") }
+        action = { snapshot ->
+            pushToCloud(pushToken, snapshot)
+            pendingLocalChange = false
+        },
+        onError = { e ->
+            System.err.println("[StoreController] push falhou: ${e.message}")
+            // Continua marcado como pendente: o servidor ainda não tem isso.
+        }
     )
 
     private fun schedulePush(token: String) {
         pushToken = token
+        pendingLocalChange = true
         pushWorker.schedule()
     }
 
@@ -356,7 +372,13 @@ class StoreController {
             val res = DesktopFirestoreClient.fetchCloudStore(session.idToken)
             res.fold(
                 onSuccess = { cloudStore ->
-                    if (cloudStore.brothers.isNotEmpty() || cloudStore.meetings.isNotEmpty() || cloudStore.privileges.isNotEmpty()) {
+                    if (pendingLocalChange) {
+                        // Tem edição local que o push ainda não levou. O que
+                        // veio da nuvem é mais velho: aplicar aqui apagaria a
+                        // edição da tela (issue #17). Envia a local e preserva.
+                        log("sync: alteracao local pendente; enviando local em vez de sobrescrever")
+                        pushToCloud(session.idToken, lastStore)
+                    } else if (cloudStore.brothers.isNotEmpty() || cloudStore.meetings.isNotEmpty() || cloudStore.privileges.isNotEmpty()) {
                         val merged = cloudStore.copy(themeMode = data.themeMode)
                         data = merged
                         lastStore = merged
@@ -544,8 +566,23 @@ class StoreController {
         }))
     }
 
+    /** Vai para stderr: o app empacotado não tem console, mas o launcher exibe. */
+    private fun log(message: String) {
+        System.err.println("[StoreController] $message")
+    }
+
+    /**
+     * O diálogo guarda os dias em `remember` sem chave. Se o valor mudar
+     * enquanto o diálogo está aberto — o que acontece quando um sync da nuvem
+     * atualiza a configuração — a tela continuaria mostrando o valor antigo e
+     * o "Salvar" gravaria por cima da edição.
+     */
     fun setMeetingDays(first: Int, second: Int) {
-        if (first != second) save(data.copy(firstDay = first, secondDay = second))
+        if (first == second) {
+            log("dias de reuniao ignorados: primeiro e segundo sao o mesmo ($first)")
+            return
+        }
+        save(data.copy(firstDay = first, secondDay = second))
     }
 
     fun generateMonth(month: YearMonth) {
@@ -761,7 +798,23 @@ fun main() = application {
                 surface = Color.White
             )
         ) {
-            DesktopApp(c, onShowUpdate = { updateInfo = it })
+            // Erro de ação. O StoreController.reportError() existia, mas
+            // nada lia o estado — a mensagem sumia. Sem isto, "não consegui
+            // gerar a imagem" e os erros de permissão eram engolidos.
+            val snackbarHostState = remember { SnackbarHostState() }
+            LaunchedEffect(c.actionError) {
+                c.actionError?.let {
+                    snackbarHostState.showSnackbar(it, withDismissAction = true, duration = SnackbarDuration.Long)
+                    c.clearActionError()
+                }
+            }
+            Box(Modifier.fillMaxSize()) {
+                DesktopApp(c, onShowUpdate = { updateInfo = it })
+                SnackbarHost(
+                    snackbarHostState,
+                    Modifier.align(Alignment.BottomCenter).padding(20.dp)
+                )
+            }
             if (!checkingUpdate && updateInfo != null) {
                 UpdateDialog(
                     info = updateInfo!!,
@@ -1583,8 +1636,11 @@ private fun DesktopMeetingDaysDialog(
     onSave: (Int, Int) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var firstDay by remember { mutableIntStateOf(currentFirstDay) }
-    var secondDay by remember { mutableIntStateOf(currentSecondDay) }
+    // `key` nos dias: sem ele, o remember segura o valor antigo e o diálogo
+    // passa a mostrar — e a salvar — um dia que não é o atual, quando um sync
+    // atualiza a configuração com o diálogo aberto.
+    var firstDay by remember(currentFirstDay) { mutableIntStateOf(currentFirstDay) }
+    var secondDay by remember(currentSecondDay) { mutableIntStateOf(currentSecondDay) }
     var firstOpen by remember { mutableStateOf(false) }
     var secondOpen by remember { mutableStateOf(false) }
 

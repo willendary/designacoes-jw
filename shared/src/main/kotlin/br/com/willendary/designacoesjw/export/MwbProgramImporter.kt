@@ -1,8 +1,8 @@
 package br.com.willendary.designacoesjw.export
 
+import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URI
-import java.net.URLDecoder
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
@@ -57,6 +57,47 @@ object MwbProgramImporter {
 
     private const val BIB = "/pt/biblioteca/jw-apostila-do-mes/"
 
+    // ── Padrões compilados uma única vez ────────────────────────────────────
+    //
+    // Em Kotlin cada `Regex(...)` compila um Pattern novo. Dentro de função — e
+    // pior, dentro de `for (m in headRe.findAll(body))` — o mesmo padrão era
+    // recompilado uma vez por item do programa e por chamada de `plain()`, que
+    // é chamada em todo cabeçalho. Aqui ficam prontos: só o padrão e as flags
+    // importam, então nada muda além de quando o Pattern nasce.
+
+    /** Ano do slug bimestral: "setembro-outubro-2026-mwb" → "2026". */
+    private val RE_YEAR_IN_SLUG = Regex("""(\d{4})-mwb""")
+
+    private val RE_WEEK_LINK = Regex(
+        """<a[^>]+href="([^"]*Programa[^"]*)"[^>]*>(.*?)</a>""",
+        setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
+    )
+
+    /** Marcações de ordinal do jw.org: "1.º" → "1". */
+    private val RE_ORDINAL_MARK = Regex("""[.\u00ba\u00b0]""")
+
+    /** Ano solto no rótulo da semana ("5-11 de outubro de 2026"). */
+    private val RE_LOOSE_YEAR = Regex("""\bde\s+\d{4}\b""", RegexOption.IGNORE_CASE)
+
+    /** \b evita que "2026" vire o dia "20". */
+    private val RE_DAY_TOKEN = Regex("""\b(\d{1,2})\b(?:\s*de\s+([a-zçãç]+))?""", RegexOption.IGNORE_CASE)
+
+    private val RE_HEADING = Regex(
+        """<h([23])([^>]*)>(.*?)</h\1>""",
+        setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
+    )
+
+    private val RE_NUMBERED_ITEM = Regex("""^(\d{1,2})\.\s+(.*)$""")
+    private val RE_MINUTES = Regex("""\((\d{1,3})\s*min""", RegexOption.IGNORE_CASE)
+    private val RE_MINUTES_IN_TITLE = Regex("""\s*\(\d{1,3}\s*min[^)]*\)""", RegexOption.IGNORE_CASE)
+
+    private val RE_SCRIPTURE = Regex("""^[\p{Lu}\p{L} .'\-]+\s*\d+([–\-]\d+)?$""")
+
+    private val RE_SCRIPT = Regex("""(?is)<script.*?</script>""")
+    private val RE_STYLE = Regex("""(?is)<style.*?</style>""")
+    private val RE_TAG = Regex("""<[^>]+>""")
+    private val RE_WHITESPACE = Regex("""[\s\u00a0]+""")
+
     /**
      * {bimestre}-{ano}-mwb, ex.: setembro-outubro-2026-mwb.
      *
@@ -79,7 +120,7 @@ object MwbProgramImporter {
      */
     fun fetch(date: LocalDate): Program {
         val slug = bimestreSlug(date)
-        val year = Regex("""(\d{4})-mwb""").find(slug)!!.groupValues[1].toInt()
+        val year = RE_YEAR_IN_SLUG.find(slug)!!.groupValues[1].toInt()
         val indexUrl = "https://www.jw.org$BIB$slug/"
         val index = get(indexUrl) ?: throw IllegalStateException(
             "O jw.org ainda não publicou o programa de ${MONTH_NAMES_PT[date.monthValue - 1]}/${year}. " +
@@ -125,17 +166,56 @@ object MwbProgramImporter {
      * O ano vem do slug bimestral — os rótulos do jw.org não trazem ano.
      */
     internal fun findWeekLink(html: String, date: LocalDate, year: Int): WeekLink? {
-        val linkRe = Regex(
-            """<a[^>]+href="([^"]*Programa[^"]*)"[^>]*>(.*?)</a>""",
-            setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
-        )
-        for (m in linkRe.findAll(html)) {
+        for (m in RE_WEEK_LINK.findAll(html)) {
             val range = parseWeekRange(plain(m.groupValues[2]), year) ?: continue
             if (date >= range.first && date <= range.second) {
-                return WeekLink(URLDecoder.decode(m.groupValues[1], "UTF-8"), range.first, range.second)
+                return WeekLink(decodePath(m.groupValues[1]), range.first, range.second)
             }
         }
         return null
+    }
+
+    /**
+     * Decodifica percent-encoding de **caminho** de URL, preservando o `+`.
+     *
+     * `URLDecoder` é para query string (`application/x-www-form-urlencoded`),
+     * onde `+` significa espaço. Num caminho o `+` é o próprio sinal de mais —
+     * e o jw.org usa `+` nos slugs. Decodificar com `URLDecoder` corrompia o
+     * caminho e o bimestre deixava de ser encontrado.
+     *
+     * Sequência malformada (`%` no fim, `%ZZ`) é devolvida como está, sem estourar.
+     */
+    internal fun decodePath(value: String): String {
+        if (!value.contains('%')) return value
+        // Percorre os bytes UTF-8: um %XX solto pode montar um caractere
+        // multibyte, e qualquer caractere literal precisa sobreviver inteiro.
+        val src = value.toByteArray(Charsets.UTF_8)
+        val out = ByteArrayOutputStream(src.size)
+        var i = 0
+        while (i < src.size) {
+            val b = src[i].toInt() and 0xFF
+            if (b == PERCENT && i + 2 < src.size) {
+                val code = hex(src[i + 1].toInt()) shl 4 or hex(src[i + 2].toInt())
+                if (code >= 0) {
+                    out.write(code)
+                    i += 3
+                    continue
+                }
+            }
+            out.write(b)
+            i++
+        }
+        return String(out.toByteArray(), Charsets.UTF_8)
+    }
+
+    private const val PERCENT = 0x25 // '%'
+
+    /** Valor do nibble hexadecimal, ou -1 quando o byte não é hex. */
+    private fun hex(b: Int): Int = when (b) {
+        in 0x30..0x39 -> b - 0x30          // 0-9
+        in 0x41..0x46 -> b - 0x41 + 10     // A-F
+        in 0x61..0x66 -> b - 0x61 + 10     // a-f
+        else -> -1
     }
 
     /**
@@ -145,11 +225,11 @@ object MwbProgramImporter {
      */
     internal fun parseWeekRange(label: String, year: Int): Pair<LocalDate, LocalDate>? {
         // Limpa "1.º" → "1" e o ano solto antes de tokenizar.
-        val text = label.replace(Regex("""[.\u00ba\u00b0]"""), "")
-            .replace(Regex("""\bde\s+\d{4}\b""", RegexOption.IGNORE_CASE), "")
+        val text = label.replace(RE_ORDINAL_MARK, "")
+            .replace(RE_LOOSE_YEAR, "")
 
         // \b evita que "2026" vire o dia "20".
-        val tokens = Regex("""\b(\d{1,2})\b(?:\s*de\s+([a-zçãç]+))?""", RegexOption.IGNORE_CASE)
+        val tokens = RE_DAY_TOKEN
             .findAll(text)
             .map { m ->
                 m.groupValues[1].toInt() to m.groupValues[2].lowercase(Locale.ROOT).let { MONTHS[it] }
@@ -188,21 +268,17 @@ object MwbProgramImporter {
         var currentSection = ""
         val parts = mutableListOf<Part>()
 
-        val headRe = Regex(
-            """<h([23])([^>]*)>(.*?)</h\1>""",
-            setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
-        )
-        for (m in headRe.findAll(body)) {
+        for (m in RE_HEADING.findAll(body)) {
             val level = m.groupValues[1]
             val text = plain(m.groupValues[3])
             if (text.isEmpty()) continue
 
-            val numbered = Regex("""^(\d{1,2})\.\s+(.*)$""").find(text)
+            val numbered = RE_NUMBERED_ITEM.find(text)
             if (numbered != null) {
-                val minutes = Regex("""\((\d{1,3})\s*min""", RegexOption.IGNORE_CASE)
+                val minutes = RE_MINUTES
                     .find(text)?.groupValues?.get(1)?.toIntOrNull() ?: 0
                 // A duração entra em Part.minutes; não deve sobrar no título.
-                val title = Regex("""\s*\(\d{1,3}\s*min[^)]*\)""", RegexOption.IGNORE_CASE)
+                val title = RE_MINUTES_IN_TITLE
                     .replace(numbered.groupValues[2], "")
                     .trim()
                     .trimEnd('.')
@@ -241,19 +317,28 @@ object MwbProgramImporter {
 
     /** "JEREMIAS 40-41", "SALMOS 1-8" — sem marcadores como "(10 min)". */
     private fun looksLikeScripture(text: String): Boolean =
-        Regex("""^[\p{Lu}\p{L} .'\-]+\s*\d+([–\-]\d+)?$""").matches(text.trim())
+        RE_SCRIPTURE.matches(text.trim())
 
     /** HTML → texto puro, colapsando espaços. */
     private fun plain(html: String): String {
-        var t = Regex("""(?is)<script.*?</script>""").replace(html, " ")
-        t = Regex("""(?is)<style.*?</style>""").replace(t, " ")
-        t = Regex("""<[^>]+>""").replace(t, " ")
+        var t = RE_SCRIPT.replace(html, " ")
+        t = RE_STYLE.replace(t, " ")
+        t = RE_TAG.replace(t, " ")
         for (e in ENTITIES) t = t.replace(e.first, e.second)
-        return t.replace(Regex("""[\s\u00a0]+"""), " ").trim()
+        return RE_WHITESPACE.replace(t, " ").trim()
     }
 
+    /**
+     * Entidades HTML, na ordem em que precisam ser aplicadas.
+     *
+     * `&amp;` fica por **último** de propósito: o texto `&amp;lt;` representa
+     * literalmente `&lt;` na página, e decodificar `&amp;` antes deixaria o
+     * `&lt;` recém-decodificado virar `<` — o navegador exibiria `<` onde
+     * deveria aparecer `&lt;`. Decodificar uma vez é o comportamento do navegador.
+     */
     private val ENTITIES = listOf(
-        "&nbsp;" to " ", "&amp;" to "&", "&lt;" to "<", "&gt;" to ">",
-        "&quot;" to "\"", "&#39;" to "'", "–" to "-", "—" to "-"
+        "&nbsp;" to " ", "&lt;" to "<", "&gt;" to ">",
+        "&quot;" to "\"", "&#39;" to "'", "–" to "-", "—" to "-",
+        "&amp;" to "&"
     )
 }

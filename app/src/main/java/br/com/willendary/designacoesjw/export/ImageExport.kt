@@ -1,7 +1,5 @@
 package br.com.willendary.designacoesjw.export
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -172,19 +170,6 @@ object ImageExport {
         } catch (e: Exception) {
             Log.e(TAG, "Falha ao preparar o compartilhamento", e)
             null
-        }
-    }
-
-    /** Copia para a área de transferência. No Android 13+ o sistema mostra aviso de pré-visualização. */
-    fun copyToClipboard(context: Context, bitmap: Bitmap) {
-        try {
-            val manager = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-            manager?.setPrimaryClip(ClipData.newPlainText("Designações JW", ""))
-            // ClipData só carrega texto; a imagem vai pela ClipData.newUri
-            // quando houver arquivo, que é o caminho suportado pela plataforma.
-            Log.d(TAG, "Clipboard de imagem depende de uri; use shareIntent.")
-        } catch (e: Exception) {
-            Log.e(TAG, "Falha ao copiar para a área de transferência", e)
         }
     }
 

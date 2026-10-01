@@ -89,4 +89,57 @@ class EquityStatisticsHelperTest {
         // b1 e b2 têm 1 designação cada; b3 tem 0. Média = 2 / 2 = 1.0 (b3 não dilui).
         assertEquals(1.0, report.averageAssignmentsPerAssignedBrother)
     }
+
+    @Test
+    fun `reunioes de outro mes nao entram na estatistica`() {
+        val priv = listOf(Privilege(1, "Som"))
+        val irmaos = listOf(Brother(1, "Joao"), Brother(2, "Maria"))
+        val reunioes = listOf(
+            Meeting(1, "04/10/2026", "Meio de semana", listOf(Assignment(1, 1))),
+            Meeting(2, "28/09/2026", "Meio de semana", listOf(Assignment(1, 1), Assignment(1, 2)))
+        )
+
+        val relatorio = EquityStatisticsHelper.calculateMonthStats(YearMonth.of(2026, 10), reunioes, irmaos, priv)
+
+        assertEquals(1, relatorio.totalMeetings, "só outubro conta")
+        assertEquals(1, relatorio.totalAssignments)
+        // Maria só apareceu em setembro: fica sem designação no mês.
+        assertEquals(listOf(2L), relatorio.unassignedActiveBrothers.map { it.id })
+    }
+
+    @Test
+    fun `empate de designacoes e desfeito pelo nome normalizado`() {
+        val priv = listOf(Privilege(1, "Som"))
+        val irmaos = listOf(
+            Brother(1, "Zé"),
+            Brother(2, "Ana")
+        )
+        val reunioes = listOf(
+            Meeting(1, "04/10/2026", "Meio de semana", listOf(Assignment(1, 1))),
+            Meeting(2, "11/10/2026", "Meio de semana", listOf(Assignment(1, 2)))
+        )
+
+        val relatorio = EquityStatisticsHelper.calculateMonthStats(YearMonth.of(2026, 10), reunioes, irmaos, priv)
+
+        // Ambos com 1: a ordem é alfabética pelo nome normalizado (ana < zé),
+        // e não pela ordem de cadastro.
+        assertEquals(listOf(2L, 1L), relatorio.ranking.map { it.brother.id })
+    }
+
+    @Test
+    fun `totais por privilegio vem ordenados por nome`() {
+        val priv = listOf(Privilege(1, "Som"), Privilege(2, "Áudio"), Privilege(3, "Mesa"))
+        val irmaos = listOf(Brother(1, "Joao"))
+        val reunioes = listOf(
+            Meeting(
+                1, "04/10/2026", "Meio de semana",
+                listOf(Assignment(1, 1), Assignment(2, 1), Assignment(2, 1), Assignment(3, 1))
+            )
+        )
+
+        val relatorio = EquityStatisticsHelper.calculateMonthStats(YearMonth.of(2026, 10), reunioes, irmaos, priv)
+
+        assertEquals(mapOf("Áudio" to 2, "Mesa" to 1, "Som" to 1), relatorio.privilegeTotals)
+        assertEquals(listOf("Áudio", "Mesa", "Som"), relatorio.privilegeTotals.keys.toList())
+    }
 }

@@ -4,6 +4,7 @@ import br.com.willendary.designacoesjw.data.Brother
 import br.com.willendary.designacoesjw.data.Meeting
 import br.com.willendary.designacoesjw.data.Privilege
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
+import br.com.willendary.designacoesjw.util.TextOrder
 import java.time.YearMonth
 
 data class BrotherAssignmentCount(
@@ -78,7 +79,12 @@ object EquityStatisticsHelper {
             totalAssignments = assignments.size,
             ranking = ranking,
             unassignedActiveBrothers = unassigned,
-            privilegeTotals = privilegeCounts.toSortedMap(),
+            privilegeTotals = privilegeCounts.entries
+                // toSortedMap() usava a ordem natural de String, que compara
+                // pontos de codigo: "Áudio" (U+00C1) ficava depois de "Z". Numa
+                // lista lida por gente, o esperado e "Áudio" no começo.
+                .sortedWith(Comparator { a, b -> TextOrder.ptBr.compare(a.key, b.key) })
+                .associate { it.key to it.value },
             averageAssignmentsPerAssignedBrother = average
         )
     }

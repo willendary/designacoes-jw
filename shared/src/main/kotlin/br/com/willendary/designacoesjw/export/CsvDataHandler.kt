@@ -27,16 +27,21 @@ object CsvDataHandler {
     )
 
     fun importBrothersFromCsv(csvContent: String): List<ImportedBrother> {
-        val delimiter = if (csvContent.substringBefore('\n').contains(";")) ';' else ','
-        val rows = parseCsv(csvContent, delimiter)
+        // O Excel no Windows grava CSV com BOM. Sem tirar, o caractere vai
+        // para dentro do primeiro nome e a deduplicação por normalizeName
+        // falha: reimportar o mesmo arquivo criava irmãos duplicados.
+        val content = csvContent.removePrefix("﻿")
+        val delimiter = sniffDelimiter(content)
+        val rows = parseCsv(content, delimiter)
         if (rows.isEmpty()) return emptyList()
 
         val results = mutableListOf<ImportedBrother>()
-        val dataRows = if (rows.first().firstOrNull()?.lowercase()?.contains("nome") == true) rows.drop(1) else rows
+        val firstCell = rows.first().firstOrNull()?.trim()?.removePrefix("﻿")?.lowercase().orEmpty()
+        val dataRows = if (firstCell.startsWith("nome")) rows.drop(1) else rows
 
         dataRows.forEach { cols ->
             if (cols.isNotEmpty() && cols[0].isNotBlank()) {
-                val name = unprotect(cols[0])
+                val name = unprotect(cols[0].removePrefix("﻿"))
                 val phone = cols.getOrNull(1)?.filter { it.isDigit() || it == '+' } ?: ""
                 val roleStr = cols.getOrNull(2)?.lowercase() ?: ""
                 val role = when {
@@ -49,12 +54,40 @@ object CsvDataHandler {
                     ?.map { unprotect(it.trim()) }
                     ?.filter { it.isNotBlank() } ?: emptyList()
 
-                val active = cols.getOrNull(4)?.lowercase()?.let { it != "não" && it != "nao" && it != "false" && it != "0" } ?: true
+                val active = parseAtivo(cols.getOrNull(4))
 
                 results += ImportedBrother(name, phone, role, privNames, active)
             }
         }
         return results
+    }
+
+    /**
+     * Escolhe o delimitador olhando a primeira linha **não vazia**.
+     *
+     * Antes olhava `substringBefore('\n')`, que dá "" quando o arquivo começa
+     * com linha em branco — e aí o delimitador virava vírgula num arquivo
+     * separado por ponto e vírgula, com cada linha virando uma coluna só.
+     */
+    private fun sniffDelimiter(content: String): Char {
+        val firstLine = content.lineSequence().firstOrNull { it.isNotBlank() } ?: return ';'
+        // Um ; dentro de aspas no header não deve decidir pelo ponto e vírgula.
+        val outside = firstLine.replace(Regex("\"[^\"]*\""), "")
+        return if (outside.contains(';')) ';' else ','
+    }
+
+    /**
+     * Interpreta a coluna Ativo. O export escreve "Sim"/"Não", mas quem digita
+     * o arquivo escreve de outras formas, e um valor vazio precisa de um
+     * significado explícito — antes qualquer texto desconhecido virava `true`.
+     */
+    private fun parseAtivo(raw: String?): Boolean {
+        val v = raw?.trim()?.lowercase()?.removePrefix("﻿").orEmpty()
+        if (v.isEmpty()) return true
+        return when (v) {
+            "não", "nao", "no", "n", "false", "f", "0", "inativo" -> false
+            else -> true
+        }
     }
 
     fun exportMeetingsToCsv(

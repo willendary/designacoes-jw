@@ -575,4 +575,103 @@ class AssignmentGeneratorTest {
             AssignmentGenerator.isAuthorized(leitor, depois)
         )
     }
+
+    // ---- #20: regras de negocio puras sem cobertura ----
+
+    @Test
+    fun `privilegio do dia com designacao a menos que a quantidade fica pendente`() {
+        val indicador = Privilege(id = 1, name = "Indicador", quantity = 2, allowedDays = setOf(3))
+        val hoje = Meeting(1, "07/10/2026", "Meio de semana", listOf(Assignment(1, 10)))
+
+        val pendentes = AssignmentGenerator.missingAssignments(hoje, listOf(indicador))
+
+        // 1 de 2 designados: ainda falta um.
+        assertEquals(listOf(1L), pendentes.map { it.id })
+    }
+
+    @Test
+    fun `privilegio so entra como pendencia no dia configurado`() {
+        val soQuarta = Privilege(id = 1, name = "Som", quantity = 1, allowedDays = setOf(3))
+        val desativado = Privilege(id = 2, name = "Desativado", quantity = 1, active = false)
+        val mercoledi = Meeting(1, "07/10/2026", "Meio de semana", emptyList())
+
+        // allowedDays = {3} significa "so na quarta". Numa quarta o privilegio
+        // se aplica e esta sem designar, entao entra como pendencia.
+        assertEquals(
+            listOf("Som"),
+            AssignmentGenerator.missingAssignments(mercoledi, listOf(soQuarta, desativado)).map { it.name },
+            "na quarta, Som se aplica e falta; o desativado nunca entra"
+        )
+
+        // No sabado (6) o privilegio nao se aplica, mesmo sem designacao.
+        val sabado = Meeting(2, "10/10/2026", "Fim de semana", emptyList())
+        assertTrue(
+            AssignmentGenerator.missingAssignments(sabado, listOf(soQuarta, desativado)).isEmpty(),
+            "no sabado Som nao se aplica e o desativado e ignorado"
+        )
+    }
+
+    @Test
+    fun `periodo de indisponibilidade e inclusivo nos dois extremos`() {
+        val irmao = Brother(
+            id = 10, name = "Viajante",
+            unavailabilities = listOf(
+                UnavailablePeriod(id = 1, startDate = "01/10/2026", endDate = "15/10/2026", reason = "Férias")
+            )
+        )
+
+        assertTrue(AssignmentGenerator.isBrotherUnavailableOn(irmao, LocalDate.of(2026, 10, 1)))
+        assertTrue(AssignmentGenerator.isBrotherUnavailableOn(irmao, LocalDate.of(2026, 10, 15)))
+        assertFalse(AssignmentGenerator.isBrotherUnavailableOn(irmao, LocalDate.of(2026, 9, 30)))
+        assertFalse(AssignmentGenerator.isBrotherUnavailableOn(irmao, LocalDate.of(2026, 10, 16)))
+    }
+
+    @Test
+    fun `periodo com data invalida nao bloqueia o irmao`() {
+        // Data ilegível não pode tirar o irmão da escala.
+        val irmao = Brother(
+            id = 10, name = "Data Ruim",
+            unavailabilities = listOf(
+                UnavailablePeriod(id = 1, startDate = "01/10/2026", endDate = "", reason = "Data inválida")
+            )
+        )
+        assertFalse(AssignmentGenerator.isBrotherUnavailableOn(irmao, LocalDate.of(2026, 10, 7)))
+    }
+
+    @Test
+    fun `telefone e normalizado para digitos no link do WhatsApp`() {
+        val link = WhatsAppHelper.buildWebLink("+55 (11) 99999-8888", "Olá, Tudo bem?")
+
+        assertTrue(link.startsWith("https://web.whatsapp.com/send?phone=5511999998888&text="), link)
+        // URLEncoder é o padrão de application/x-www-form-urlencoded: espaço
+        // vira '+'. %20 também é aceito pelo WhatsApp; exigir só %20 testava
+        // uma suposição errada, não um defeito.
+        assertTrue(
+            link.contains("Ol%C3%A1%2C+Tudo+bem%3F") || link.contains("Ol%C3%A1%2C%20Tudo%20bem%3F"),
+            link
+        )
+        // Sem telefone o link ainda funciona, só sem o parâmetro phone.
+        assertFalse(WhatsAppHelper.buildWebLink("", "oi").contains("phone="))
+    }
+
+    @Test
+    fun `broadcast lista designacoes e pendencias`() {
+        val meeting = Meeting(
+            id = 1, date = "07/10/2026", type = "Reunião do meio de semana",
+            assignments = listOf(Assignment(1, 10))
+        )
+        val irmaos = listOf(Brother(10, "Joao"))
+        val privs = listOf(Privilege(1, "Som", quantity = 1), Privilege(2, "Indicador", quantity = 2))
+
+        val msg = WhatsAppHelper.buildMeetingBroadcastMessage(
+            null, meeting, irmaos, privs,
+            missingPrivileges = listOf(privs[1])
+        )
+
+        assertTrue(msg.contains("Som"), msg)
+        assertTrue(msg.contains("Joao"), msg)
+        assertTrue(msg.contains("Pendências:"), msg)
+        assertTrue(msg.contains("Indicador"), msg)
+        assertTrue(msg.contains("Quarta"), msg)
+    }
 }
