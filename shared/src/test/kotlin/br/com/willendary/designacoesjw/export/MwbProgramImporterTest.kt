@@ -89,6 +89,7 @@ class MwbProgramImporterTest {
         val crencas = program.parts.first { it.number == 7 }
         assertEquals(5, crencas.minutes)
         assertEquals("Explicando suas crenças (5 min)", crencas.label)
+        assertEquals("FAÇA SEU MELHOR NO MINISTÉRIO", crencas.section)
         assertEquals(0, program.parts.first { it.number == 4 }.minutes)
     }
 

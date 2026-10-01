@@ -2,9 +2,12 @@ package br.com.willendary.designacoesjw.generator
 
 import br.com.willendary.designacoesjw.data.Assignment
 import br.com.willendary.designacoesjw.data.Brother
+import br.com.willendary.designacoesjw.data.BrotherStatus
+import br.com.willendary.designacoesjw.data.Gender
 import br.com.willendary.designacoesjw.data.Meeting
 import br.com.willendary.designacoesjw.data.MeetingSchedule
 import br.com.willendary.designacoesjw.data.Privilege
+import br.com.willendary.designacoesjw.data.ReaderGrant
 import java.text.Normalizer
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -84,12 +87,15 @@ object AssignmentGenerator {
             val candidates = activeBrothers
                 .filter { brother ->
                     brother.id !in usedInMeeting &&
+                        !brother.trainee && // aprendiz nunca é automático
                         brother.role.ordinal >= privilege.minRole.ordinal &&
                         isBrotherAuthorizedForPrivilege(brother, privilege, privileges)
                 }
                 .sortedWith(
-                    // 1. Prioriza quem fez menos esse privilégio no histórico
-                    compareBy<Brother> { privilegeHistoryCount[it.id to privilege.id] ?: 0 }
+                    // 0. Qualificados (batizados e não aprendizes) primeiro
+                    compareBy<Brother> { if (it.isUnqualified()) 1 else 0 }
+                        // 1. Prioriza quem fez menos esse privilégio no histórico
+                        .thenBy { privilegeHistoryCount[it.id to privilege.id] ?: 0 }
                         // 2. Tenta evitar designação consecutiva da reunião anterior
                         .thenBy { if (it.id in brothersInPreviousMeeting) 1 else 0 }
                         // 3. Prioriza quem tem menos designações no geral
@@ -100,7 +106,14 @@ object AssignmentGenerator {
                         .thenBy { normalizeName(it.name) }
                 )
 
-            candidates.take(privilege.quantity).forEach { brother ->
+            // No máximo um não qualificado por parte (quantity >= 2).
+            val selected = mutableListOf<Brother>()
+            for (candidate in candidates) {
+                if (selected.size >= privilege.quantity) break
+                if (candidate.isUnqualified() && selected.any { it.isUnqualified() }) continue
+                selected += candidate
+            }
+            selected.forEach { brother ->
                 result += Assignment(privilege.id, brother.id)
                 usedInMeeting += brother.id
             }
@@ -137,13 +150,25 @@ object AssignmentGenerator {
         val privilege = privileges.firstOrNull { it.id == privilegeId } ?: return emptyList()
         if (!isPrivilegeApplicableToMeeting(privilege, meetingDate)) return emptyList()
 
+        // Já existe um não qualificado entre os demais designados desta parte?
+        // Se sim, a troca manual não pode introduzir um segundo não qualificado.
+        val otherBrothersForPrivilege = meeting.assignments
+            .filter { it.privilegeId == privilegeId && it.brotherId != currentBrotherId }
+            .map { it.brotherId }
+            .toSet()
+        val hasUnqualifiedOther = otherBrothersForPrivilege.any { id ->
+            brothers.firstOrNull { it.id == id }?.isUnqualified() ?: false
+        }
+
         return brothers.filter { brother ->
             brother.active &&
                 brother.id !in meeting.blockedBrotherIds &&
                 brother.id !in used &&
+                !brother.trainee && // aprendiz nunca é automático
                 !isBrotherUnavailableOn(brother, meetingDate) &&
                 brother.role.ordinal >= privilege.minRole.ordinal &&
-                isBrotherAuthorizedForPrivilege(brother, privilege, privileges)
+                isBrotherAuthorizedForPrivilege(brother, privilege, privileges) &&
+                !(hasUnqualifiedOther && brother.isUnqualified())
         }.sortedBy { normalizeName(it.name) }
     }
 
@@ -158,21 +183,12 @@ object AssignmentGenerator {
     fun isPrivilegeApplicableToMeeting(privilege: Privilege, date: LocalDate): Boolean {
         if (!privilege.active) return false
         val meetingDay = date.dayOfWeek.value
-        val isWeekend = date.dayOfWeek == DayOfWeek.SATURDAY || date.dayOfWeek == DayOfWeek.SUNDAY
 
+        // Dia da semana agora é configurado por allowedDays, não pelo nome do privilégio.
+        // "Leitor do Livro" = meio de semana, "Leitor de A Sentinela" = fim de semana:
+        // isso é dado (allowedDays), não código. Sem allowedDays, vale qualquer dia.
         if (privilege.allowedDays.isNotEmpty()) {
             return meetingDay in privilege.allowedDays
-        }
-
-        // Regra Teocrática JW:
-        // Leitor do Livro (Estudo Bíblico de Congregação) ocorre na reunião de meio de semana.
-        if (isBookReaderPrivilege(privilege)) {
-            return !isWeekend
-        }
-
-        // Leitor de A Sentinela ocorre na reunião de fim de semana.
-        if (isSentinelReaderPrivilege(privilege)) {
-            return isWeekend
         }
 
         return true
@@ -189,54 +205,44 @@ object AssignmentGenerator {
         }
     }
 
-    fun isBrotherAuthorizedForPrivilege(
-        brother: Brother,
-        privilege: Privilege,
-        allPrivileges: List<Privilege>
-    ): Boolean {
-        // Regra Teocrática JW: Tarefas congregacionais de reunião (som, leitor, indicador, orações) são para irmãos
-        if (privilege.maleOnly && brother.gender == br.com.willendary.designacoesjw.data.Gender.FEMALE) {
+    /**
+     * Concede este privilégio a este irmão?
+     *
+     * Fonte única de verdade: o gerador e as telas usam esta função. A regra
+     * estava duplicada entre gerador e UI e já divergiu — era isso que
+     * permitia a tela dizer que o irmão podia e o gerador recusar.
+     */
+    fun isAuthorized(brother: Brother, privilege: Privilege): Boolean {
+        // Tarefas de som, leitor, indicador e orações são para irmãos.
+        if (privilege.maleOnly && brother.gender == Gender.FEMALE) {
             return false
         }
 
+        // allowedStatus: não batizado não pode fazer partes que exigem batismo
+        // (Leitor do Livro, Leitor de A Sentinela). Vem da configuração do
+        // privilégio, não de código.
+        val status = if (brother.baptized) BrotherStatus.BAPTIZED else BrotherStatus.UNBAPTIZED
+        if (status !in privilege.allowedStatus) return false
+
         if (privilege.id in brother.privileges) return true
 
-        // Regra JW: Leitor da Sentinela pode automaticamente ler o livro
-        val isBook = isBookReaderPrivilege(privilege)
-        if (isBook) {
-            val sentinelPrivilege = allPrivileges.firstOrNull { isSentinelReaderPrivilege(it) }
-            if (sentinelPrivilege != null && sentinelPrivilege.id in brother.privileges) {
-                return true
-            }
-        }
+        // isReader / isSentinelReader concedem a leitura, por dado (readerGrant),
+        // não por nome do privilégio. Leitor de A Sentinela também pode ler o
+        // livro — herança que antes só funcionava se os dois nomes fossem
+        // reconhecidos por string.
+        if (privilege.readerGrant == ReaderGrant.SENTINEL && brother.isSentinelReader) return true
+        if (privilege.readerGrant == ReaderGrant.BOOK && (brother.isReader || brother.isSentinelReader)) return true
 
         return false
     }
 
-    fun isBookReaderPrivilege(privilege: Privilege): Boolean {
-        val norm = normalizeName(privilege.name)
-        return norm in setOf(
-            "leitor do livro",
-            "leitor livro",
-            "leitor de livro",
-            "estudo biblico",
-            "estudo biblico de congregacao",
-            "leitor do estudo biblico",
-            "leitor estudo biblico",
-            "leitor ebc"
-        ) || (norm.contains("leitor") && norm.contains("livro")) || (norm.contains("leitor") && norm.contains("ebc"))
-    }
+    fun isBrotherAuthorizedForPrivilege(
+        brother: Brother,
+        privilege: Privilege,
+        allPrivileges: List<Privilege>
+    ): Boolean = isAuthorized(brother, privilege)
 
-    fun isSentinelReaderPrivilege(privilege: Privilege): Boolean {
-        val norm = normalizeName(privilege.name)
-        return norm in setOf(
-            "leitor da sentinela",
-            "leitor sentinela",
-            "leitor de a sentinela",
-            "estudo da sentinela",
-            "estudo de a sentinela"
-        ) || (norm.contains("leitor") && norm.contains("sentinela"))
-    }
+    private fun Brother.isUnqualified(): Boolean = trainee || !baptized
 
     fun parseDate(value: String): LocalDate = runCatching {
         LocalDate.parse(value, DATE_FORMATTER)

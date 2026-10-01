@@ -39,8 +39,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * Antes these falhas eram engolidas: a escrita ia sem tratamento e o app
      * exibia "salvo" mesmo com o Firestore tendo recusado.
      */
-    var lastActionError = mutableStateOf<String?>(null); private set
+    var lastActionError = mutableStateOf<String?>(null)
     fun clearActionError() { lastActionError.value = null }
+
+    /** Mensagem de validação vinda da UI (regra de negócio no formulário). */
+    fun reportError(message: String) { lastActionError.value = message }
 
     init {
         FirebaseAuth.getInstance().currentUser?.let { user ->
@@ -256,8 +259,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         Thread {
             val error = runCatching {
                 val program = MwbProgramImporter.fetch(meetingDate)
-                val items = program.parts.mapIndexed { index, part ->
-                    "${index + 1}. ${part.label}"
+                val items = program.parts.map { part ->
+                    ProgramItem(section = part.section, number = part.number, title = part.title, minutes = part.minutes)
                 }
                 val dateText = meetingDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))
                 val current = meetings.value
@@ -311,7 +314,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             // Rede fora da main thread; estado do Compose e o callback voltam para ela.
             val result = runCatching {
                 val program = MwbProgramImporter.fetch(AssignmentGenerator.parseDate(meeting.date))
-                program to program.parts.mapIndexed { i, p -> "${i + 1}. ${p.label}" }
+                program to program.parts.map { p ->
+                    ProgramItem(section = p.section, number = p.number, title = p.title, minutes = p.minutes)
+                }
             }
             Handler(Looper.getMainLooper()).post {
                 result.fold(
@@ -348,6 +353,57 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (!can(AppPermissions.MANAGE_BROTHERS)) { lastActionError.value = denied(AppPermissions.MANAGE_BROTHERS, "alterar o papel de um irmão"); return }
         brothers.value = brothers.value.map { if (it.id == id) it.copy(role = role) else it }
         repo.saveBrothers(brothers.value)
+    }
+
+    fun setBrotherBaptized(id: Long, baptized: Boolean) {
+        if (!can(AppPermissions.MANAGE_BROTHERS)) { lastActionError.value = denied(AppPermissions.MANAGE_BROTHERS, "alterar um irmão"); return }
+        brothers.value = brothers.value.map { if (it.id == id) it.copy(baptized = baptized) else it }
+        repo.saveBrothers(brothers.value)
+    }
+
+    fun setBrotherTrainee(id: Long, trainee: Boolean) {
+        if (!can(AppPermissions.MANAGE_BROTHERS)) { lastActionError.value = denied(AppPermissions.MANAGE_BROTHERS, "alterar um irmão"); return }
+        brothers.value = brothers.value.map { if (it.id == id) it.copy(trainee = trainee) else it }
+        repo.saveBrothers(brothers.value)
+    }
+
+    fun setBrotherIsReader(id: Long, value: Boolean) {
+        if (!can(AppPermissions.MANAGE_BROTHERS)) { lastActionError.value = denied(AppPermissions.MANAGE_BROTHERS, "alterar um irmão"); return }
+        brothers.value = brothers.value.map { b ->
+            // Leitor de A Sentinela é leitor: manter os dois coerentes.
+            when {
+                !value && b.id == id -> b.copy(isReader = false, isSentinelReader = false)
+                b.id == id -> b.copy(isReader = true)
+                else -> b
+            }
+        }
+        repo.saveBrothers(brothers.value)
+    }
+
+    fun setBrotherIsSentinelReader(id: Long, value: Boolean) {
+        if (!can(AppPermissions.MANAGE_BROTHERS)) { lastActionError.value = denied(AppPermissions.MANAGE_BROTHERS, "alterar um irmão"); return }
+        brothers.value = brothers.value.map { b ->
+            if (b.id != id) b else b.copy(isSentinelReader = value, isReader = if (value) true else b.isReader)
+        }
+        repo.saveBrothers(brothers.value)
+    }
+
+    fun setPrivilegeKind(id: Long, kind: PartKind) {
+        if (!can(AppPermissions.MANAGE_PRIVILEGES)) { lastActionError.value = denied(AppPermissions.MANAGE_PRIVILEGES, "alterar o tipo da parte"); return }
+        privileges.value = privileges.value.map { if (it.id == id) it.copy(kind = kind) else it }
+        repo.savePrivileges(privileges.value)
+    }
+
+    fun setPrivilegeReaderGrant(id: Long, grant: ReaderGrant) {
+        if (!can(AppPermissions.MANAGE_PRIVILEGES)) { lastActionError.value = denied(AppPermissions.MANAGE_PRIVILEGES, "alterar privilégios"); return }
+        privileges.value = privileges.value.map { if (it.id == id) it.copy(readerGrant = grant) else it }
+        repo.savePrivileges(privileges.value)
+    }
+
+    fun setPrivilegeAllowedStatus(id: Long, status: Set<BrotherStatus>) {
+        if (!can(AppPermissions.MANAGE_PRIVILEGES)) { lastActionError.value = denied(AppPermissions.MANAGE_PRIVILEGES, "alterar privilégios"); return }
+        privileges.value = privileges.value.map { if (it.id == id) it.copy(allowedStatus = status) else it }
+        repo.savePrivileges(privileges.value)
     }
 
     fun addUnavailability(brotherId: Long, startDate: String, endDate: String, reason: String): String? {

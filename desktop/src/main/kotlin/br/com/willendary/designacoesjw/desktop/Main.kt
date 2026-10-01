@@ -66,6 +66,19 @@ private val days = listOf(
 )
 private fun dayName(v: Int) = days.firstOrNull { it.first.value == v }?.second ?: "—"
 
+private fun kindLabel(kind: PartKind): String = when (kind) {
+    PartKind.INDIVIDUAL -> "Individual"
+    PartKind.PAIR -> "Dupla"
+    PartKind.DEMONSTRATION -> "Encenação"
+    PartKind.GROUP -> "Grupo"
+}
+
+private fun readerGrantLabel(grant: ReaderGrant): String = when (grant) {
+    ReaderGrant.NONE -> "Nenhum (só marcado)"
+    ReaderGrant.BOOK -> "Leitor"
+    ReaderGrant.SENTINEL -> "Leitor de A Sentinela"
+}
+
 private fun getInitials(name: String): String {
     val parts = name.trim().split("\\s+".toRegex()).filter { it.isNotBlank() }
     return when {
@@ -107,6 +120,12 @@ class StoreController {
      */
     var loadError by mutableStateOf<String?>(null)
         private set
+
+    /** Erro de ação para a UI; antes nada reportava falha de escrita. */
+    private val actionErrorState = mutableStateOf<String?>(null)
+    val actionError: String? get() = actionErrorState.value
+    fun reportError(message: String) { actionErrorState.value = message }
+    fun clearActionError() { actionErrorState.value = null }
 
     var data by mutableStateOf(load())
         private set
@@ -225,7 +244,9 @@ class StoreController {
             // estado do Compose (data, importingId) de thread crua não recompoe.
             val result = runCatching {
                 val program = MwbProgramImporter.fetch(AssignmentGenerator.parseDate(date))
-                program to program.parts.mapIndexed { i, p -> "${i + 1}. ${p.label}" }
+                program to program.parts.map { p ->
+                    ProgramItem(section = p.section, number = p.number, title = p.title, minutes = p.minutes)
+                }
             }
             java.awt.EventQueue.invokeLater {
                 result.fold(
@@ -344,6 +365,42 @@ class StoreController {
             if (it.id == brotherId) it.copy(unavailabilities = it.unavailabilities.filterNot { u -> u.id == periodId }) else it
         }))
     }
+
+    fun setBrotherBaptized(id: Long, value: Boolean) = save(
+        data.copy(brothers = data.brothers.map { if (it.id == id) it.copy(baptized = value) else it })
+    )
+
+    fun setBrotherTrainee(id: Long, value: Boolean) = save(
+        data.copy(brothers = data.brothers.map { if (it.id == id) it.copy(trainee = value) else it })
+    )
+
+    fun setBrotherIsReader(id: Long, value: Boolean) = save(
+        data.copy(brothers = data.brothers.map { b ->
+            // Leitor de A Sentinela é leitor: manter os dois coerentes.
+            if (b.id != id) b
+            else if (!value) b.copy(isReader = false, isSentinelReader = false)
+            else b.copy(isReader = true)
+        })
+    )
+
+    fun setBrotherIsSentinelReader(id: Long, value: Boolean) = save(
+        data.copy(brothers = data.brothers.map { b ->
+            if (b.id != id) b
+            else b.copy(isSentinelReader = value, isReader = if (value) true else b.isReader)
+        })
+    )
+
+    fun setPrivilegeKind(id: Long, kind: PartKind) = save(
+        data.copy(privileges = data.privileges.map { if (it.id == id) it.copy(kind = kind) else it })
+    )
+
+    fun setPrivilegeReaderGrant(id: Long, grant: ReaderGrant) = save(
+        data.copy(privileges = data.privileges.map { if (it.id == id) it.copy(readerGrant = grant) else it })
+    )
+
+    fun setPrivilegeAllowedStatus(id: Long, status: Set<BrotherStatus>) = save(
+        data.copy(privileges = data.privileges.map { if (it.id == id) it.copy(allowedStatus = status) else it })
+    )
 
     fun addPrivilege(name: String, quantity: Int, minRole: BrotherRole = BrotherRole.PUBLISHER, maleOnly: Boolean = true): String? {
         val norm = AssignmentGenerator.normalizeName(name)
@@ -2513,16 +2570,12 @@ private fun Privileges(c: StoreController) {
         // Lista de Privilégios
         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(filteredPrivileges) { p ->
-                val isBook = AssignmentGenerator.isBookReaderPrivilege(p)
-                val isSentinel = AssignmentGenerator.isSentinelReaderPrivilege(p)
-
+                // Mesma função do gerador: a regra duplicada na UI já divergiu.
                 val authorizedCount = c.data.brothers.count { b ->
-                    val direct = p.id in b.privileges
-                    val inherited = !direct && isBook && c.data.privileges.any {
-                        AssignmentGenerator.isSentinelReaderPrivilege(it) && it.id in b.privileges
-                    }
-                    direct || inherited
+                    AssignmentGenerator.isAuthorized(b, p)
                 }
+                val isBook = p.readerGrant == ReaderGrant.BOOK
+                val isSentinel = p.readerGrant == ReaderGrant.SENTINEL
 
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -2557,6 +2610,57 @@ private fun Privileges(c: StoreController) {
                                         Text("📰 Reunião de Fim de Semana (Sábado/Domingo)", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
                                         Text("Qualifica automaticamente o irmão para a leitura do Livro de meio de semana.", style = MaterialTheme.typography.bodySmall)
                                     }
+                                }
+                            }
+                        }
+
+                        // Tipo de parte: individual, dupla, encenação ou grupo.
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Tipo de parte:", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelMedium)
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                PartKind.entries.forEach { kind ->
+                                    FilterChip(
+                                        selected = p.kind == kind,
+                                        onClick = { c.setPrivilegeKind(p.id, kind) },
+                                        label = { Text(kindLabel(kind)) }
+                                    )
+                                }
+                            }
+                        }
+
+                        // Quem pode fazer a parte.
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Pode ser feito por:", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelMedium)
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                BrotherStatus.entries.forEach { status ->
+                                    FilterChip(
+                                        selected = status in p.allowedStatus,
+                                        onClick = {
+                                            val next = p.allowedStatus.toMutableSet().also { s ->
+                                                if (!s.add(status)) s.remove(status)
+                                            }
+                                            if (next.isEmpty()) {
+                                                c.reportError("Escolha pelo menos um. Remover todos deixaria a parte sem regra.")
+                                            } else {
+                                                c.setPrivilegeAllowedStatus(p.id, next)
+                                            }
+                                        },
+                                        label = { Text(status.label) }
+                                    )
+                                }
+                            }
+                        }
+
+                        // Qual habilitação do irmão concede este privilégio.
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Concedido a quem é:", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelMedium)
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                ReaderGrant.entries.forEach { grant ->
+                                    FilterChip(
+                                        selected = p.readerGrant == grant,
+                                        onClick = { c.setPrivilegeReaderGrant(p.id, grant) },
+                                        label = { Text(readerGrantLabel(grant)) }
+                                    )
                                 }
                             }
                         }
@@ -2715,8 +2819,7 @@ private fun DesktopManagePrivilegeBrothersDialog(
     onDismiss: () -> Unit
 ) {
     var search by remember { mutableStateOf("") }
-    val isBook = AssignmentGenerator.isBookReaderPrivilege(privilege)
-    val sentinelPrivilege = c.data.privileges.find { AssignmentGenerator.isSentinelReaderPrivilege(it) }
+    val isBook = privilege.readerGrant == ReaderGrant.BOOK
 
     val filteredBrothers = c.data.brothers.filter {
         AssignmentGenerator.normalizeName(it.name).contains(AssignmentGenerator.normalizeName(search))
@@ -2757,7 +2860,8 @@ private fun DesktopManagePrivilegeBrothersDialog(
                 ) {
                     items(filteredBrothers) { brother ->
                         val direct = privilege.id in brother.privileges
-                        val inherited = !direct && isBook && sentinelPrivilege != null && sentinelPrivilege.id in brother.privileges
+                        // Herança: quem é leitor de A Sentinela também pode ler o livro.
+                        val inherited = !direct && isBook && brother.isSentinelReader
 
                         Surface(
                             modifier = Modifier
@@ -2840,7 +2944,7 @@ private fun History(c: StoreController) {
                                 )
                             }
                             m.program.forEach { item ->
-                                Text("• $item", style = MaterialTheme.typography.bodySmall)
+                                Text("• ${item.label}", style = MaterialTheme.typography.bodySmall)
                             }
 
                             if (m.type.contains("meio de semana", ignoreCase = true)) {

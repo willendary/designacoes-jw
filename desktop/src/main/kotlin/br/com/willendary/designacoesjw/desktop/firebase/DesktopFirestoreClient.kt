@@ -54,6 +54,13 @@ object DesktopFirestoreClient {
                 put("active", buildJsonObject { put("booleanValue", brother.active) })
                 put("role", buildJsonObject { put("stringValue", brother.role.name) })
                 put("gender", buildJsonObject { put("stringValue", brother.gender.name) })
+                // Campos teocráticos: sem isto as regras de não batizado,
+                // aprendiz e leitor valem só em memória e voltam ao default
+                // quando o app recarrega.
+                put("baptized", buildJsonObject { put("booleanValue", brother.baptized) })
+                put("trainee", buildJsonObject { put("booleanValue", brother.trainee) })
+                put("isReader", buildJsonObject { put("booleanValue", brother.isReader) })
+                put("isSentinelReader", buildJsonObject { put("booleanValue", brother.isSentinelReader) })
                 brother.groupId?.let {
                     put("groupId", buildJsonObject { put("integerValue", it.toString()) })
                 }
@@ -99,6 +106,17 @@ object DesktopFirestoreClient {
                 put("active", buildJsonObject { put("booleanValue", priv.active) })
                 put("minRole", buildJsonObject { put("stringValue", priv.minRole.name) })
                 put("maleOnly", buildJsonObject { put("booleanValue", priv.maleOnly) })
+                put("kind", buildJsonObject { put("stringValue", priv.kind.name) })
+                put("readerGrant", buildJsonObject { put("stringValue", priv.readerGrant.name) })
+                put("allowedStatus", buildJsonObject {
+                    put("arrayValue", buildJsonObject {
+                        put("values", buildJsonArray {
+                            priv.allowedStatus.forEach { s ->
+                                add(buildJsonObject { put("stringValue", s.name) })
+                            }
+                        })
+                    })
+                })
                 put("allowedDays", buildJsonObject {
                     put("arrayValue", buildJsonObject {
                         put("values", buildJsonArray {
@@ -149,11 +167,21 @@ object DesktopFirestoreClient {
                     put("theme", buildJsonObject { put("stringValue", m.theme) })
                 }
                 if (m.program.isNotEmpty()) {
+                    // Grava o formato novo (mapas), não a string legada.
                     put("program", buildJsonObject {
                         put("arrayValue", buildJsonObject {
                             put("values", buildJsonArray {
                                 m.program.forEach { p ->
-                                    add(buildJsonObject { put("stringValue", p) })
+                                    add(buildJsonObject {
+                                        put("mapValue", buildJsonObject {
+                                            put("fields", buildJsonObject {
+                                                put("section", buildJsonObject { put("stringValue", p.section) })
+                                                put("number", buildJsonObject { put("integerValue", p.number.toString()) })
+                                                put("title", buildJsonObject { put("stringValue", p.title) })
+                                                put("minutes", buildJsonObject { put("integerValue", p.minutes.toString()) })
+                                            })
+                                        })
+                                    })
                                 }
                             })
                         })
@@ -293,6 +321,10 @@ object DesktopFirestoreClient {
         val genderStr = fields["gender"]?.jsonObject?.get("stringValue")?.jsonPrimitive?.content ?: "MALE"
         val gender = runCatching { Gender.valueOf(genderStr) }.getOrDefault(Gender.MALE)
         val groupId = fields["groupId"]?.jsonObject?.get("integerValue")?.jsonPrimitive?.content?.toLongOrNull()
+        val baptized = fields["baptized"]?.jsonObject?.get("booleanValue")?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: true
+        val trainee = fields["trainee"]?.jsonObject?.get("booleanValue")?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
+        val isReader = fields["isReader"]?.jsonObject?.get("booleanValue")?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
+        val isSentinelReader = fields["isSentinelReader"]?.jsonObject?.get("booleanValue")?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
 
         val privArray = fields["privileges"]?.jsonObject?.get("arrayValue")?.jsonObject?.get("values")?.jsonArray
         val privileges = privArray?.mapNotNull { it.jsonObject["integerValue"]?.jsonPrimitive?.content?.toLongOrNull() }?.toSet() ?: emptySet()
@@ -316,7 +348,11 @@ object DesktopFirestoreClient {
             role = role,
             unavailabilities = unavails,
             gender = gender,
-            groupId = groupId
+            groupId = groupId,
+            baptized = baptized,
+            trainee = trainee,
+            isReader = isReader,
+            isSentinelReader = isSentinelReader
         )
     }
 
@@ -332,7 +368,22 @@ object DesktopFirestoreClient {
         val daysArray = fields["allowedDays"]?.jsonObject?.get("arrayValue")?.jsonObject?.get("values")?.jsonArray
         val allowedDays = daysArray?.mapNotNull { it.jsonObject["integerValue"]?.jsonPrimitive?.content?.toIntOrNull() }?.toSet() ?: emptySet()
 
-        return Privilege(id, name, qty, active, allowedDays, minRole, maleOnly)
+        val kind = runCatching { PartKind.valueOf(fields["kind"]?.jsonObject?.get("stringValue")?.jsonPrimitive?.content ?: "INDIVIDUAL") }
+            .getOrDefault(PartKind.INDIVIDUAL)
+        val readerGrant = runCatching { ReaderGrant.valueOf(fields["readerGrant"]?.jsonObject?.get("stringValue")?.jsonPrimitive?.content ?: "NONE") }
+            .getOrDefault(ReaderGrant.NONE)
+        val statusArray = fields["allowedStatus"]?.jsonObject?.get("arrayValue")?.jsonObject?.get("values")?.jsonArray
+        // Ausente = todos permitidos, que é o comportamento anterior.
+        val allowedStatus = statusArray
+            ?.mapNotNull { runCatching { BrotherStatus.valueOf(it.jsonObject["stringValue"]?.jsonPrimitive?.content.orEmpty()) }.getOrNull() }
+            ?.toSet()
+            ?: BrotherStatus.entries.toSet()
+
+        return Privilege(
+            id = id, name = name, quantity = qty, active = active,
+            allowedDays = allowedDays, minRole = minRole, maleOnly = maleOnly,
+            kind = kind, allowedStatus = allowedStatus, readerGrant = readerGrant
+        )
     }
 
     private fun parseMeeting(fields: JsonObject): Meeting? {
@@ -353,10 +404,20 @@ object DesktopFirestoreClient {
 
         val theme = fields["theme"]?.jsonObject?.get("stringValue")?.jsonPrimitive?.content ?: ""
         val programArray = fields["program"]?.jsonObject?.get("arrayValue")?.jsonObject?.get("values")?.jsonArray
-        val program = programArray
-            ?.mapNotNull { it.jsonObject["stringValue"]?.jsonPrimitive?.content }
-            ?.filter { it.isNotBlank() }
-            ?: emptyList()
+        // Aceita os dois formatos: mapValue (novo) e stringValue (legado "N. Título (M min)").
+        val program = programArray?.mapNotNull { pVal ->
+            val mapFields = pVal.jsonObject["mapValue"]?.jsonObject?.get("fields")?.jsonObject
+            if (mapFields != null) {
+                ProgramItem(
+                    section = mapFields["section"]?.jsonObject?.get("stringValue")?.jsonPrimitive?.content ?: "",
+                    number = mapFields["number"]?.jsonObject?.get("integerValue")?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
+                    title = mapFields["title"]?.jsonObject?.get("stringValue")?.jsonPrimitive?.content ?: "",
+                    minutes = mapFields["minutes"]?.jsonObject?.get("integerValue")?.jsonPrimitive?.content?.toIntOrNull() ?: 0
+                )
+            } else {
+                pVal.jsonObject["stringValue"]?.jsonPrimitive?.content?.let { parseLegacyProgramItem(it) }
+            }
+        }?.filter { it.title.isNotBlank() } ?: emptyList()
 
         return Meeting(id, date, type, assignments, blocked, theme, program)
     }

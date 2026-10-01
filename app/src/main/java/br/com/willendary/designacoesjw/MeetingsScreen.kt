@@ -191,7 +191,7 @@ private fun WeeklyMeetingCard(meeting: Meeting) {
                     fontWeight = FontWeight.SemiBold
                 )
                 meeting.program.forEach { item ->
-                    Text("• $item", style = MaterialTheme.typography.bodySmall)
+                    Text("• ${item.label}", style = MaterialTheme.typography.bodySmall)
                 }
             }
 

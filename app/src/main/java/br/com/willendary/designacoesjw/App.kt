@@ -52,6 +52,19 @@ private val weekdays = listOf(
     DayOfWeek.SUNDAY to "Domingo"
 )
 
+private fun kindLabel(kind: PartKind): String = when (kind) {
+    PartKind.INDIVIDUAL -> "Individual"
+    PartKind.PAIR -> "Dupla"
+    PartKind.DEMONSTRATION -> "Encenação"
+    PartKind.GROUP -> "Grupo"
+}
+
+private fun readerGrantLabel(grant: ReaderGrant): String = when (grant) {
+    ReaderGrant.NONE -> "Ninguém (só marcado)"
+    ReaderGrant.BOOK -> "Leitor"
+    ReaderGrant.SENTINEL -> "Leitor de A Sentinela"
+}
+
 private fun dayLabel(value: Int): String =
     weekdays.firstOrNull { it.first.value == value }?.second ?: "—"
 
@@ -411,7 +424,7 @@ fun App(
                                     Spacer(Modifier.width(6.dp))
                                     Text("Sair", color = MaterialTheme.colorScheme.error)
                                 }
-                                Text("v0.2.11", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                Text("v0.3.0", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                             }
                         }
                     }
@@ -1043,7 +1056,7 @@ private fun MeetingCardView(
                 )
             }
             meeting.program.forEach { item ->
-                Text("• $item", style = MaterialTheme.typography.bodySmall)
+                Text("• ${item.label}", style = MaterialTheme.typography.bodySmall)
             }
 
             if (meeting.type.contains("meio de semana", ignoreCase = true) && importError != null) {
@@ -1739,14 +1752,50 @@ private fun BrotherProfileDialog(
                     }
                 }
 
-                // Privilégios autorizados
-                val authorizedPrivileges = vm.privileges.value.filter { p ->
-                    val direct = p.id in brother.privileges
-                    val isBook = AssignmentGenerator.isBookReaderPrivilege(p)
-                    val inherited = !direct && isBook && vm.privileges.value.any {
-                        AssignmentGenerator.isSentinelReaderPrivilege(it) && it.id in brother.privileges
+                // Situação teocrática do irmão. Não existia forma de declarar
+                // publicador não batizado, aprendiz, leitor ou leitor de A
+                // Sentinela — o gerador não tinha como aplicar as regras.
+                item {
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Situação", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FilterChip(
+                                    selected = !brother.baptized,
+                                    onClick = { vm.setBrotherBaptized(brother.id, !brother.baptized) },
+                                    label = { Text("Não batizado") }
+                                )
+                                FilterChip(
+                                    selected = brother.trainee,
+                                    onClick = { vm.setBrotherTrainee(brother.id, !brother.trainee) },
+                                    label = { Text("Aprendiz") }
+                                )
+                                FilterChip(
+                                    selected = brother.isReader,
+                                    onClick = { vm.setBrotherIsReader(brother.id, !brother.isReader) },
+                                    label = { Text("Leitor") }
+                                )
+                                FilterChip(
+                                    selected = brother.isSentinelReader,
+                                    onClick = { vm.setBrotherIsSentinelReader(brother.id, !brother.isSentinelReader) },
+                                    label = { Text("Leitor de A Sentinela") }
+                                )
+                            }
+                            if (brother.trainee) {
+                                Text(
+                                    "Aprendiz não é escolhido automaticamente e não pode ser o segundo não qualificado de uma parte com duas pessoas.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                     }
-                    direct || inherited
+                }
+
+                // Privilégios autorizados. Usa a MESMA função do gerador:
+                // a regra duplicada aqui já divergiu do gerador uma vez.
+                val authorizedPrivileges = vm.privileges.value.filter { p ->
+                    AssignmentGenerator.isAuthorized(brother, p)
                 }
                 if (authorizedPrivileges.isNotEmpty()) {
                     item {
@@ -1916,16 +1965,11 @@ private fun PrivilegesScreen(vm: AppViewModel) {
                 }
 
                 items(filtered, key = { it.id }) { privilege ->
-                    val isBook = AssignmentGenerator.isBookReaderPrivilege(privilege)
-                    val isSentinel = AssignmentGenerator.isSentinelReaderPrivilege(privilege)
-
                     val authorizedCount = vm.brothers.value.count { brother ->
-                        val direct = privilege.id in brother.privileges
-                        val inherited = !direct && isBook && vm.privileges.value.any { p ->
-                            AssignmentGenerator.isSentinelReaderPrivilege(p) && p.id in brother.privileges
-                        }
-                        direct || inherited
+                        AssignmentGenerator.isAuthorized(brother, privilege)
                     }
+                    val isBook = privilege.readerGrant == ReaderGrant.BOOK
+                    val isSentinel = privilege.readerGrant == ReaderGrant.SENTINEL
 
                     Card(
                         Modifier.fillMaxWidth(),
@@ -1997,6 +2041,64 @@ private fun PrivilegesScreen(vm: AppViewModel) {
                                         }
                                     }
                                 }
+                            }
+
+                            // Tipo da parte: individual, dupla, encenação ou grupo.
+                            // Sem isso o app não distingue uma leitura de uma
+                            // encenação, e o gerador não tem como tratá-las.
+                            Text("Tipo de parte:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                PartKind.entries.forEach { kind ->
+                                    FilterChip(
+                                        selected = privilege.kind == kind,
+                                        onClick = { vm.setPrivilegeKind(privilege.id, kind) },
+                                        label = { Text(kindLabel(kind)) }
+                                    )
+                                }
+                            }
+
+                            // Quem pode fazer: batizado, não batizado, ou ambos.
+                            Text("Pode ser feito por:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                BrotherStatus.entries.forEach { status ->
+                                    FilterChip(
+                                        selected = status in privilege.allowedStatus,
+                                        onClick = {
+                                            val next = privilege.allowedStatus.toMutableSet().also { s ->
+                                                if (!s.add(status)) s.remove(status)
+                                            }
+                                            if (next.isEmpty()) {
+                                                vm.reportError("Escolha pelo menos um. Remover todos deixaria a parte sem regra.")
+                                            } else {
+                                                vm.setPrivilegeAllowedStatus(privilege.id, next)
+                                            }
+                                        },
+                                        label = { Text(status.label) }
+                                    )
+                                }
+                            }
+
+                            // Qual habilitação do irmão concede este privilégio.
+                            Text("Concedido a quem é:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                ReaderGrant.entries.forEach { grant ->
+                                    FilterChip(
+                                        selected = privilege.readerGrant == grant,
+                                        onClick = { vm.setPrivilegeReaderGrant(privilege.id, grant) },
+                                        label = { Text(readerGrantLabel(grant)) }
+                                    )
+                                }
+                            }
+                            if (privilege.readerGrant != ReaderGrant.NONE) {
+                                Text(
+                                    when (privilege.readerGrant) {
+                                        ReaderGrant.BOOK -> "Irmãos marcados como Leitor (e Leitores de A Sentinela) podem fazer esta parte sem precisar marcar o privilégio um a um."
+                                        ReaderGrant.SENTINEL -> "Somente irmãos marcados como Leitor de A Sentinela. O leitor de A Sentinela também pode ler o Livro."
+                                        ReaderGrant.NONE -> ""
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
 
                             // Seletor de Dias Permitidos
@@ -2168,8 +2270,7 @@ private fun ManagePrivilegeBrothersDialog(
     onDismiss: () -> Unit
 ) {
     var search by remember { mutableStateOf("") }
-    val isBook = AssignmentGenerator.isBookReaderPrivilege(privilege)
-    val sentinelPrivilege = vm.privileges.value.find { AssignmentGenerator.isSentinelReaderPrivilege(it) }
+    val isBook = privilege.readerGrant == ReaderGrant.BOOK
 
     val filteredBrothers = vm.brothers.value.filter {
         it.name.contains(search.trim(), ignoreCase = true)
@@ -2212,8 +2313,8 @@ private fun ManagePrivilegeBrothersDialog(
                 ) {
                     items(filteredBrothers, key = { it.id }) { brother ->
                         val directAuthorization = privilege.id in brother.privileges
-                        val inheritedFromSentinel = !directAuthorization && isBook &&
-                            sentinelPrivilege != null && sentinelPrivilege.id in brother.privileges
+                        // Herança: quem é leitor de A Sentinela também pode ler o livro.
+                        val inheritedFromSentinel = !directAuthorization && isBook && brother.isSentinelReader
 
                         Surface(
                             modifier = Modifier

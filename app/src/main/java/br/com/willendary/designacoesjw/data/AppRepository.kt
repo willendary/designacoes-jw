@@ -248,7 +248,11 @@ class AppRepository(context: Context) {
                 role = role,
                 unavailabilities = unavails,
                 gender = gender,
-                groupId = groupId
+                groupId = groupId,
+                baptized = o.optBoolean("baptized", true),
+                trainee = o.optBoolean("trainee", false),
+                isReader = o.optBoolean("isReader", false),
+                isSentinelReader = o.optBoolean("isSentinelReader", false)
             )
         }
     }
@@ -299,9 +303,16 @@ class AppRepository(context: Context) {
             val blocked = mutableSetOf<Long>()
             val ba = o.optJSONArray("blockedBrotherIds") ?: org.json.JSONArray()
             for (j in 0 until ba.length()) blocked += ba.getLong(j)
-            val program = mutableListOf<String>()
+            // Aceita os dois formatos: JSONObject (novo) e String (legado "N. Título (M min)").
+            val program = mutableListOf<ProgramItem>()
             val pa = o.optJSONArray("program") ?: org.json.JSONArray()
-            for (j in 0 until pa.length()) pa.optString(j)?.takeIf { it.isNotBlank() }?.let { program += it }
+            for (j in 0 until pa.length()) {
+                val raw = pa.opt(j)
+                when (raw) {
+                    is org.json.JSONObject -> program += programItemFromJson(raw)
+                    is String -> parseLegacyProgramItem(raw)?.let { program += it }
+                }
+            }
             Meeting(
                 o.getLong("id"), o.getString("date"), o.getString("type"), assignments, blocked,
                 o.optString("theme"), program
@@ -425,6 +436,13 @@ class AppRepository(context: Context) {
                 put("active", b.active)
                 put("role", b.role.name)
                 put("gender", b.gender.name)
+                // Campos teocráticos. Sem isto as regras de não batizado,
+                // aprendiz e leitor valem só em memória e o app volta ao
+                // default quando recarrega.
+                put("baptized", b.baptized)
+                put("trainee", b.trainee)
+                put("isReader", b.isReader)
+                put("isSentinelReader", b.isSentinelReader)
                 b.groupId?.let { put("groupId", it) }
                 put("privileges", org.json.JSONArray(b.privileges.toList()))
                 val ua = org.json.JSONArray()
@@ -452,7 +470,10 @@ class AppRepository(context: Context) {
                 put("active", p.active)
                 put("minRole", p.minRole.name)
                 put("maleOnly", p.maleOnly)
+                put("kind", p.kind.name)
+                put("readerGrant", p.readerGrant.name)
                 put("allowedDays", org.json.JSONArray(p.allowedDays.toList()))
+                put("allowedStatus", org.json.JSONArray(p.allowedStatus.map { it.name }))
             })
         }
         prefs.edit().putString("privileges", a.toString()).apply()
@@ -475,7 +496,17 @@ class AppRepository(context: Context) {
                 put("assignments", aa)
                 put("blockedBrotherIds", org.json.JSONArray(m.blockedBrotherIds.toList()))
                 put("theme", m.theme)
-                put("program", org.json.JSONArray(m.program))
+                // Grava o formato novo (objetos), não a string legada.
+                val pa = org.json.JSONArray()
+                m.program.forEach { item ->
+                    pa.put(org.json.JSONObject().apply {
+                        put("section", item.section)
+                        put("number", item.number)
+                        put("title", item.title)
+                        put("minutes", item.minutes)
+                    })
+                }
+                put("program", pa)
             })
         }
         prefs.edit().putString("meetings", a.toString()).apply()
@@ -549,10 +580,21 @@ class AppRepository(context: Context) {
         return result
     }
 
+    private fun programItemFromJson(o: org.json.JSONObject): ProgramItem = ProgramItem(
+        section = o.optString("section", ""),
+        number = o.optInt("number", 0),
+        title = o.optString("title", ""),
+        minutes = o.optInt("minutes", 0)
+    )
+
     private fun Brother.toMap(): Map<String, Any?> = mutableMapOf<String, Any?>(
         "id" to id, "name" to name, "phone" to phone,
         "privileges" to privileges.toList(), "active" to active,
         "role" to role.name, "gender" to gender.name,
+        // Campos teocráticos: sem isto as regras valem só em memória e o app
+        // volta ao default depois de recarregar.
+        "baptized" to baptized, "trainee" to trainee,
+        "isReader" to isReader, "isSentinelReader" to isSentinelReader,
         "unavailabilities" to unavailabilities.map {
             mapOf("id" to it.id, "startDate" to it.startDate, "endDate" to it.endDate, "reason" to it.reason)
         }
@@ -563,14 +605,21 @@ class AppRepository(context: Context) {
     private fun Privilege.toMap() = mapOf(
         "id" to id, "name" to name, "quantity" to quantity,
         "active" to active, "allowedDays" to allowedDays.toList(),
-        "minRole" to minRole.name, "maleOnly" to maleOnly
+        "minRole" to minRole.name, "maleOnly" to maleOnly,
+        "kind" to kind.name,
+        "allowedStatus" to allowedStatus.map { it.name },
+        "readerGrant" to readerGrant.name
     )
 
     private fun Meeting.toMap() = mapOf(
         "id" to id, "date" to date, "type" to type,
         "assignments" to assignments.map { mapOf("privilegeId" to it.privilegeId, "brotherId" to it.brotherId) },
         "blockedBrotherIds" to blockedBrotherIds.toList(),
-        "theme" to theme, "program" to program
+        "theme" to theme,
+        // Grava o formato novo (mapas), não a string legada.
+        "program" to program.map {
+            mapOf("section" to it.section, "number" to it.number, "title" to it.title, "minutes" to it.minutes)
+        }
     )
 
     private fun PublicTalk.toMap(): Map<String, Any?> = mutableMapOf<String, Any?>(
@@ -623,7 +672,11 @@ class AppRepository(context: Context) {
             role = role,
             unavailabilities = unavailList,
             gender = gender,
-            groupId = groupId
+            groupId = groupId,
+            baptized = d["baptized"] as? Boolean ?: true,
+            trainee = d["trainee"] as? Boolean ?: false,
+            isReader = d["isReader"] as? Boolean ?: false,
+            isSentinelReader = d["isSentinelReader"] as? Boolean ?: false
         )
     }
 
@@ -634,7 +687,27 @@ class AppRepository(context: Context) {
         val roleStr = d["minRole"]?.toString() ?: "PUBLISHER"
         val minRole = runCatching { BrotherRole.valueOf(roleStr) }.getOrDefault(BrotherRole.PUBLISHER)
         val maleOnly = d["maleOnly"] as? Boolean ?: true
-        return Privilege(id, d["name"]?.toString() ?: return null, (d["quantity"] as? Number)?.toInt()?.coerceAtLeast(1) ?: 1, d["active"] as? Boolean ?: true, days, minRole, maleOnly)
+        val kind = runCatching { PartKind.valueOf(d["kind"]?.toString() ?: "INDIVIDUAL") }
+            .getOrDefault(PartKind.INDIVIDUAL)
+        val grant = runCatching { ReaderGrant.valueOf(d["readerGrant"]?.toString() ?: "NONE") }
+            .getOrDefault(ReaderGrant.NONE)
+        // Ausente = todos os status permitidos, que é o comportamento anterior.
+        val status = (d["allowedStatus"] as? List<*>)
+            ?.mapNotNull { runCatching { BrotherStatus.valueOf(it.toString()) }.getOrNull() }
+            ?.toSet()
+            ?: BrotherStatus.entries.toSet()
+        return Privilege(
+            id = id,
+            name = d["name"]?.toString() ?: return null,
+            quantity = (d["quantity"] as? Number)?.toInt()?.coerceAtLeast(1) ?: 1,
+            active = d["active"] as? Boolean ?: true,
+            allowedDays = days,
+            minRole = minRole,
+            maleOnly = maleOnly,
+            kind = kind,
+            allowedStatus = status,
+            readerGrant = grant
+        )
     }
 
     private fun meetingFromDocument(document: com.google.firebase.firestore.DocumentSnapshot): Meeting? {
@@ -648,7 +721,19 @@ class AppRepository(context: Context) {
         } ?: emptyList()
         val blocked = (d["blockedBrotherIds"] as? List<*>)?.mapNotNull { (it as? Number)?.toLong() }?.toSet() ?: emptySet()
         val theme = d["theme"]?.toString() ?: ""
-        val program = (d["program"] as? List<*>)?.mapNotNull { it?.toString()?.takeIf(String::isNotBlank) } ?: emptyList()
+        // Aceita os dois formatos: Map (novo) e String (legado "N. Título (M min)").
+        val program = (d["program"] as? List<*>)?.mapNotNull { raw ->
+            when (raw) {
+                is Map<*, *> -> ProgramItem(
+                    section = raw["section"]?.toString() ?: "",
+                    number = (raw["number"] as? Number)?.toInt() ?: 0,
+                    title = raw["title"]?.toString() ?: "",
+                    minutes = (raw["minutes"] as? Number)?.toInt() ?: 0
+                )
+                is String -> parseLegacyProgramItem(raw)
+                else -> null
+            }
+        } ?: emptyList()
         return Meeting(
             id = id,
             date = d["date"]?.toString() ?: return null,
