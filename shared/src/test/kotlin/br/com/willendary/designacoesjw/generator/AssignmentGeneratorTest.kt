@@ -260,5 +260,55 @@ class AssignmentGeneratorTest {
         assertTrue(cleanMsg.contains("Roberto Silva"))
         assertTrue(cleanMsg.contains("Limpeza profunda"))
     }
+
+    @Test
+    fun testFutureMeetingsDoNotInfluencePreviousMeeting() {
+        val schedule = MeetingSchedule(firstDay = 3, secondDay = 6)
+        val privilege = Privilege(id = 1, name = "Som", quantity = 1)
+        val b1 = Brother(id = 10, name = "Carlos", privileges = setOf(1))
+        val b2 = Brother(id = 20, name = "Lucas", privileges = setOf(1))
+
+        // Reunião anterior real (30/09) com Carlos; reunião futura (15/10) com Lucas.
+        val existingMeetings = listOf(
+            Meeting(1, "30/09/2026", "Meio de semana", listOf(Assignment(1, 10))),
+            Meeting(2, "15/10/2026", "Meio de semana", listOf(Assignment(1, 20)))
+        )
+
+        val generated = AssignmentGenerator.generateMonth(
+            yearMonth = YearMonth.of(2026, 10),
+            schedule = schedule,
+            brothers = listOf(b1, b2),
+            privileges = listOf(privilege),
+            existingMeetings = existingMeetings
+        )
+
+        // A reunião anterior à primeira (03/10) é a de 30/09 (Carlos), não a futura de 15/10.
+        // Carlos fez a reunião anterior → Lucas deve ser designado (evita consecutiva).
+        assertEquals(20, generated.first().assignments.first().brotherId)
+    }
+
+    @Test
+    fun testNextIdIsUniqueUnderConcurrency() {
+        val executor = java.util.concurrent.Executors.newFixedThreadPool(8)
+        val ids = java.util.concurrent.ConcurrentHashMap.newKeySet<Long>()
+        val futures = (1..1000).map {
+            executor.submit<Long> { AssignmentGenerator.nextId() }
+        }
+        futures.forEach { ids.add(it.get()) }
+        executor.shutdown()
+        assertEquals(1000, ids.size)
+    }
+
+    @Test
+    fun testNormalizeNameIsLocaleStable() {
+        // Acentos e cedilha são removidos; maiúsculas viram minúsculas.
+        assertEquals("joao", AssignmentGenerator.normalizeName("João"))
+        assertEquals("acao", AssignmentGenerator.normalizeName("Ação"))
+        assertEquals("coracao", AssignmentGenerator.normalizeName("CORAÇÃO"))
+
+        // Caso turco: "I" minúsculo deve ser "i" (Locale.ROOT), não "ı" (Locale turco).
+        assertEquals("ilik", AssignmentGenerator.normalizeName("ILIK"))
+        assertEquals("ırmak", AssignmentGenerator.normalizeName("ırmak"))
+    }
 }
 

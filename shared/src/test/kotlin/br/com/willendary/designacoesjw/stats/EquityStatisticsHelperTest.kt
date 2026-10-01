@@ -43,4 +43,50 @@ class EquityStatisticsHelperTest {
         assertEquals(1, report.unassignedActiveBrothers.size)
         assertEquals(3, report.unassignedActiveBrothers[0].id)
     }
+
+    @Test
+    fun testZeroActiveBrothers() {
+        val month = YearMonth.of(2026, 10)
+        val privileges = listOf(Privilege(1, "Indicador"))
+        val brothers = listOf(Brother(1, "Inativo", active = false))
+        val meetings = emptyList<Meeting>()
+
+        val report = EquityStatisticsHelper.calculateMonthStats(month, meetings, brothers, privileges)
+
+        assertTrue(report.ranking.isEmpty())
+        assertEquals(null, report.averageAssignmentsPerAssignedBrother)
+    }
+
+    @Test
+    fun testAllBrothersUnassigned() {
+        val month = YearMonth.of(2026, 10)
+        val privileges = listOf(Privilege(1, "Indicador"))
+        val brothers = listOf(Brother(1, "Irmão 1"), Brother(2, "Irmão 2"))
+        val meetings = emptyList<Meeting>()
+
+        val report = EquityStatisticsHelper.calculateMonthStats(month, meetings, brothers, privileges)
+
+        assertEquals(2, report.ranking.size)
+        assertEquals(null, report.averageAssignmentsPerAssignedBrother)
+    }
+
+    @Test
+    fun testAverageOnlyOverAssignedBrothers() {
+        val month = YearMonth.of(2026, 10)
+        val p1 = Privilege(1, "Indicador")
+        val privileges = listOf(p1)
+        val brothers = listOf(
+            Brother(1, "Irmão 1"),
+            Brother(2, "Irmão 2"),
+            Brother(3, "Irmão 3")
+        )
+        val meetings = listOf(
+            Meeting(1, "04/10/2026", "Reunião", listOf(Assignment(1, 1), Assignment(1, 2)))
+        )
+
+        val report = EquityStatisticsHelper.calculateMonthStats(month, meetings, brothers, privileges)
+
+        // b1 e b2 têm 1 designação cada; b3 tem 0. Média = 2 / 2 = 1.0 (b3 não dilui).
+        assertEquals(1.0, report.averageAssignmentsPerAssignedBrother)
+    }
 }

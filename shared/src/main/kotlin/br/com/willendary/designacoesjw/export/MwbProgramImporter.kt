@@ -3,6 +3,7 @@ package br.com.willendary.designacoesjw.export
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URLDecoder
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
 import java.util.Locale
@@ -56,9 +57,17 @@ object MwbProgramImporter {
 
     private const val BIB = "/pt/biblioteca/jw-apostila-do-mes/"
 
-    /** {bimestre}-{ano}-mwb, ex.: setembro-outubro-2026-mwb */
+    /**
+     * {bimestre}-{ano}-mwb, ex.: setembro-outubro-2026-mwb.
+     *
+     * O bimestre é definido pela **semana** (segunda a domingo), não pelo mês do
+     * dia: uma reunião nos primeiros dias de janeiro pode pertencer à semana
+     * iniciada em dezembro do ano anterior (ex.: 02/01/2027 cai na semana de
+     * 28/12/2026 → novembro-dezembro-2026-mwb). O ano do slug é o do período.
+     */
     internal fun bimestreSlug(date: LocalDate): String {
-        val ym = YearMonth.from(date)
+        val monday = date.minusDays((date.dayOfWeek.value - DayOfWeek.MONDAY.value).toLong())
+        val ym = YearMonth.from(monday)
         val end = if (ym.monthValue % 2 == 0) ym else ym.plusMonths(1)
         val start = end.minusMonths(1)
         return "${MONTH_NAMES_PT[start.monthValue - 1]}-${MONTH_NAMES_PT[end.monthValue - 1]}-${end.year}-mwb"

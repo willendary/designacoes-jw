@@ -2664,9 +2664,12 @@ private fun EquityStatisticsDialog(
                                 Text("Designações", style = MaterialTheme.typography.labelMedium)
                             }
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                val avg = if (report.ranking.isNotEmpty()) {
-                                    String.format(Locale.US, "%.1f", report.totalAssignments.toFloat() / report.ranking.size)
-                                } else "0.0"
+                                // Média só sobre irmãos efetivamente designados.
+                                // Dividir por ranking.size (que inclui quem tem
+                                // count == 0) diluía a média e dava NaN com zero
+                                // irmãos ativos. Null = ninguém foi designado.
+                                val avg = report.averageAssignmentsPerAssignedBrother
+                                    ?.let { String.format(Locale.US, "%.1f", it) } ?: "—"
                                 Text(avg, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                                 Text("Média/Irmão", style = MaterialTheme.typography.labelMedium)
                             }

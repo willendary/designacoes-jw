@@ -47,6 +47,18 @@ class MwbProgramImporterTest {
     }
 
     @Test
+    fun `slug bimestral respeita a virada de ano`() {
+        // 05/01/2026 (segunda): semana toda em janeiro.
+        assertEquals("janeiro-fevereiro-2026-mwb", MwbProgramImporter.bimestreSlug(LocalDate.of(2026, 1, 5)))
+        // 28/12/2025 (domingo): semana 22-28/12, toda em dezembro.
+        assertEquals("novembro-dezembro-2025-mwb", MwbProgramImporter.bimestreSlug(LocalDate.of(2025, 12, 28)))
+        // 02/01/2027 (sábado): semana 28/12/2026-03/01/2027, iniciada em dezembro de 2026.
+        assertEquals("novembro-dezembro-2026-mwb", MwbProgramImporter.bimestreSlug(LocalDate.of(2027, 1, 2)))
+        // Semana normal em setembro.
+        assertEquals("setembro-outubro-2026-mwb", MwbProgramImporter.bimestreSlug(LocalDate.of(2026, 9, 15)))
+    }
+
+    @Test
     fun `parse extrai tema, secoes e itens numerados`() {
         val html = buildString {
             append("<html><body><h1>5-11 de outubro</h1>")

@@ -11,7 +11,7 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import kotlin.random.Random
+import java.util.concurrent.atomic.AtomicLong
 
 object AssignmentGenerator {
     val DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
@@ -33,7 +33,9 @@ object AssignmentGenerator {
         var history = existingMeetings.toList()
 
         dates.forEach { date ->
-            val prevMeeting = history.maxByOrNull { parseDate(it.date) }
+            val prevMeeting = history
+                .filter { val d = parseDate(it.date); d != LocalDate.MIN && d < date }
+                .maxByOrNull { parseDate(it.date) }
             val meeting = generateMeeting(
                 date = date,
                 blocked = emptySet(),
@@ -59,7 +61,7 @@ object AssignmentGenerator {
     ): Meeting {
         val activePrivileges = privileges.filter {
             isPrivilegeApplicableToMeeting(it, date)
-        }.sortedBy { it.name.lowercase(Locale.getDefault()) }
+        }.sortedBy { it.name.lowercase(Locale.ROOT) }
 
         val activeBrothers = brothers.filter {
             it.active && it.id !in blocked && !isBrotherUnavailableOn(it, date)
@@ -249,7 +251,13 @@ object AssignmentGenerator {
     fun normalizeName(value: String): String =
         Normalizer.normalize(value.trim(), Normalizer.Form.NFD)
             .replace("\\p{InCombiningDiacriticalMarks}+".toRegex(), "")
-            .lowercase(Locale.getDefault())
+            .lowercase(Locale.ROOT)
 
-    fun nextId(): Long = System.currentTimeMillis() * 1000L + Random.nextLong(1000)
+    // Sequencial e monotônico dentro do processo: evita colisão de IDs (chave de
+    // documento no Firestore e chave de `keep` na limpeza do sync). O valor inicial
+    // deriva do relógio, mas o incremento atômico garante unicidade mesmo sob
+    // concorrência entre threads.
+    private val idCounter = AtomicLong(System.currentTimeMillis() * 1000L)
+
+    fun nextId(): Long = idCounter.incrementAndGet()
 }

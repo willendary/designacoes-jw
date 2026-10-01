@@ -15,7 +15,8 @@ object HtmlReportGenerator {
         month: YearMonth,
         meetings: List<Meeting>,
         brothers: List<Brother>,
-        privileges: List<Privilege>
+        privileges: List<Privilege>,
+        hoje: LocalDate = LocalDate.now()
     ): String {
         val activePrivileges = privileges.filter { it.active }.sortedBy { it.id }
         val sortedMeetings = meetings.sortedBy { AssignmentGenerator.parseDate(it.date) }
@@ -53,12 +54,13 @@ object HtmlReportGenerator {
                 } else ""
 
                 append("<tr>\n")
-                append("<td class=\"date-col\">${meeting.date}<br><small style=\"color:#4b5563;\">$weekday</small></td>\n")
+                append("<td class=\"date-col\">${xmlEscape(meeting.date)}<br><small style=\"color:#4b5563;\">${xmlEscape(weekday)}</small></td>\n")
 
                 activePrivileges.forEach { privilege ->
                     val names = meeting.assignments
                         .filter { it.privilegeId == privilege.id }
                         .mapNotNull { a -> brothers.find { it.id == a.brotherId }?.name }
+                        .map { xmlEscape(it) }
 
                     val cellContent = if (names.isEmpty()) "—" else names.joinToString("<br>")
                     append("<td>$cellContent</td>\n")
@@ -68,7 +70,7 @@ object HtmlReportGenerator {
 
             append("</tbody>\n</table>\n")
             append("<footer style=\"margin-top: 24px; text-align: right; font-size: 8pt; color: #6b7280;\">")
-            append("Gerado pelo Designações JW em ${LocalDate.now().format(AssignmentGenerator.DATE_FORMATTER)}")
+            append("Gerado pelo Designações JW em ${hoje.format(AssignmentGenerator.DATE_FORMATTER)}")
             append("</footer>\n")
             append("</body>\n</html>")
         }

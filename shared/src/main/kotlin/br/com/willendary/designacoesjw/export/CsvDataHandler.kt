@@ -27,18 +27,16 @@ object CsvDataHandler {
     )
 
     fun importBrothersFromCsv(csvContent: String): List<ImportedBrother> {
-        val lines = csvContent.lines().map { it.trim() }.filter { it.isNotBlank() }
-        if (lines.isEmpty()) return emptyList()
+        val delimiter = if (csvContent.substringBefore('\n').contains(";")) ';' else ','
+        val rows = parseCsv(csvContent, delimiter)
+        if (rows.isEmpty()) return emptyList()
 
-        val delimiter = if (lines.first().contains(";")) ";" else ","
         val results = mutableListOf<ImportedBrother>()
+        val dataRows = if (rows.first().firstOrNull()?.lowercase()?.contains("nome") == true) rows.drop(1) else rows
 
-        val dataLines = if (lines.first().lowercase().contains("nome")) lines.drop(1) else lines
-
-        dataLines.forEach { line ->
-            val cols = line.split(delimiter).map { it.trim().trim('"', '\'') }
+        dataRows.forEach { cols ->
             if (cols.isNotEmpty() && cols[0].isNotBlank()) {
-                val name = cols[0]
+                val name = unprotect(cols[0])
                 val phone = cols.getOrNull(1)?.filter { it.isDigit() || it == '+' } ?: ""
                 val roleStr = cols.getOrNull(2)?.lowercase() ?: ""
                 val role = when {
@@ -48,7 +46,7 @@ object CsvDataHandler {
                 }
                 val privNames = cols.getOrNull(3)
                     ?.split(",")
-                    ?.map { it.trim() }
+                    ?.map { unprotect(it.trim()) }
                     ?.filter { it.isNotBlank() } ?: emptyList()
 
                 val active = cols.getOrNull(4)?.lowercase()?.let { it != "não" && it != "nao" && it != "false" && it != "0" } ?: true
@@ -74,10 +72,77 @@ object CsvDataHandler {
         }
     }
 
-    private fun escape(value: String): String =
-        if (value.contains(";") || value.contains(",") || value.contains("\"") || value.contains("\n")) {
-            "\"" + value.replace("\"", "\"\"") + "\""
+    private fun escape(value: String): String {
+        // Proteção contra injeção de fórmula (CSV injection): valores que começam
+        // com =, +, -, @, TAB ou CR são interpretados como fórmula pelo Excel/LibreOffice.
+        // O apóstrofo inicial força o tratamento como texto.
+        val protected = if (value.startsWith("=") || value.startsWith("+") ||
+            value.startsWith("-") || value.startsWith("@") ||
+            value.startsWith("\t") || value.startsWith("\r")) {
+            "'" + value
         } else {
             value
         }
+        return if (protected.contains(";") || protected.contains(",") ||
+            protected.contains("\"") || protected.contains("\n")) {
+            "\"" + protected.replace("\"", "\"\"") + "\""
+        } else {
+            protected
+        }
+    }
+
+    /** Remove o prefixo de proteção contra injeção de fórmula, se presente. */
+    private fun unprotect(value: String): String =
+        if (value.length >= 2 && value[0] == '\'' && value[1] in "=+-@\t\r") {
+            value.substring(1)
+        } else {
+            value
+        }
+
+    /**
+     * Parser CSV que respeita aspas, aspas escapadas (`""`) e delimitador/quebra
+     * de linha dentro de campos entre aspas — necessário para o round-trip de
+     * nomes com vírgula, aspas ou quebra de linha.
+     */
+    private fun parseCsv(content: String, delimiter: Char): List<List<String>> {
+        val rows = mutableListOf<List<String>>()
+        var row = mutableListOf<String>()
+        var field = StringBuilder()
+        var inQuotes = false
+        var i = 0
+        while (i < content.length) {
+            val c = content[i]
+            when {
+                inQuotes -> {
+                    if (c == '"') {
+                        if (i + 1 < content.length && content[i + 1] == '"') {
+                            field.append('"')
+                            i++
+                        } else {
+                            inQuotes = false
+                        }
+                    } else {
+                        field.append(c)
+                    }
+                }
+                c == '"' -> inQuotes = true
+                c == delimiter -> {
+                    row.add(field.toString().trim())
+                    field = StringBuilder()
+                }
+                c == '\n' || c == '\r' -> {
+                    if (c == '\r' && i + 1 < content.length && content[i + 1] == '\n') i++
+                    row.add(field.toString().trim())
+                    field = StringBuilder()
+                    if (row.any { it.isNotBlank() }) rows.add(row)
+                    row = mutableListOf()
+                }
+                else -> field.append(c)
+            }
+            i++
+        }
+        row.add(field.toString().trim())
+        if (row.any { it.isNotBlank() }) rows.add(row)
+        return rows
+    }
 }

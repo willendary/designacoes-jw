@@ -18,7 +18,17 @@ data class MonthEquityReport(
     val totalAssignments: Int,
     val ranking: List<BrotherAssignmentCount>,
     val unassignedActiveBrothers: List<Brother>,
-    val privilegeTotals: Map<String, Int>
+    val privilegeTotals: Map<String, Int>,
+    /**
+     * Média de designações por irmão, calculada **apenas** sobre os irmãos que
+     * efetivamente receberam designação no mês (`count > 0`). Irmãos ativos que
+     * nunca entraram na escala não diluem a média.
+     *
+     * `null` quando nenhum irmão foi designado — o chamador deve exibir um
+     * estado vazio explícito em vez de dividir por `ranking.size` (que produz
+     * `0 / 0 = NaN` quando não há irmãos ativos).
+     */
+    val averageAssignmentsPerAssignedBrother: Double?
 )
 
 object EquityStatisticsHelper {
@@ -58,13 +68,18 @@ object EquityStatisticsHelper {
 
         val unassigned = ranking.filter { it.count == 0 }.map { it.brother }
 
+        // Média só sobre quem foi designado; null quando ninguém entrou na escala.
+        val assignedCount = ranking.count { it.count > 0 }
+        val average = if (assignedCount == 0) null else assignments.size.toDouble() / assignedCount
+
         return MonthEquityReport(
             month = month,
             totalMeetings = monthMeetings.size,
             totalAssignments = assignments.size,
             ranking = ranking,
             unassignedActiveBrothers = unassigned,
-            privilegeTotals = privilegeCounts.toSortedMap()
+            privilegeTotals = privilegeCounts.toSortedMap(),
+            averageAssignmentsPerAssignedBrother = average
         )
     }
 }
