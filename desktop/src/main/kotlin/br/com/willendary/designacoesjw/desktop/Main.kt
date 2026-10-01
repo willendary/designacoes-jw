@@ -48,6 +48,8 @@ import kotlinx.serialization.json.Json
 import java.awt.Desktop
 import java.io.File
 import java.net.URI
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
@@ -98,6 +100,14 @@ private fun getNextMeetingInfo(meetings: List<Meeting>): Pair<Meeting, Long>? {
 
 class StoreController {
     val file = File(System.getProperty("user.home"), ".designacoes-jw/dados.json")
+
+    /**
+     * Mensagem de erro exibida quando o `dados.json` não pôde ser lido no boot.
+     * Nulo quando o carregamento foi bem-sucedido (ou o arquivo ainda não existe).
+     */
+    var loadError by mutableStateOf<String?>(null)
+        private set
+
     var data by mutableStateOf(load())
         private set
 
@@ -108,15 +118,32 @@ class StoreController {
     var isSyncing by mutableStateOf(false)
         private set
 
+    // Serializa as gravações em disco: várias threads (rede, import, timers)
+    // chamam save() ao mesmo tempo e, sem lock, duas escritas se intercalam
+    // e corrompem o arquivo de forma permanente.
+    private val writeLock = Any()
+
     init {
         if (authSession != null) {
             syncWithCloud()
         }
     }
 
-    private fun load() = runCatching {
-        if (file.exists()) json.decodeFromString<Store>(file.readText()) else Store()
-    }.getOrDefault(Store())
+    private fun load(): Store {
+        if (!file.exists()) return Store()
+        return try {
+            json.decodeFromString<Store>(file.readText())
+        } catch (e: Exception) {
+            // Preserva o arquivo corrompido em vez de devolver um Store vazio
+            // silencioso: o usuário veria a lista vazia e poderia sobrescrever
+            // o arquivo bom na próxima gravação.
+            val backup = File(file.parentFile, "dados.json.corrompido-${System.currentTimeMillis()}")
+            val renamed = runCatching { file.renameTo(backup) }.getOrDefault(false)
+            if (!renamed) runCatching { file.copyTo(backup, overwrite = true) }
+            loadError = "Não foi possível ler os dados salvos. Um backup foi criado em ${backup.name}."
+            Store()
+        }
+    }
 
     private fun save(s: Store) {
         data = s
@@ -128,7 +155,23 @@ class StoreController {
 
     private fun saveLocal(s: Store) {
         file.parentFile?.mkdirs()
-        file.writeText(json.encodeToString(s))
+        val tmp = File(file.parentFile, "dados.json.tmp")
+        synchronized(writeLock) {
+            tmp.writeText(json.encodeToString(s))
+            try {
+                // Escrita atômica: grava em temporário e faz rename por cima,
+                // evitando deixar o dados.json pela metade se o app fechar no
+                // meio da escrita.
+                Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+            } catch (e: java.nio.file.AtomicMoveNotSupportedException) {
+                Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            }
+        }
+        // ponytail: sem fsync explícito. O rename atômico garante que o arquivo
+        // nunca fica truncado, mas uma queda de energia logo após o rename pode
+        // perder a última gravação (o SO ainda não fez flush). Custo de fsync:
+        // uma chamada FileChannel.force() por gravação — adicionar se durabilidade
+        // imediata virar requisito.
     }
 
     fun login(email: String, pass: String): String? {
@@ -784,6 +827,16 @@ private fun UpdateDialog(info: WindowsUpdateInfo, onDismiss: () -> Unit) {
 @Composable
 fun DesktopApp(c: StoreController, onShowUpdate: (WindowsUpdateInfo) -> Unit = {}) {
     var tab by remember { mutableIntStateOf(0) }
+    var showLoadError by remember { mutableStateOf(c.loadError != null) }
+
+    if (showLoadError) {
+        AlertDialog(
+            onDismissRequest = { showLoadError = false },
+            title = { Text("Erro ao carregar dados") },
+            text = { Text(c.loadError ?: "Os dados salvos não puderam ser lidos.") },
+            confirmButton = { TextButton(onClick = { showLoadError = false }) { Text("OK") } }
+        )
+    }
 
     if (tab == 2) {
         // Modo Telão (Kiosk) em tela cheia da janela

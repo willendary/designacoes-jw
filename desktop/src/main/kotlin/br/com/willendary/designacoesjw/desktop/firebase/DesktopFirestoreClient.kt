@@ -11,6 +11,15 @@ object DesktopFirestoreClient {
     private const val BASE_URL =
         "https://firestore.googleapis.com/v1/projects/$FIREBASE_PROJECT_ID/databases/(default)/documents/workspaces/designacoes-jw"
 
+    /** Número máximo de tentativas por requisição (1 inicial + retries). */
+    private const val MAX_ATTEMPTS = 3
+
+    /** Erro de HTTP do Firestore, carregando o status code para retry seletivo. */
+    private class FirestoreException(val statusCode: Int, message: String) : Exception(message)
+
+    /** Backoff exponencial: 500ms, 1s, 2s. */
+    private fun backoffDelay(attempt: Int): Long = 500L shl (attempt - 1)
+
     fun fetchCloudStore(idToken: String): Result<Store> = runCatching {
         val brothers = fetchCollection(idToken, "brothers") { parseBrother(it) }
         val privileges = fetchCollection(idToken, "privileges") { parsePrivilege(it) }
@@ -211,15 +220,7 @@ object DesktopFirestoreClient {
     }
 
     private fun <T> fetchCollection(idToken: String, collectionName: String, parser: (JsonObject) -> T?): List<T> {
-        val url = URI("$BASE_URL/$collectionName?pageSize=300").toURL()
-        val conn = (url.openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            setRequestProperty("Authorization", "Bearer $idToken")
-            connectTimeout = 8000
-            readTimeout = 8000
-        }
-        if (conn.responseCode !in 200..299) return emptyList()
-        val resp = conn.inputStream.bufferedReader().use { it.readText() }
+        val resp = request(idToken, URI("$BASE_URL/$collectionName?pageSize=300"), "GET")
         val root = json.parseToJsonElement(resp).jsonObject
         val docs = root["documents"]?.jsonArray ?: return emptyList()
         return docs.mapNotNull { doc ->
@@ -229,31 +230,57 @@ object DesktopFirestoreClient {
     }
 
     private fun fetchDocument(idToken: String, documentPath: String): JsonObject? {
-        val url = URI("$BASE_URL/$documentPath").toURL()
-        val conn = (url.openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            setRequestProperty("Authorization", "Bearer $idToken")
-            connectTimeout = 8000
-            readTimeout = 8000
+        val resp = try {
+            request(idToken, URI("$BASE_URL/$documentPath"), "GET")
+        } catch (e: FirestoreException) {
+            // 404 = documento ainda não existe (ex.: settings/main em workspace
+            // recém-criado). Não é erro: devolve null para aplicar os defaults.
+            if (e.statusCode == 404) return null
+            throw e
         }
-        if (conn.responseCode !in 200..299) return null
-        val resp = conn.inputStream.bufferedReader().use { it.readText() }
         return json.parseToJsonElement(resp).jsonObject["fields"]?.jsonObject
     }
 
     private fun patchDocument(idToken: String, collection: String, docId: String, fields: JsonObject) {
-        val url = URI("$BASE_URL/$collection/$docId").toURL()
-        val conn = (url.openConnection() as HttpURLConnection).apply {
-            requestMethod = "PATCH"
-            doOutput = true
-            setRequestProperty("Authorization", "Bearer $idToken")
-            setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-            connectTimeout = 8000
-            readTimeout = 8000
-        }
         val body = buildJsonObject { put("fields", fields) }.toString()
-        conn.outputStream.use { it.write(body.toByteArray(StandardCharsets.UTF_8)) }
-        conn.responseCode // Triggers request
+        request(idToken, URI("$BASE_URL/$collection/$docId"), "PATCH", body)
+    }
+
+    /**
+     * Executa uma requisição HTTP ao Firestore e devolve o corpo em caso de 2xx.
+     * Qualquer resposta fora de 2xx vira [FirestoreException] com status + corpo,
+     * para que o erro chegue à UI em vez de virar um Store vazio "Sincronizado".
+     * 409 (CONFLICT/aborted) e 429 (RESOURCE_EXHAUSTED) são retentados com backoff
+     * exponencial, no máximo [MAX_ATTEMPTS] tentativas.
+     */
+    private fun request(idToken: String, url: URI, method: String, body: String? = null): String {
+        var attempt = 0
+        while (true) {
+            val conn = (url.toURL().openConnection() as HttpURLConnection).apply {
+                requestMethod = method
+                setRequestProperty("Authorization", "Bearer $idToken")
+                connectTimeout = 8000
+                readTimeout = 8000
+                if (body != null) {
+                    doOutput = true
+                    setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                }
+            }
+            if (body != null) {
+                conn.outputStream.use { it.write(body.toByteArray(StandardCharsets.UTF_8)) }
+            }
+            val code = conn.responseCode
+            if (code in 200..299) {
+                return conn.inputStream.bufferedReader().use { it.readText() }
+            }
+            val errBody = runCatching { conn.errorStream?.bufferedReader()?.use { it.readText() } }.getOrNull() ?: ""
+            if ((code == 409 || code == 429) && attempt < MAX_ATTEMPTS - 1) {
+                attempt++
+                Thread.sleep(backoffDelay(attempt))
+                continue
+            }
+            throw FirestoreException(code, "HTTP $code: $errBody")
+        }
     }
 
     private fun parseBrother(fields: JsonObject): Brother? {

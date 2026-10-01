@@ -85,7 +85,14 @@ service cloud.firestore {
 
     match /workspaces/designacoes-jw/brothers/{brotherId} {
       allow read: if hasPermission('view_assignments');
-      allow write: if hasPermission('manage_brothers');
+      // Registrar ausencia e parte de gerar designacoes, nao de gerenciar
+      // irmaos: a tela "Quem falta?" oferece para quem tem generate_assignments.
+      // A regra exige que ESSA seja a unica mudanca, para o atalho nao virar
+      // escalonamento de privilegio via um save do documento inteiro.
+      allow write: if hasPermission('manage_brothers') || (
+        hasPermission('generate_assignments') &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['unavailabilities'])
+      );
     }
 
     match /workspaces/designacoes-jw/privileges/{privilegeId} {

@@ -418,28 +418,39 @@ fun App(
                 }
             }
         ) {
-            Scaffold(
-                topBar = {
-                    TopAppBar(
-                        title = {
-                            Column {
-                                Text(currentTitle, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                                Text("Designações JW", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        },
-                        navigationIcon = {
-                            IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                Icon(Icons.Filled.Menu, contentDescription = "Menu lateral")
-                            }
-                        },
-                        actions = {
-                            IconButton(onClick = { tab = 10 }) {
-                                Icon(Icons.Filled.Tv, contentDescription = "Modo Telão")
-                            }
+        // Erro de gravacao no Firestore ou de permissao. Antes estas falhas
+        // eram engolidas no repositorio e o app mostrava "salvo" mesmo com o
+        // servidor tendo recusado.
+        val snackbarHostState = remember { SnackbarHostState() }
+        LaunchedEffect(vm.lastActionError.value) {
+            vm.lastActionError.value?.let {
+                snackbarHostState.showSnackbar(it, withDismissAction = true, duration = SnackbarDuration.Long)
+                vm.clearActionError()
+            }
+        }
+        Scaffold(
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text(currentTitle, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                            Text("Designações JW", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                    )
-                }
-            ) { padding ->
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                            Icon(Icons.Filled.Menu, contentDescription = "Menu lateral")
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { tab = 10 }) {
+                            Icon(Icons.Filled.Tv, contentDescription = "Modo Telão")
+                        }
+                    }
+                )
+            }
+        ) { padding ->
                 Box(Modifier.padding(padding).fillMaxSize()) {
                     when (tab) {
                         0 -> SettingsScreen(vm, themeIndex, onThemeChange, onSignOut)
@@ -988,7 +999,34 @@ private fun MeetingCardView(
                     Icon(Icons.Filled.Share, contentDescription = "WhatsApp", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                 }
 
-                IconButton(onClick = onToggleExpand, modifier = Modifier.size(38.dp)) {
+                // Importar o programa oficial. Acao de manutencao: fica como
+                // icone ao lado das outras acoes, nao como botao de largura
+                // natural no meio do conteudo do card.
+                if (meeting.type.contains("meio de semana", ignoreCase = true)) {
+                    IconButton(
+                        onClick = {
+                            importing = true
+                            importError = null
+                            vm.importMwbProgram(meeting.id) { err ->
+                                importing = false
+                                if (err != null) importError = err
+                            }
+                        },
+                        enabled = !importing
+                    ) {
+                        if (importing) {
+                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(
+                                if (meeting.theme.isBlank()) Icons.Filled.CloudDownload else Icons.Filled.CloudDone,
+                                contentDescription = if (meeting.theme.isBlank())
+                                    "Importar programa do jw.org" else "Atualizar programa do jw.org"
+                            )
+                        }
+                    }
+                }
+
+                IconButton(onClick = onToggleExpand) {
                     Icon(
                         if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
                         contentDescription = "Expandir detalhes"
@@ -1008,29 +1046,15 @@ private fun MeetingCardView(
                 Text("• $item", style = MaterialTheme.typography.bodySmall)
             }
 
-            if (meeting.type.contains("meio de semana", ignoreCase = true)) {
-                OutlinedButton(
-                    onClick = {
-                        importing = true
-                        importError = null
-                        vm.importMwbProgram(meeting.id) { err ->
-                            importing = false
-                            if (err != null) importError = err
-                        }
-                    },
-                    enabled = !importing,
-                    contentPadding = PaddingValues(vertical = 6.dp)
-                ) {
-                    if (importing) {
-                        CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
-                        Spacer(Modifier.width(6.dp))
-                    }
-                    Text(
-                        if (meeting.theme.isBlank()) "Importar programa do jw.org"
-                        else "Atualizar programa do jw.org",
-                        style = MaterialTheme.typography.labelMedium
-                    )
-                }
+            if (meeting.type.contains("meio de semana", ignoreCase = true) && importError != null) {
+                // Erro em linha, sem AlertDialog: na maioria das vezes o bimestre
+                // ainda nao foi publicado no jw.org, o que e condicao normal e
+                // nao justifica interromper a tela.
+                Text(
+                    importError!!,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
             }
 
             // Seção Expandida com as Designações e Trocas
@@ -1506,13 +1530,13 @@ private fun BrothersScreen(vm: AppViewModel) {
 
                             // Ações do Irmão
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                IconButton(onClick = { unavailBrother = brother }, modifier = Modifier.size(36.dp)) {
+                                IconButton(onClick = { unavailBrother = brother }) {
                                     Icon(Icons.Filled.Event, contentDescription = "Ausências", modifier = Modifier.size(18.dp))
                                 }
-                                IconButton(onClick = { editing = brother }, modifier = Modifier.size(36.dp)) {
+                                IconButton(onClick = { editing = brother }) {
                                     Icon(Icons.Filled.Edit, contentDescription = "Editar", modifier = Modifier.size(18.dp))
                                 }
-                                IconButton(onClick = { deleting = brother }, modifier = Modifier.size(36.dp)) {
+                                IconButton(onClick = { deleting = brother }) {
                                     Icon(Icons.Filled.Delete, contentDescription = "Excluir", modifier = Modifier.size(18.dp))
                                 }
                             }
@@ -1931,10 +1955,10 @@ private fun PrivilegesScreen(vm: AppViewModel) {
                                 }
 
                                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    IconButton(onClick = { editing = privilege }, modifier = Modifier.size(36.dp)) {
+                                    IconButton(onClick = { editing = privilege }) {
                                         Icon(Icons.Filled.Edit, contentDescription = "Editar", modifier = Modifier.size(18.dp))
                                     }
-                                    IconButton(onClick = { deleting = privilege }, modifier = Modifier.size(36.dp)) {
+                                    IconButton(onClick = { deleting = privilege }) {
                                         Icon(Icons.Filled.Delete, contentDescription = "Excluir", modifier = Modifier.size(18.dp))
                                     }
                                 }

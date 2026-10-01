@@ -34,6 +34,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var fieldServiceGroups = mutableStateOf(repo.loadFieldServiceGroups()); private set
     var cleaningSchedules = mutableStateOf(repo.loadCleaningSchedules()); private set
 
+    /**
+     * Último erro de sincronização ou de permissão, para a UI mostrar.
+     * Antes these falhas eram engolidas: a escrita ia sem tratamento e o app
+     * exibia "salvo" mesmo com o Firestore tendo recusado.
+     */
+    var lastActionError = mutableStateOf<String?>(null); private set
+    fun clearActionError() { lastActionError.value = null }
+
     init {
         FirebaseAuth.getInstance().currentUser?.let { user ->
             accessRepo.observeCurrentUser(
@@ -55,6 +63,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
             )
         }
+        repo.onSyncError = { lastActionError.value = it }
         repo.startCloudSync(
             onBrothers = { brothers.value = it },
             onPrivileges = { privileges.value = it },
@@ -78,6 +87,27 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return profile.active && (profile.role == "admin" || permission in profile.permissions)
     }
 
+    /**
+     * Guarda de escrita. Até aqui só [createInvitation] e [updateUser]
+     * verificavam permissão — as outras ~30 mutações escreviam sem gate, e a
+     * UI só esconde botões com `enabled = can(...)`, o que é cliente e cobre 6
+     * pontos do App.kt. Cada permissão abaixo espelha exatamente a regra do
+     * `firestore.rules` correspondente; divergir entre as duas é o que produz
+     * "salvou" na tela e nada no servidor.
+     */
+    private fun denied(permission: String, action: String): String =
+        "Você não tem permissão para $action."
+
+    fun setMeetingDays(first: Int, second: Int) {
+        if (first == second) return
+        if (!can(AppPermissions.MANAGE_SETTINGS)) {
+            lastActionError.value = denied(AppPermissions.MANAGE_SETTINGS, "alterar os dias de reunião")
+            return
+        }
+        schedule.value = MeetingSchedule(first, second)
+        repo.saveSchedule(schedule.value)
+    }
+
     fun createInvitation(email: String, name: String, permissions: Set<String>, onResult: (Invitation?, String?) -> Unit) {
         val user = FirebaseAuth.getInstance().currentUser
         if (user == null || !can(AppPermissions.MANAGE_USERS)) {
@@ -95,13 +125,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         accessRepo.updateUser(profile, onResult)
     }
 
-    fun setMeetingDays(first: Int, second: Int) {
-        if (first == second) return
-        schedule.value = MeetingSchedule(first, second)
-        repo.saveSchedule(schedule.value)
-    }
-
     fun addBrother(name: String, phone: String): String? {
+        if (!can(AppPermissions.MANAGE_BROTHERS)) return denied(AppPermissions.MANAGE_BROTHERS, "cadastrar irmãos")
         val normalized = normalizeName(name)
         if (normalized.isBlank()) return "Informe o nome do irmão."
         if (brothers.value.any { normalizeName(it.name) == normalized }) return "Já existe um irmão cadastrado com esse nome."
@@ -111,6 +136,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun updateBrother(id: Long, name: String, phone: String): String? {
+        if (!can(AppPermissions.MANAGE_BROTHERS)) return denied(AppPermissions.MANAGE_BROTHERS, "editar irmãos")
         val normalized = normalizeName(name)
         if (normalized.isBlank()) return "Informe o nome do irmão."
         if (brothers.value.any { it.id != id && normalizeName(it.name) == normalized }) return "Já existe outro irmão cadastrado com esse nome."
@@ -120,16 +146,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun deleteBrother(id: Long) {
+        if (!can(AppPermissions.MANAGE_BROTHERS)) { lastActionError.value = denied(AppPermissions.MANAGE_BROTHERS, "excluir irmãos"); return }
         brothers.value = brothers.value.filterNot { it.id == id }
         repo.saveBrothers(brothers.value)
     }
 
     fun setBrotherActive(id: Long, active: Boolean) {
+        if (!can(AppPermissions.MANAGE_BROTHERS)) { lastActionError.value = denied(AppPermissions.MANAGE_BROTHERS, "alterar irmãos"); return }
         brothers.value = brothers.value.map { if (it.id == id) it.copy(active = active) else it }
         repo.saveBrothers(brothers.value)
     }
 
     fun addPrivilege(name: String, quantity: Int): String? {
+        if (!can(AppPermissions.MANAGE_PRIVILEGES)) return denied(AppPermissions.MANAGE_PRIVILEGES, "cadastrar privilégios")
         val normalized = normalizeName(name)
         if (normalized.isBlank()) return "Informe o nome do privilégio."
         if (privileges.value.any { normalizeName(it.name) == normalized }) return "Já existe um privilégio cadastrado com esse nome."
@@ -139,6 +168,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun updatePrivilege(id: Long, name: String, quantity: Int): String? {
+        if (!can(AppPermissions.MANAGE_PRIVILEGES)) return denied(AppPermissions.MANAGE_PRIVILEGES, "editar privilégios")
         val normalized = normalizeName(name)
         if (normalized.isBlank()) return "Informe o nome do privilégio."
         if (privileges.value.any { it.id != id && normalizeName(it.name) == normalized }) return "Já existe outro privilégio cadastrado com esse nome."
@@ -148,6 +178,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun deletePrivilege(id: Long) {
+        if (!can(AppPermissions.MANAGE_PRIVILEGES)) { lastActionError.value = denied(AppPermissions.MANAGE_PRIVILEGES, "excluir privilégios"); return }
         privileges.value = privileges.value.filterNot { it.id == id }
         repo.savePrivileges(privileges.value)
         brothers.value = brothers.value.map { it.copy(privileges = it.privileges - id) }
@@ -155,16 +186,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setPrivilegeActive(id: Long, active: Boolean) {
+        if (!can(AppPermissions.MANAGE_PRIVILEGES)) { lastActionError.value = denied(AppPermissions.MANAGE_PRIVILEGES, "alterar privilégios"); return }
         privileges.value = privileges.value.map { if (it.id == id) it.copy(active = active) else it }
         repo.savePrivileges(privileges.value)
     }
 
     fun setPrivilegeAllowedDays(id: Long, days: Set<Int>) {
+        if (!can(AppPermissions.MANAGE_PRIVILEGES)) { lastActionError.value = denied(AppPermissions.MANAGE_PRIVILEGES, "alterar dias de privilégio"); return }
         privileges.value = privileges.value.map { if (it.id == id) it.copy(allowedDays = days) else it }
         repo.savePrivileges(privileges.value)
     }
 
     fun togglePrivilege(brotherId: Long, privilegeId: Long) {
+        if (!can(AppPermissions.MANAGE_BROTHERS)) { lastActionError.value = denied(AppPermissions.MANAGE_BROTHERS, "alterar privilégios de um irmão"); return }
         brothers.value = brothers.value.map {
             if (it.id != brotherId) it else it.copy(
                 privileges = it.privileges.toMutableSet().also { s -> if (!s.add(privilegeId)) s.remove(privilegeId) }
@@ -174,6 +208,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun generateMonth(yearMonth: YearMonth): List<Meeting> {
+        if (!can(AppPermissions.GENERATE_ASSIGNMENTS)) { lastActionError.value = denied(AppPermissions.GENERATE_ASSIGNMENTS, "gerar designações"); return emptyList() }
         val monthPrefix = yearMonth.format(DateTimeFormatter.ofPattern("MM/yyyy"))
         val keep = meetings.value.filterNot { it.date.endsWith("/$monthPrefix") }
         val generated = AssignmentGenerator.generateMonth(
@@ -189,6 +224,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun replaceAssignment(meetingId: Long, privilegeId: Long, oldBrotherId: Long, newBrotherId: Long) {
+        if (!can(AppPermissions.GENERATE_ASSIGNMENTS)) { lastActionError.value = denied(AppPermissions.GENERATE_ASSIGNMENTS, "trocar designações"); return }
         meetings.value = meetings.value.map { meeting ->
             if (meeting.id != meetingId) meeting else meeting.copy(
                 assignments = meeting.assignments.map {
@@ -200,6 +236,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun deleteMeeting(meetingId: Long) {
+        if (!can(AppPermissions.GENERATE_ASSIGNMENTS)) { lastActionError.value = denied(AppPermissions.GENERATE_ASSIGNMENTS, "excluir reuniões"); return }
         meetings.value = meetings.value.filterNot { it.id == meetingId }
         repo.saveMeetings(meetings.value)
     }
@@ -212,6 +249,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * Caso contrário, cria a reunião para que ela possa ser designada posteriormente.
      */
     fun importMwbWeek(meetingDate: LocalDate, onResult: (String?) -> Unit) {
+        if (!can(AppPermissions.GENERATE_ASSIGNMENTS)) {
+            onResult(denied(AppPermissions.GENERATE_ASSIGNMENTS, "importar o programa"))
+            return
+        }
         Thread {
             val error = runCatching {
                 val program = MwbProgramImporter.fetch(meetingDate)
@@ -257,6 +298,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * tema + itens na reunião. [onResult] recebe null em sucesso, ou a mensagem de erro.
      */
     fun importMwbProgram(meetingId: Long, onResult: (String?) -> Unit) {
+        if (!can(AppPermissions.GENERATE_ASSIGNMENTS)) {
+            onResult(denied(AppPermissions.GENERATE_ASSIGNMENTS, "importar o programa"))
+            return
+        }
         val meeting = meetings.value.firstOrNull { it.id == meetingId }
         if (meeting == null) {
             onResult("Reunião não encontrada.")
@@ -285,6 +330,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun deleteMonth(yearMonth: YearMonth) {
+        if (!can(AppPermissions.GENERATE_ASSIGNMENTS)) { lastActionError.value = denied(AppPermissions.GENERATE_ASSIGNMENTS, "excluir o mês"); return }
         val prefix = yearMonth.format(DateTimeFormatter.ofPattern("MM/yyyy"))
         meetings.value = meetings.value.filterNot {
             it.date.endsWith("/$prefix")
@@ -299,11 +345,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         AssignmentGenerator.missingAssignments(meeting, privileges.value)
 
     fun setBrotherRole(id: Long, role: BrotherRole) {
+        if (!can(AppPermissions.MANAGE_BROTHERS)) { lastActionError.value = denied(AppPermissions.MANAGE_BROTHERS, "alterar o papel de um irmão"); return }
         brothers.value = brothers.value.map { if (it.id == id) it.copy(role = role) else it }
         repo.saveBrothers(brothers.value)
     }
 
     fun addUnavailability(brotherId: Long, startDate: String, endDate: String, reason: String): String? {
+        if (!can(AppPermissions.GENERATE_ASSIGNMENTS)) return denied(AppPermissions.GENERATE_ASSIGNMENTS, "registrar ausências")
         val start = AssignmentGenerator.parseDate(startDate)
         val end = AssignmentGenerator.parseDate(endDate)
         if (start == LocalDate.MIN || end == LocalDate.MIN) return "Data inválida. Use o formato dd/MM/yyyy."
@@ -317,6 +365,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun removeUnavailability(brotherId: Long, periodId: Long) {
+        if (!can(AppPermissions.GENERATE_ASSIGNMENTS)) { lastActionError.value = denied(AppPermissions.GENERATE_ASSIGNMENTS, "remover ausências"); return }
         brothers.value = brothers.value.map {
             if (it.id == brotherId) it.copy(unavailabilities = it.unavailabilities.filterNot { p -> p.id == periodId }) else it
         }
@@ -324,6 +373,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setPrivilegeMinRole(id: Long, role: BrotherRole) {
+        if (!can(AppPermissions.MANAGE_PRIVILEGES)) { lastActionError.value = denied(AppPermissions.MANAGE_PRIVILEGES, "alterar privilégios"); return }
         privileges.value = privileges.value.map { if (it.id == id) it.copy(minRole = role) else it }
         repo.savePrivileges(privileges.value)
     }
@@ -333,6 +383,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun exportMeetingsCsv(): String = CsvDataHandler.exportMeetingsToCsv(meetings.value, brothers.value, privileges.value)
 
     fun importBrothersCsv(csvText: String): Int {
+        if (!can(AppPermissions.MANAGE_BROTHERS)) { lastActionError.value = denied(AppPermissions.MANAGE_BROTHERS, "importar irmãos"); return 0 }
         val imported = CsvDataHandler.importBrothersFromCsv(csvText)
         if (imported.isEmpty()) return 0
         val currentBrothers = brothers.value.toMutableList()
@@ -364,11 +415,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setBrotherGender(id: Long, gender: Gender) {
+        if (!can(AppPermissions.MANAGE_BROTHERS)) { lastActionError.value = denied(AppPermissions.MANAGE_BROTHERS, "alterar um irmão"); return }
         brothers.value = brothers.value.map { if (it.id == id) it.copy(gender = gender) else it }
         repo.saveBrothers(brothers.value)
     }
 
     fun addOrUpdatePublicTalk(talk: PublicTalk) {
+        if (!can(AppPermissions.GENERATE_ASSIGNMENTS)) { lastActionError.value = denied(AppPermissions.GENERATE_ASSIGNMENTS, "alterar discursos"); return }
         val current = publicTalks.value
         val index = current.indexOfFirst { it.id == talk.id }
         val updated = if (index >= 0) {
@@ -382,11 +435,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun deletePublicTalk(id: Long) {
+        if (!can(AppPermissions.GENERATE_ASSIGNMENTS)) { lastActionError.value = denied(AppPermissions.GENERATE_ASSIGNMENTS, "excluir discursos"); return }
         publicTalks.value = publicTalks.value.filterNot { it.id == id }
         repo.savePublicTalks(publicTalks.value)
     }
 
     fun addOrUpdateGroup(group: FieldServiceGroup) {
+        if (!can(AppPermissions.MANAGE_BROTHERS)) { lastActionError.value = denied(AppPermissions.MANAGE_BROTHERS, "alterar grupos de campo"); return }
         val current = fieldServiceGroups.value
         val index = current.indexOfFirst { it.id == group.id }
         val updated = if (index >= 0) {
@@ -400,11 +455,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun deleteGroup(id: Long) {
+        if (!can(AppPermissions.MANAGE_BROTHERS)) { lastActionError.value = denied(AppPermissions.MANAGE_BROTHERS, "excluir grupos de campo"); return }
         fieldServiceGroups.value = fieldServiceGroups.value.filterNot { it.id == id }
         repo.saveFieldServiceGroups(fieldServiceGroups.value)
     }
 
     fun addOrUpdateCleaningSchedule(scheduleItem: CleaningSchedule) {
+        if (!can(AppPermissions.GENERATE_ASSIGNMENTS)) { lastActionError.value = denied(AppPermissions.GENERATE_ASSIGNMENTS, "alterar a limpeza"); return }
         val current = cleaningSchedules.value
         val index = current.indexOfFirst { it.id == scheduleItem.id }
         val updated = if (index >= 0) {
@@ -418,11 +475,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun deleteCleaningSchedule(id: Long) {
+        if (!can(AppPermissions.GENERATE_ASSIGNMENTS)) { lastActionError.value = denied(AppPermissions.GENERATE_ASSIGNMENTS, "excluir a limpeza"); return }
         cleaningSchedules.value = cleaningSchedules.value.filterNot { it.id == id }
         repo.saveCleaningSchedules(cleaningSchedules.value)
     }
 
     fun generateMonthCleaning(yearMonth: YearMonth) {
+        if (!can(AppPermissions.GENERATE_ASSIGNMENTS)) { lastActionError.value = denied(AppPermissions.GENERATE_ASSIGNMENTS, "gerar a escala de limpeza"); return }
         val groups = fieldServiceGroups.value.sortedBy { it.number }
         if (groups.isEmpty()) return
 

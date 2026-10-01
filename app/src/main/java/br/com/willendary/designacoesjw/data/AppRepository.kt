@@ -1,8 +1,12 @@
 package br.com.willendary.designacoesjw.data
 
 import android.content.Context
+import android.util.Log
+import com.google.android.gms.tasks.Task
+import com.google.android.gms.tasks.Tasks
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 
 /**
@@ -24,6 +28,67 @@ class AppRepository(context: Context) {
 
     private val listeners = mutableListOf<ListenerRegistration>()
 
+    /**
+     * Canal de erro para a UI. Até aqui nenhuma falha de escrita era tratada:
+     * todo `set()` era fire-and-forget, o Firestore podia recusar por permissão
+     * insuficiente e o app continuava mostrando "salvo".
+     */
+    var onSyncError: ((String) -> Unit)? = null
+
+    private fun reportError(message: String) {
+        Log.w(TAG, message)
+        onSyncError?.invoke(message)
+    }
+
+    /**
+     * Grava [writes] e só então remove os documentos fora de [keep].
+     *
+     * O prune era o caminho de perda de dados: rodava no sucesso do `get()`,
+     * independentemente das escritas. Um usuário sem `manage_brothers` tinha
+     * todos os `set()` recusados em silêncio, o `get()` passava (leitura só pede
+     * `view_assignments`), e a limpeza apagava da nuvem tudo que não estivesse
+     * na lista local — que podia estar vazia ou desatualizada.
+     *
+     * Sem todas as escritas confirmadas, não apaga nada.
+     */
+    private fun pushAndPrune(
+        writes: List<Task<Void>>,
+        keep: Set<String>,
+        label: String,
+        query: Query
+    ) {
+        val prune: () -> Unit = {
+            query.get().addOnSuccessListener { snapshot ->
+                val stale = snapshot.documents.filter { it.id !in keep }
+                when {
+                    stale.isEmpty() -> Unit
+                    // Lista local vazia sobre coleção populada é quase sempre
+                    // cache incompleto, não remoção intencional.
+                    keep.isEmpty() -> reportError(
+                        "Não apaguei $label do servidor: a lista local está vazia, " +
+                            "o que normalmente é falha de sincronização. Confira a lista antes de salvar de novo."
+                    )
+                    else -> stale.forEach { it.reference.delete() }
+                }
+            }.addOnFailureListener { e ->
+                reportError("Falha ao ler $label do servidor: ${e.message}")
+            }
+        }
+
+        if (writes.isEmpty()) {
+            prune()
+        } else {
+            Tasks.whenAllSuccess<Void>(writes)
+                .addOnSuccessListener { prune() }
+                .addOnFailureListener { e ->
+                    reportError(
+                        "Não consegui gravar $label no servidor (${e.message}). " +
+                            "A alteração ficou só neste aparelho — provavelmente sua conta não tem permissão de escrita."
+                    )
+                }
+        }
+    }
+
     fun closeCloudSync() {
         listeners.forEach { it.remove() }
         listeners.clear()
@@ -37,7 +102,7 @@ class AppRepository(context: Context) {
         onPublicTalks: ((List<PublicTalk>) -> Unit)? = null,
         onGroups: ((List<FieldServiceGroup>) -> Unit)? = null,
         onCleaning: ((List<CleaningSchedule>) -> Unit)? = null,
-        onError: (String) -> Unit = {}
+        onError: (String) -> Unit = { reportError(it) }
     ) {
         closeCloudSync()
 
@@ -190,13 +255,10 @@ class AppRepository(context: Context) {
 
     fun saveBrothers(items: List<Brother>) {
         saveBrothersLocal(items)
-        items.forEach { brother ->
+        val writes = items.map { brother ->
             brothersCollection.document(brother.id.toString()).set(brother.toMap(), SetOptions.merge())
         }
-        val keep = items.map { it.id.toString() }.toSet()
-        brothersCollection.get().addOnSuccessListener { snapshot ->
-            snapshot.documents.filter { it.id !in keep }.forEach { it.reference.delete() }
-        }
+        pushAndPrune(writes, items.map { it.id.toString() }.toSet(), "os irmãos", brothersCollection)
     }
 
     fun loadPrivileges(): List<Privilege> {
@@ -219,13 +281,10 @@ class AppRepository(context: Context) {
 
     fun savePrivileges(items: List<Privilege>) {
         savePrivilegesLocal(items)
-        items.forEach { privilege ->
+        val writes = items.map { privilege ->
             privilegesCollection.document(privilege.id.toString()).set(privilege.toMap(), SetOptions.merge())
         }
-        val keep = items.map { it.id.toString() }.toSet()
-        privilegesCollection.get().addOnSuccessListener { snapshot ->
-            snapshot.documents.filter { it.id !in keep }.forEach { it.reference.delete() }
-        }
+        pushAndPrune(writes, items.map { it.id.toString() }.toSet(), "os privilégios", privilegesCollection)
     }
 
     fun loadMeetings(): List<Meeting> {
@@ -252,13 +311,10 @@ class AppRepository(context: Context) {
 
     fun saveMeetings(items: List<Meeting>) {
         saveMeetingsLocal(items)
-        items.forEach { meeting ->
+        val writes = items.map { meeting ->
             meetingsCollection.document(meeting.id.toString()).set(meeting.toMap(), SetOptions.merge())
         }
-        val keep = items.map { it.id.toString() }.toSet()
-        meetingsCollection.get().addOnSuccessListener { snapshot ->
-            snapshot.documents.filter { it.id !in keep }.forEach { it.reference.delete() }
-        }
+        pushAndPrune(writes, items.map { it.id.toString() }.toSet(), "as reuniões", meetingsCollection)
     }
 
     fun loadPublicTalks(): List<PublicTalk> {
@@ -283,13 +339,10 @@ class AppRepository(context: Context) {
 
     fun savePublicTalks(items: List<PublicTalk>) {
         savePublicTalksLocal(items)
-        items.forEach { talk ->
+        val writes = items.map { talk ->
             publicTalksCollection.document(talk.id.toString()).set(talk.toMap(), SetOptions.merge())
         }
-        val keep = items.map { it.id.toString() }.toSet()
-        publicTalksCollection.get().addOnSuccessListener { snapshot ->
-            snapshot.documents.filter { it.id !in keep }.forEach { it.reference.delete() }
-        }
+        pushAndPrune(writes, items.map { it.id.toString() }.toSet(), "os discursos", publicTalksCollection)
     }
 
     fun loadFieldServiceGroups(): List<FieldServiceGroup> {
@@ -308,13 +361,10 @@ class AppRepository(context: Context) {
 
     fun saveFieldServiceGroups(items: List<FieldServiceGroup>) {
         saveFieldServiceGroupsLocal(items)
-        items.forEach { group ->
+        val writes = items.map { group ->
             groupsCollection.document(group.id.toString()).set(group.toMap(), SetOptions.merge())
         }
-        val keep = items.map { it.id.toString() }.toSet()
-        groupsCollection.get().addOnSuccessListener { snapshot ->
-            snapshot.documents.filter { it.id !in keep }.forEach { it.reference.delete() }
-        }
+        pushAndPrune(writes, items.map { it.id.toString() }.toSet(), "os grupos", groupsCollection)
     }
 
     fun loadCleaningSchedules(): List<CleaningSchedule> {
@@ -333,13 +383,10 @@ class AppRepository(context: Context) {
 
     fun saveCleaningSchedules(items: List<CleaningSchedule>) {
         saveCleaningSchedulesLocal(items)
-        items.forEach { sched ->
+        val writes = items.map { sched ->
             cleaningCollection.document(sched.id.toString()).set(sched.toMap(), SetOptions.merge())
         }
-        val keep = items.map { it.id.toString() }.toSet()
-        cleaningCollection.get().addOnSuccessListener { snapshot ->
-            snapshot.documents.filter { it.id !in keep }.forEach { it.reference.delete() }
-        }
+        pushAndPrune(writes, items.map { it.id.toString() }.toSet(), "a limpeza", cleaningCollection)
     }
 
     fun loadSchedule(): MeetingSchedule {
@@ -354,7 +401,9 @@ class AppRepository(context: Context) {
         settingsDocument.set(
             mapOf("firstDay" to schedule.firstDay, "secondDay" to schedule.secondDay),
             SetOptions.merge()
-        )
+        ).addOnFailureListener { e ->
+            reportError("Não consegui gravar as configurações no servidor: ${e.message}")
+        }
     }
 
     fun loadThemeMode(): ThemeMode {
@@ -651,5 +700,9 @@ class AppRepository(context: Context) {
             details = d["details"]?.toString() ?: "",
             completed = d["completed"] as? Boolean ?: false
         )
+    }
+
+    private companion object {
+        const val TAG = "AppRepository"
     }
 }
