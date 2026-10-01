@@ -1,5 +1,7 @@
 package br.com.willendary.designacoesjw.desktop.firebase
 
+import java.util.Properties
+
 import com.sun.net.httpserver.HttpServer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -31,25 +33,30 @@ import java.util.concurrent.TimeUnit
  */
 object GoogleDesktopAuth {
 
-    // Web OAuth Client ID (tipo 3 no google-services.json)
-    private const val GOOGLE_CLIENT_ID =
-        "859002390487-u74nnqf0f8pg5css83tirh7ibj4ucts9.apps.googleusercontent.com"
+    // Credenciais do client OAuth do tipo Desktop (redirect por loopback).
+    // Vêm do recurso gerado no build a partir de local.properties ou da
+    // variável GOOGLE_CLIENT_SECRET — nunca do código, porque o repositório
+    // é público e um secret commitado não tem volta.
+    private val authConfig: Properties = Properties().apply {
+        GoogleDesktopAuth::class.java.getResourceAsStream("/googleauth.properties")
+            ?.use { load(it) }
+    }
+
+    private val GOOGLE_CLIENT_ID: String =
+        authConfig.getProperty("clientId").orEmpty().ifBlank { FALLBACK_CLIENT_ID }
 
     /**
-     * Client Secret do Web OAuth Client.
+     * Secret do client Desktop. O Google exige mesmo com PKCE: verificado no
+     * token endpoint, que responde `client_secret is missing` sem ele.
      *
-     * PKCE NÃO dispensa o secret para clients do tipo "Web": o endpoint do Google
-     * responde `invalid_request: client_secret is missing` mesmo com code_challenge.
-     * Sem o secret o login nunca fecha.
-     *
-     * Como não deve ficar hardcoded no repo, leia da variável de ambiente
-     * GOOGLE_CLIENT_SECRET ou da propriedade de sistema google.client.secret.
-     * Sem ela, o login com Google no desktop não é possível — use e-mail e senha.
+     * O PKCE protege o authorization code em trânsito; o secret é outra coisa —
+     * é o Google exigindo que a requisição se identifique como o cliente. Não
+     * são intercambiáveis.
      */
-    private val GOOGLE_CLIENT_SECRET: String =
-        System.getenv("GOOGLE_CLIENT_SECRET")
-            ?: System.getProperty("google.client.secret", "")
-            ?: ""
+    private val GOOGLE_CLIENT_SECRET: String = authConfig.getProperty("clientSecret").orEmpty()
+
+    private const val FALLBACK_CLIENT_ID =
+        "859002390487-59pgf9q7t07g0ie86v52226g6u9pf7pc.apps.googleusercontent.com"
 
     private const val CALLBACK_PORT = 8181
     private const val SCOPE = "openid email profile"
@@ -103,10 +110,12 @@ object GoogleDesktopAuth {
         cancelled = false
 
         if (GOOGLE_CLIENT_SECRET.isBlank()) {
+            // Falhar aqui, com texto, e não deixar o Google responder
+            // "invalid_request: client_secret is missing" no meio do fluxo.
             return GoogleAuthResult(
-                error = "Login com Google no desktop não está configurado: falta GOOGLE_CLIENT_SECRET. " +
-                    "Defina a variável de ambiente GOOGLE_CLIENT_SECRET com o client secret do Web OAuth Client " +
-                    "ou entre com e-mail e senha."
+                error = "Esta instalação não foi compilada com o client secret do Google, " +
+                    "então o login com Google não funciona aqui. Use e-mail e senha, " +
+                    "ou peça uma versão com o secret embutido."
             )
         }
 
