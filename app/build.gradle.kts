@@ -17,6 +17,53 @@ android {
         versionName = "0.3.7"
     }
 
+    // ── Assinatura ──────────────────────────────────────────────────────────
+    //
+    // Sem isto, todo APK sai assinado com a chave de debug DA MÁQUINA que
+    // compilou, e a chave é diferente em cada máquina. O resultado é o erro
+    // "App not installed / conflito de pacote" em toda atualização: o
+    // Android recusa porque a assinatura não bate com a do app instalado.
+    //
+    // Nada de segredo aqui: o caminho e as senhas vêm do ambiente, e o
+    // release.jks fica fora do git (ver .gitignore). Sem a chave configurada,
+    // o build de release usa a debug — o que é aceitável para compilar e
+    // testar, mas NÃO para publicar: assim o log abaixo avisa.
+    signingConfigs {
+        create("release") {
+            val ks = System.getenv("KEYSTORE_PATH")
+                ?: if (file("${rootDir}/release.jks").exists()) "${rootDir}/release.jks" else null
+            if (ks != null) {
+                storeFile = file(ks)
+                storePassword = System.getenv("KEYSTORE_PASS")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASS")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            signingConfig = if (System.getenv("KEYSTORE_PATH") != null
+                || file("${rootDir}/release.jks").exists()
+            ) {
+                signingConfigs.getByName("release")
+            } else {
+                logger.warn(
+                    "ATENÇÃO: build de release SEM chave de release — usando a chave " +
+                        "de debug desta máquina. O APK instala apenas por cima de outro " +
+                        "APK assinado com a mesma chave. Defina KEYSTORE_PATH, " +
+                        "KEYSTORE_PASS, KEY_ALIAS e KEY_PASS, ou crie release.jks na raiz."
+                )
+                signingConfigs.getByName("debug")
+            }
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

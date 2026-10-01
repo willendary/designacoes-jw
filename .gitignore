@@ -1,12 +1,29 @@
-.gradle/
+# ── Build ────────────────────────────────────────────────────────────────────
+# Sem isto o git tentou indexar app/build/, que tem milhares de .dex com nome
+# gigante — "Filename too long" e o add falha.
 build/
-local.properties
-.idea/
-*.iml
-.DS_Store
+*/build/
+.gradle/
+.kotlin/
+.firebase/
 captures/
 .externalNativeBuild/
 .cxx/
+
+# ── Ambiente local ───────────────────────────────────────────────────────────
+local.properties
+
+# ── Assinatura de release ────────────────────────────────────────────────────
+# NUNCA versionar. Quem tiver a chave consegue assinar atualizações do app
+# como se fosse o dono.
+release.jks
+*.jks
+*.keystore
+keystore.properties
+
+# ── IDE ──────────────────────────────────────────────────────────────────────
+.idea/
+*.iml
+.vscode/
 node_modules/
-.firebase/
-.kotlin/
+.DS_Store
