@@ -59,7 +59,7 @@ fun MeetingsScreen(vm: AppViewModel) {
                         Column(Modifier.weight(1f)) {
                             Text("Reuniões da semana", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                             Text(
-                                "\${weekStart.format(formatter)} — \${weekEnd.format(formatter)}",
+                                "${weekStart.format(formatter)} — ${weekEnd.format(formatter)}",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -117,7 +117,7 @@ fun MeetingsScreen(vm: AppViewModel) {
                         Spacer(Modifier.width(8.dp))
                         Text(
                             if (importing) "Importando do jw.org..."
-                            else "Importar reunião de \${meetingDate.format(formatter)}"
+                            else "Importar reunião de ${meetingDate.format(formatter)}"
                         )
                     }
 
@@ -178,15 +178,25 @@ private fun WeeklyMeetingCard(meeting: Meeting) {
                 Text(meeting.theme, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             }
 
-            Text(
-                if (meeting.program.isEmpty()) "Programa ainda não importado."
-                else "\${meeting.program.size} itens do programa importados.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            if (meeting.program.isEmpty()) {
+                Text(
+                    "Programa ainda não importado.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Text(
+                    "${meeting.program.size} itens do programa:",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                meeting.program.forEach { item ->
+                    Text("• $item", style = MaterialTheme.typography.bodySmall)
+                }
+            }
 
             if (meeting.assignments.isNotEmpty()) {
-                Text("\${meeting.assignments.size} designações cadastradas.", style = MaterialTheme.typography.bodySmall)
+                Text("${meeting.assignments.size} designações cadastradas.", style = MaterialTheme.typography.bodySmall)
             }
         }
     }

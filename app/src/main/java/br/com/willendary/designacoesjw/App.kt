@@ -411,7 +411,7 @@ fun App(
                                     Spacer(Modifier.width(6.dp))
                                     Text("Sair", color = MaterialTheme.colorScheme.error)
                                 }
-                                Text("v0.2.10", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                Text("v0.2.11", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                             }
                         }
                     }
