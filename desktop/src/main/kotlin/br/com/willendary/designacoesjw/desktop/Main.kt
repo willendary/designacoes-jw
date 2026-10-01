@@ -42,6 +42,7 @@ import br.com.willendary.designacoesjw.export.IcsExportHelper
 import br.com.willendary.designacoesjw.export.MwbProgramImporter
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
 import br.com.willendary.designacoesjw.stats.EquityStatisticsHelper
+import br.com.willendary.designacoesjw.sync.CoalescingWorker
 import br.com.willendary.designacoesjw.ui.MeetingProgramList
 import br.com.willendary.designacoesjw.util.WhatsAppHelper
 import kotlinx.serialization.encodeToString
@@ -60,6 +61,9 @@ import java.time.temporal.ChronoUnit
 import java.util.Locale
 
 private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
+
+/** Carência antes de enviar: uma rajada de edições vira um push só. */
+private const val PUSH_DEBOUNCE_MS = 2000L
 private val days = listOf(
     DayOfWeek.MONDAY to "Segunda-feira", DayOfWeek.TUESDAY to "Terça-feira",
     DayOfWeek.WEDNESDAY to "Quarta-feira", DayOfWeek.THURSDAY to "Quinta-feira",
@@ -128,7 +132,14 @@ class StoreController {
     fun reportError(message: String) { actionErrorState.value = message }
     fun clearActionError() { actionErrorState.value = null }
 
-    var data by mutableStateOf(load())
+    /**
+     * Estado inicial, lido uma vez. [data] e [lastStore] partem daqui: sem
+     * isso o worker de push nasceria com um Store vazio e sobrescreveria a
+     * nuvem com lista vazia na primeira alteração.
+     */
+    private val initialStore: Store = load()
+
+    var data by mutableStateOf(initialStore)
         private set
 
     var authSession by mutableStateOf(DesktopAuthManager.loadSession())
@@ -142,6 +153,38 @@ class StoreController {
     // chamam save() ao mesmo tempo e, sem lock, duas escritas se intercalam
     // e corrompem o arquivo de forma permanente.
     private val writeLock = Any()
+
+    // ── Push para a nuvem: um worker só, com debounce ────────────────────────
+    //
+    // Antes cada save() abria uma thread nova, que lia o estado VIVO `data` a
+    // cada etapa do push. Três consequências ruins:
+    //   1. Mudar o dia da semana disparava dezenas de threads, cada uma com 7
+    //      batches sequenciais — rajada de requests e "Too many requests".
+    //   2. Duas threads liam versões diferentes no meio do push, e o que fosse
+    //      gravado por último podia ser o mais antigo. Update fora de ordem.
+    //   3. Os prunes de cada thread competiam entre si, e uma podia apagar o
+    //      que a outra acabara de gravar.
+    //
+    // A lógica está em CoalescingWorker (shared), onde tem testes: rajada vira
+    // uma execução, nunca duas ao mesmo tempo, e mudança durante a execução
+    // gera exatamente um retrabalho — nunca uma fila.
+    @Volatile
+    private var lastStore: Store = initialStore
+
+    @Volatile
+    private var pushToken: String = ""
+
+    private val pushWorker = CoalescingWorker<Store>(
+        debounceMs = PUSH_DEBOUNCE_MS,
+        current = { lastStore },
+        action = { snapshot -> pushToCloud(pushToken, snapshot) },
+        onError = { e -> System.err.println("[StoreController] push falhou: ${e.message}") }
+    )
+
+    private fun schedulePush(token: String) {
+        pushToken = token
+        pushWorker.schedule()
+    }
 
     init {
         if (authSession != null) {
@@ -167,10 +210,9 @@ class StoreController {
 
     private fun save(s: Store) {
         data = s
+        lastStore = s
         saveLocal(s)
-        authSession?.let { session ->
-            kotlin.concurrent.thread { pushToCloud(session.idToken) }
-        }
+        authSession?.let { session -> schedulePush(session.idToken) }
     }
 
     private fun saveLocal(s: Store) {
@@ -285,10 +327,12 @@ class StoreController {
             res.fold(
                 onSuccess = { cloudStore ->
                     if (cloudStore.brothers.isNotEmpty() || cloudStore.meetings.isNotEmpty() || cloudStore.privileges.isNotEmpty()) {
-                        data = cloudStore.copy(themeMode = data.themeMode)
-                        saveLocal(data)
+                        val merged = cloudStore.copy(themeMode = data.themeMode)
+                        data = merged
+                        lastStore = merged
+                        saveLocal(merged)
                     } else {
-                        pushToCloud(session.idToken)
+                        pushToCloud(session.idToken, lastStore)
                     }
                     syncStatus = "Sincronizado"
                     isSyncing = false
@@ -303,14 +347,20 @@ class StoreController {
         }
     }
 
-    private fun pushToCloud(token: String) {
-        DesktopFirestoreClient.pushBrothers(token, data.brothers)
-        DesktopFirestoreClient.pushPrivileges(token, data.privileges)
-        DesktopFirestoreClient.pushMeetings(token, data.meetings)
-        DesktopFirestoreClient.pushPublicTalks(token, data.publicTalks)
-        DesktopFirestoreClient.pushFieldServiceGroups(token, data.fieldServiceGroups)
-        DesktopFirestoreClient.pushCleaningSchedules(token, data.cleaningSchedules)
-        DesktopFirestoreClient.pushScheduleSettings(token, data.firstDay, data.secondDay)
+    /**
+     * @param snapshot o que será enviado. Passar a referência é seguro: [Store]
+     * é uma data class imutável, e ler o estado vivo `data` aqui permitia que
+     * a lista mudasse no meio do push — a mesma.push gravando metade do estado
+     * antigo e metade do novo.
+     */
+    private fun pushToCloud(token: String, snapshot: Store) {
+        DesktopFirestoreClient.pushBrothers(token, snapshot.brothers)
+        DesktopFirestoreClient.pushPrivileges(token, snapshot.privileges)
+        DesktopFirestoreClient.pushMeetings(token, snapshot.meetings)
+        DesktopFirestoreClient.pushPublicTalks(token, snapshot.publicTalks)
+        DesktopFirestoreClient.pushFieldServiceGroups(token, snapshot.fieldServiceGroups)
+        DesktopFirestoreClient.pushCleaningSchedules(token, snapshot.cleaningSchedules)
+        DesktopFirestoreClient.pushScheduleSettings(token, snapshot.firstDay, snapshot.secondDay)
     }
 
     fun addBrother(name: String, phone: String, role: BrotherRole = BrotherRole.PUBLISHER, gender: Gender = Gender.MALE, groupId: Long? = null): String? {
