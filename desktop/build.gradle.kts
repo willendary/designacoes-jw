@@ -25,6 +25,16 @@ val googleClientSecret = localProps.getProperty("google.client.secret")
     ?: System.getenv("GOOGLE_CLIENT_SECRET")
     ?: ""
 
+// Gerado como FONTE KOTLIN, nao como recurso.
+//
+// A primeira versao escrevia um googleauth.properties e o adicionava ao
+// processResources. Compilava, o jar de desenvolvimento tinha o arquivo, e o
+// app empacotado abria com o secret vazio — o empacotador nao levou o
+// recurso. Fonte compilada nao depende de empacotamento nenhum: o valor vai
+// para o bytecode da classe, que vai para o jar de qualquer jeito.
+//
+// A exposicao do secret e a mesma nos dois casos (esta no binario entregue);
+// o que muda e a confianca de ele estar la.
 val generateGoogleAuthConfig by tasks.registering {
     val id = googleClientId
     val secret = googleClientSecret
@@ -33,18 +43,26 @@ val generateGoogleAuthConfig by tasks.registering {
     inputs.property("secret", secret)
     outputs.dir(outDir)
     doLast {
-        val target = outDir.get().asFile.resolve("googleauth.properties")
+        val target = outDir.get().asFile.resolve("GoogleAuthConfig.kt")
         target.parentFile.mkdirs()
-        target.writeText("clientId=$id\nclientSecret=$secret\n")
+        target.writeText(
+            """
+            |package br.com.willendary.designacoesjw.desktop.firebase
+            |
+            |// Arquivo GERADO em tempo de build. Nao editar a mao.
+            |// O secret vem de local.properties (ignorado pelo git) ou da
+            |// variavel de ambiente GOOGLE_CLIENT_SECRET.
+            |internal object GoogleAuthConfig {
+            |    const val CLIENT_ID: String = "$id"
+            |    const val CLIENT_SECRET: String = "$secret"
+            |}
+            """.trimMargin()
+        )
     }
 }
 
-// srcDir com provider nao registra a dependencia: a task rodava so com
-// "gradle <task>". Precisamos ligar no processResources explicitamente.
-tasks.named<ProcessResources>("processResources") {
-    dependsOn(generateGoogleAuthConfig)
-    from(generateGoogleAuthConfig)
-}
+kotlin.sourceSets["main"].kotlin.srcDir(generateGoogleAuthConfig)
+
 
 
 dependencies {
@@ -64,7 +82,7 @@ compose.desktop {
                 org.jetbrains.compose.desktop.application.dsl.TargetFormat.Msi
             )
             packageName = "DesignacoesJW"
-            packageVersion = "0.3.2"
+            packageVersion = "0.3.3"
         }
     }
 }

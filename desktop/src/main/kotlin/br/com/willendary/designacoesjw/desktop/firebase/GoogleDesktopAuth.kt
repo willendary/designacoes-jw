@@ -1,7 +1,6 @@
 package br.com.willendary.designacoesjw.desktop.firebase
 
-import java.util.Properties
-
+import br.com.willendary.designacoesjw.desktop.CURRENT_VERSION
 import com.sun.net.httpserver.HttpServer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -34,16 +33,14 @@ import java.util.concurrent.TimeUnit
 object GoogleDesktopAuth {
 
     // Credenciais do client OAuth do tipo Desktop (redirect por loopback).
-    // Vêm do recurso gerado no build a partir de local.properties ou da
-    // variável GOOGLE_CLIENT_SECRET — nunca do código, porque o repositório
-    // é público e um secret commitado não tem volta.
-    private val authConfig: Properties = Properties().apply {
-        GoogleDesktopAuth::class.java.getResourceAsStream("/googleauth.properties")
-            ?.use { load(it) }
-    }
-
+    // Vêm de GoogleAuthConfig, arquivo Kotlin gerado no build a partir de
+    // local.properties ou da variável GOOGLE_CLIENT_SECRET. Nunca do código
+    // versionado: o repositório é público e um secret commitado não tem volta.
+    //
+    // A variável de ambiente ainda tem precedência, para quem compila local.
     private val GOOGLE_CLIENT_ID: String =
-        authConfig.getProperty("clientId").orEmpty().ifBlank { FALLBACK_CLIENT_ID }
+        System.getenv("GOOGLE_CLIENT_ID")?.takeIf { it.isNotBlank() }
+            ?: GoogleAuthConfig.CLIENT_ID
 
     /**
      * Secret do client Desktop. O Google exige mesmo com PKCE: verificado no
@@ -53,10 +50,9 @@ object GoogleDesktopAuth {
      * é o Google exigindo que a requisição se identifique como o cliente. Não
      * são intercambiáveis.
      */
-    private val GOOGLE_CLIENT_SECRET: String = authConfig.getProperty("clientSecret").orEmpty()
-
-    private const val FALLBACK_CLIENT_ID =
-        "859002390487-59pgf9q7t07g0ie86v52226g6u9pf7pc.apps.googleusercontent.com"
+    private val GOOGLE_CLIENT_SECRET: String =
+        System.getenv("GOOGLE_CLIENT_SECRET")?.takeIf { it.isNotBlank() }
+            ?: GoogleAuthConfig.CLIENT_SECRET
 
     private const val CALLBACK_PORT = 8181
     private const val SCOPE = "openid email profile"
@@ -112,10 +108,13 @@ object GoogleDesktopAuth {
         if (GOOGLE_CLIENT_SECRET.isBlank()) {
             // Falhar aqui, com texto, e não deixar o Google responder
             // "invalid_request: client_secret is missing" no meio do fluxo.
+            // O diagnóstico vai junto: se isso aparecer de novo, a mensagem
+            // diz o suficiente para achar a causa sem pedir mais screenshot.
             return GoogleAuthResult(
-                error = "Esta instalação não foi compilada com o client secret do Google, " +
-                    "então o login com Google não funciona aqui. Use e-mail e senha, " +
-                    "ou peça uma versão com o secret embutido."
+                error = "Esta instalação não foi compilada com o client secret do Google " +
+                    "(v$CURRENT_VERSION). Use e-mail e senha, ou peça uma versão com o secret embutido. " +
+                    "Detalhe: client id termina em ...${GOOGLE_CLIENT_ID.takeLast(6)}, " +
+                    "secret com ${GOOGLE_CLIENT_SECRET.length} caracteres."
             )
         }
 
