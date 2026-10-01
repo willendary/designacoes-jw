@@ -43,6 +43,8 @@ import br.com.willendary.designacoesjw.export.MwbProgramImporter
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
 import br.com.willendary.designacoesjw.stats.EquityStatisticsHelper
 import br.com.willendary.designacoesjw.sync.CoalescingWorker
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import br.com.willendary.designacoesjw.ui.MeetingProgramList
 import br.com.willendary.designacoesjw.util.WhatsAppHelper
 import kotlinx.serialization.encodeToString
@@ -142,9 +144,16 @@ class StoreController {
     var data by mutableStateOf(initialStore)
         private set
 
-    var authSession by mutableStateOf(DesktopAuthManager.loadSession())
+    // Só o arquivo: instantâneo e sem rede. Antes isto chamava loadSession(),
+    // que renova o token por HTTP com timeout de 10 s — no inicializador, na
+    // thread de UI, congelava a janela no boot. O catch protegia falha de
+    // socket, não o freeze. A renovação e a sincronização inicial foram para
+    // uma thread, no init.
+    var authSession by mutableStateOf(DesktopAuthManager.loadSessionFromDisk())
         private set
-    var syncStatus by mutableStateOf<String?>(if (DesktopAuthManager.currentSession != null) "Conectado à nuvem" else "Offline")
+    var syncStatus by mutableStateOf<String?>(
+        if (authSession != null) "Conectado à nuvem" else "Offline"
+    )
         private set
     var isSyncing by mutableStateOf(false)
         private set
@@ -187,8 +196,27 @@ class StoreController {
     }
 
     init {
-        if (authSession != null) {
-            syncWithCloud()
+        val diskSession = authSession
+        if (diskSession != null) {
+            // Renovar o token e sincronizar é rede. Fora da thread de UI, para
+            // a janela abrir na hora; a UI é avisada quando terminar.
+            Thread {
+                val fresh = DesktopAuthManager.refreshIfNeeded(diskSession)
+                java.awt.EventQueue.invokeLater {
+                    if (fresh != null) {
+                        authSession = fresh
+                        syncStatus = "Conectado à nuvem"
+                    } else {
+                        authSession = null
+                        syncStatus = "Offline"
+                    }
+                }
+                syncWithCloud()
+            }.apply {
+                isDaemon = true
+                name = "boot-sync"
+                start()
+            }
         }
     }
 
@@ -312,13 +340,15 @@ class StoreController {
     }
 
     fun syncWithCloud(onComplete: ((Boolean, String?) -> Unit)? = null) {
-        val session = authSession ?: DesktopAuthManager.loadSession()
+        // Sem fallback para loadSession(): aquele caminho renova o token por
+        // rede, e syncWithCloud é chamado de botoes na thread de UI. A sessao
+        // ja e renovada no init, em background.
+        val session = authSession
         if (session == null) {
             syncStatus = "Offline"
             onComplete?.invoke(false, "Usuário não autenticado.")
             return
         }
-        authSession = session
         isSyncing = true
         syncStatus = "Sincronizando..."
 
@@ -693,7 +723,10 @@ fun main() = application {
     var checkingUpdate by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
-        updateInfo = WindowsUpdateManager.checkForUpdate()
+        // checkForUpdate faz GET no GitHub com timeout de 8 s. Em
+        // LaunchedEffect(Unit) rodava na main e travava a janela na abertura.
+        val info = withContext(Dispatchers.IO) { WindowsUpdateManager.checkForUpdate() }
+        updateInfo = info
         checkingUpdate = false
     }
 
@@ -1692,21 +1725,41 @@ private fun MeetingCardItem(
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     OutlinedButton(onClick = {
+                        // Gerar o BufferedImage, copiar e salvar em disco leva
+                        // centenas de ms a segundos. No onClick, sem try/catch:
+                        // travava a janela e um HeadlessException matava o app.
                         val talk = c.data.publicTalks.find { it.date == m.date }
                         val clean = c.data.cleaningSchedules.find { it.weekDate == m.date }
                         val group = c.data.fieldServiceGroups.find { it.id == clean?.groupId }
-                        val img = ImageExportHelper.generateMeetingCard(
-                            meeting = m,
-                            brothers = c.data.brothers,
-                            privileges = c.data.privileges,
-                            publicTalk = talk,
-                            cleaningSchedule = clean,
-                            cleaningGroup = group
-                        )
-                        ImageExportHelper.copyImageToClipboard(img)
-                        val cardDir = File(System.getProperty("user.home"), ".designacoes-jw/cards").apply { mkdirs() }
+                        val brothers = c.data.brothers
+                        val privileges = c.data.privileges
                         val dateSafe = m.date.replace("/", "-")
-                        ImageExportHelper.saveToPngFile(img, File(cardDir, "card-reuniao-$dateSafe.png"))
+                        Thread {
+                            val erro = runCatching {
+                                val img = ImageExportHelper.generateMeetingCard(
+                                    meeting = m,
+                                    brothers = brothers,
+                                    privileges = privileges,
+                                    publicTalk = talk,
+                                    cleaningSchedule = clean,
+                                    cleaningGroup = group
+                                )
+                                ImageExportHelper.copyImageToClipboard(img)
+                                val cardDir = File(System.getProperty("user.home"), ".designacoes-jw/cards")
+                                    .apply { mkdirs() }
+                                ImageExportHelper.saveToPngFile(img, File(cardDir, "card-reuniao-$dateSafe.png"))
+                            }.exceptionOrNull()
+                            if (erro != null) {
+                                System.err.println("[StoreController] imagem falhou: ${erro.message}")
+                                java.awt.EventQueue.invokeLater {
+                                    c.reportError("Não consegui gerar a imagem: ${erro.message}")
+                                }
+                            }
+                        }.apply {
+                            isDaemon = true
+                            name = "export-image"
+                            start()
+                        }
                     }) {
                         Icon(Icons.Default.Image, null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
@@ -3170,11 +3223,14 @@ private fun Settings(c: StoreController, onShowUpdate: (WindowsUpdateInfo) -> Un
                                 manualUpdateFeedback = null
                                 kotlin.concurrent.thread(isDaemon = true) {
                                     val info = WindowsUpdateManager.checkForUpdate()
-                                    isCheckingUpdateManual = false
-                                    if (info != null) {
-                                        onShowUpdate(info)
-                                    } else {
-                                        manualUpdateFeedback = "Você já está utilizando a versão mais recente ($CURRENT_VERSION)."
+                                    // Estado do Compose só na thread de UI.
+                                    java.awt.EventQueue.invokeLater {
+                                        isCheckingUpdateManual = false
+                                        if (info != null) {
+                                            onShowUpdate(info)
+                                        } else {
+                                            manualUpdateFeedback = "Você já está utilizando a versão mais recente ($CURRENT_VERSION)."
+                                        }
                                     }
                                 }
                             }) {

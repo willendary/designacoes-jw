@@ -51,26 +51,38 @@ object DesktopAuthManager {
         loadSession()
     }
 
-    fun loadSession(): AuthSession? {
-        val session = runCatching {
-            if (sessionFile.exists()) {
-                json.decodeFromString<AuthSession>(sessionFile.readText())
-            } else null
-        }.getOrNull()
+    /**
+     * Só lê o arquivo de sessão. **Nenhuma rede** — seguro para a thread de UI.
+     *
+     * Separado de [loadSession] de propósito: renovar o token é HTTP com
+     * timeout de 10 s, e isso no inicializador do StoreController congelava a
+     * janela no boot. O `catch` protegia falha de socket, não o freeze.
+     */
+    fun loadSessionFromDisk(): AuthSession? {
+        if (!sessionFile.exists()) return null
+        return runCatching { json.decodeFromString<AuthSession>(sessionFile.readText()) }.getOrNull()
+    }
 
-        if (session != null) {
-            // Se falta menos de 5 minutos para expirar, tenta renovar
-            if (System.currentTimeMillis() >= session.expiresAt - (5 * 60 * 1000L)) {
-                val renewed = refreshSession(session.refreshToken).getOrNull()
-                currentSession = renewed ?: session
-            } else {
-                currentSession = session
-            }
-        } else {
+    /**
+     * Renova o token se estiver perto de expirar. **Faz rede** — chamar em
+     * thread de background, nunca na de UI.
+     */
+    fun refreshIfNeeded(session: AuthSession?): AuthSession? {
+        if (session == null) {
             currentSession = null
+            return null
+        }
+        if (System.currentTimeMillis() < session.expiresAt - (5 * 60 * 1000L)) {
+            currentSession = session
+        } else {
+            val renewed = refreshSession(session.refreshToken).getOrNull()
+            currentSession = renewed ?: session
         }
         return currentSession
     }
+
+    /** Lê do disco e renova. Faz rede: só para fora do boot. */
+    fun loadSession(): AuthSession? = refreshIfNeeded(loadSessionFromDisk())
 
     fun signInWithEmail(email: String, pass: String): Result<AuthSession> = runCatching {
         val url = URI("https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=$FIREBASE_API_KEY").toURL()
