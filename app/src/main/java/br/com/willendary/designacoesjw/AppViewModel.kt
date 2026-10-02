@@ -251,6 +251,55 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         repo.saveMeetings(meetings.value)
     }
 
+    /**
+     * Liga ou desliga [brotherId] da parte [position] (1-based) do programa.
+     *
+     * **Não bloqueia por qualificação teocrática.** A parte do programa é aberta a
+     * qualquer irmão ativo: quem conduz a reunião decide quem faz a parte, e a
+     * regra de não batizado/aprendiz é do privilégio **mecânico**
+     * (`AssignmentGenerator.isAuthorized`), que continua na lista cadastrada. Dois
+     * não qualificados na mesma parte é
+     * aviso, não recusa — sai por [lastActionError] depois de gravar, para o app
+     * não devolver erro do que na verdade salvou.
+     *
+     * @return null em sucesso (mesmo havendo aviso, que vai para [lastActionError]),
+     *   ou a mensagem de erro.
+     */
+    fun toggleProgramAssignment(meetingId: Long, position: Int, brotherId: Long): String? {
+        if (!can(AppPermissions.GENERATE_ASSIGNMENTS)) {
+            return denied(AppPermissions.GENERATE_ASSIGNMENTS, "designar as partes do programa")
+                .also { lastActionError.value = it }
+        }
+        val meeting = meetings.value.firstOrNull { it.id == meetingId } ?: return "Reunião não encontrada."
+        val updated = meeting.copy(
+            programAssignments = togglePart(meeting.programAssignments, position, brotherId)
+        )
+        meetings.value = meetings.value.map { if (it.id == meetingId) updated else it }
+        repo.saveMeetings(meetings.value)
+        lastActionError.value = programWarning(updated, position)
+        return null
+    }
+
+    /** Alterna um irmão numa parte, criando a parte se ainda não existir. */
+    private fun togglePart(
+        current: List<ProgramAssignment>,
+        position: Int,
+        brotherId: Long
+    ): List<ProgramAssignment> {
+        val ids = current.firstOrNull { it.item == position }?.brotherIds.orEmpty()
+        val next = if (brotherId in ids) ids - brotherId else ids + brotherId
+        // Parte sem ninguém sai da lista: é lixo e voltaria sozinho no próximo clique.
+        val others = current.filterNot { it.item == position }
+        return others + if (next.isEmpty()) emptyList() else listOf(ProgramAssignment(position, next))
+    }
+
+    /** Aviso de não qualificados da parte, ou null quando não há o que avisar. */
+    private fun programWarning(meeting: Meeting, position: Int): String? {
+        val item = meeting.program.getOrNull(position - 1) ?: return null
+        val ids = meeting.programAssignments.firstOrNull { it.item == position }?.brotherIds.orEmpty()
+        return AssignmentGenerator.unqualifiedWarning(item, ids, brothers.value)
+    }
+
     fun deleteMeeting(meetingId: Long) {
         if (!can(AppPermissions.GENERATE_ASSIGNMENTS)) { lastActionError.value = denied(AppPermissions.GENERATE_ASSIGNMENTS, "excluir reuniões"); return }
         meetings.value = meetings.value.filterNot { it.id == meetingId }
@@ -413,12 +462,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setPrivilegeReaderGrant(id: Long, grant: ReaderGrant) {
         if (!can(AppPermissions.MANAGE_PRIVILEGES)) { lastActionError.value = denied(AppPermissions.MANAGE_PRIVILEGES, "alterar privilégios"); return }
         privileges.value = privileges.value.map { if (it.id == id) it.copy(readerGrant = grant) else it }
-        repo.savePrivileges(privileges.value)
-    }
-
-    fun setPrivilegeProgramItem(id: Long, item: Int?) {
-        if (!can(AppPermissions.MANAGE_PRIVILEGES)) { lastActionError.value = denied(AppPermissions.MANAGE_PRIVILEGES, "alterar o vínculo da parte"); return }
-        privileges.value = privileges.value.map { if (it.id == id) it.copy(programItem = item) else it }
         repo.savePrivileges(privileges.value)
     }
 

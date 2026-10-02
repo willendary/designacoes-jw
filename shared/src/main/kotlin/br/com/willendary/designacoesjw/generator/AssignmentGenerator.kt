@@ -7,6 +7,8 @@ import br.com.willendary.designacoesjw.data.Gender
 import br.com.willendary.designacoesjw.data.Meeting
 import br.com.willendary.designacoesjw.data.MeetingSchedule
 import br.com.willendary.designacoesjw.data.Privilege
+import br.com.willendary.designacoesjw.data.PartKind
+import br.com.willendary.designacoesjw.data.ProgramItem
 import br.com.willendary.designacoesjw.data.ReaderGrant
 import java.text.Normalizer
 import java.time.DayOfWeek
@@ -243,6 +245,43 @@ object AssignmentGenerator {
     ): Boolean = isAuthorized(brother, privilege)
 
     private fun Brother.isUnqualified(): Boolean = trainee || !baptized
+
+    /**
+     * Quantas pessoas a parte do programa pede.
+     *
+     * O tipo vem do programa da semana (`ProgramItem.kind`), não de um
+     * privilégio cadastrado. `PAIR` são as partes de duas pessoas — a
+     * designação, o，研究 de campo. `GROUP` e `DEMONSTRATION` são livres.
+     */
+    fun expectedCountFor(item: ProgramItem): Int = when (item.kind) {
+        PartKind.INDIVIDUAL -> 1
+        PartKind.PAIR -> 2
+        PartKind.DEMONSTRATION, PartKind.GROUP -> 2
+    }
+
+    /**
+     * Uma parte do programa pode levar mais de um não qualificado
+     * (aprendiz ou não batizado)?
+     *
+     * **Sim, isso é aviso, não bloqueio.** Quem decide quem faz a parte é o
+     * responsável, e a quase totalidade das partes do programa é aberta a
+     * qualquer irmão ativo — irmãs fazem leituras, irmãos fazem encenações.
+     * A qualificação teocrática de verdade é do privilégio **mecânico**, que
+     * continua na lista cadastrada e é checada em [isAuthorized].
+     *
+     * A regra que existe é a mesma dos privilégios com `quantity >= 2`: dois
+     * não qualificados na mesma parte não se aceita numa demonstração. O app
+     * avisa para quem conduz corrigir, e não recusa o designar.
+     */
+    fun unqualifiedWarning(item: ProgramItem, brotherIds: List<Long>, brothers: List<Brother>): String? {
+        if (item.kind == PartKind.INDIVIDUAL) return null
+        val naoQualificados = brotherIds.count { id ->
+            brothers.firstOrNull { it.id == id }?.isUnqualified() ?: false
+        }
+        if (naoQualificados < 2) return null
+        return "Esta parte tem $naoQualificados pessoas ainda não qualificadas " +
+            "(aprendiz ou não batizado). Revise se faz sentido."
+    }
 
     fun parseDate(value: String): LocalDate = runCatching {
         LocalDate.parse(value, DATE_FORMATTER)

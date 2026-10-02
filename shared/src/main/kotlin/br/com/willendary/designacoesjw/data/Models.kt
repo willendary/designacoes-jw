@@ -80,16 +80,7 @@ data class Privilege(
     /** Quem pode fazer esta parte. Vazio = qualquer um. */
     val allowedStatus: Set<BrotherStatus> = BrotherStatus.entries.toSet(),
     /** Habilitação do irmão que concede este privilégio. NONE = só pelo conjunto `privileges`. */
-    val readerGrant: ReaderGrant = ReaderGrant.NONE,
-    /**
-     * Item do programa a que este privilégio corresponde, 1-based.
-     *
-     * Sem esse elo o app não sabe dizer QUEM faz cada parte: `Meeting.assignments`
-     * aponta para o privilégio, e o privilégio não apontava para o item do
-     * programa. Era o que obrigava a tela a mostrar duas listas soltas.
-     * Nulo = não ligado a nenhum item (vale em qualquer semana).
-     */
-    val programItem: Int? = null
+    val readerGrant: ReaderGrant = ReaderGrant.NONE
 )
 
 @Serializable
@@ -98,17 +89,42 @@ data class Assignment(
     val brotherId: Long
 )
 
+/**
+ * Quem faz uma parte do programa da semana.
+ *
+ * **Não é um [Assignment].** Um `Assignment` aponta para um [Privilege]
+ * cadastrado — que é o privilégio mecânico, o mesmo toda semana (Som,
+ * Anunciante, Orações, Leitor de A Sentinela). A parte do programa muda toda
+ * semana, vem do jw.org e não se cadastra. Misturar as duas em uma entidade
+ * só obrigava a tratar "Indicação" como se fosse "Som": com dono natural,
+ * exigido por dia da semana e restrito por sexo.
+ *
+ * A identidade do item é a **posição** na lista do programa, 1-based, e não o
+ * número oficial: o jw.org numera de 1 a 9 mas deixa itens avulsos sem
+ * número, e o número pode mudar entre a preview e a semana publicada.
+ */
+@Serializable
+data class ProgramAssignment(
+    val item: Int,
+    /** Uma parte pode ter várias pessoas — é o caso da encenação. */
+    val brotherIds: List<Long> = emptyList()
+)
+
 @Serializable
 data class Meeting(
     val id: Long,
     val date: String,
     val type: String,
+    /** Só para privilégio **mecânico**. */
     val assignments: List<Assignment> = emptyList(),
     val blockedBrotherIds: Set<Long> = emptySet(),
     /** Leitura do dia da semana ("JEREMIAS 40-41"), preenchida pelo import do jw.org. */
     val theme: String = "",
     /** Itens do programa oficial, na ordem ("1. Joias espirituais", ...). */
-    val program: List<ProgramItem> = emptyList()
+    val program: List<ProgramItem> = emptyList(),
+    /** Quem faz cada parte do programa. Lado a lado de [assignments], e
+     *  deliberadamente separado: um é a parte que muda, o outro é o cargo. */
+    val programAssignments: List<ProgramAssignment> = emptyList()
 )
 
 @Serializable
@@ -116,9 +132,18 @@ data class ProgramItem(
     val section: String = "",
     val number: Int = 0,
     val title: String,
-    val minutes: Int = 0
+    val minutes: Int = 0,
+    /**
+     * Tipo da parte. Pertence à parte, não a um privilégio cadastrado: quem
+     * define isto é o programa da semana, e o app usa para agrupar na tela e
+     * para lembrar quantas pessoas a parte leva.
+     */
+    val kind: PartKind = PartKind.INDIVIDUAL
 ) {
     val label: String get() = if (minutes > 0) "$title ($minutes min)" else title
+
+    /** A posição 1-based deste item, dentro da lista do programa da semana. */
+    fun positionIn(program: List<ProgramItem>): Int = program.indexOf(this) + 1
 }
 
 /**

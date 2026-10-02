@@ -313,9 +313,20 @@ class AppRepository(context: Context) {
                     is String -> parseLegacyProgramItem(raw)?.let { program += it }
                 }
             }
+            // Reunião antiga não tem "programAssignments": lista vazia, sem erro.
+            // Item sem "brotherIds" também é parte sem ninguém — não é erro.
+            val paa = o.optJSONArray("programAssignments") ?: org.json.JSONArray()
+            val programAssignments = List(paa.length()) { j ->
+                val x = paa.getJSONObject(j)
+                val ids = x.optJSONArray("brotherIds") ?: org.json.JSONArray()
+                ProgramAssignment(
+                    item = x.optInt("item"),
+                    brotherIds = List(ids.length()) { k -> ids.getLong(k) }
+                )
+            }
             Meeting(
                 o.getLong("id"), o.getString("date"), o.getString("type"), assignments, blocked,
-                o.optString("theme"), program
+                o.optString("theme"), program, programAssignments
             )
         }
     }
@@ -472,7 +483,6 @@ class AppRepository(context: Context) {
                 put("maleOnly", p.maleOnly)
                 put("kind", p.kind.name)
                 put("readerGrant", p.readerGrant.name)
-                p.programItem?.let { put("programItem", it) }
                 put("allowedDays", org.json.JSONArray(p.allowedDays.toList()))
                 put("allowedStatus", org.json.JSONArray(p.allowedStatus.map { it.name }))
             })
@@ -508,6 +518,14 @@ class AppRepository(context: Context) {
                     })
                 }
                 put("program", pa)
+                val paa = org.json.JSONArray()
+                m.programAssignments.forEach { x ->
+                    paa.put(org.json.JSONObject().apply {
+                        put("item", x.item)
+                        put("brotherIds", org.json.JSONArray(x.brotherIds.toList()))
+                    })
+                }
+                put("programAssignments", paa)
             })
         }
         prefs.edit().putString("meetings", a.toString()).apply()
@@ -585,7 +603,10 @@ class AppRepository(context: Context) {
         section = o.optString("section", ""),
         number = o.optInt("number", 0),
         title = o.optString("title", ""),
-        minutes = o.optInt("minutes", 0)
+        minutes = o.optInt("minutes", 0),
+        // Programa gravado antes do campo existir: cai em INDIVIDUAL.
+        kind = runCatching { PartKind.valueOf(o.optString("kind", "INDIVIDUAL")) }
+            .getOrDefault(PartKind.INDIVIDUAL)
     )
 
     private fun Brother.toMap(): Map<String, Any?> = mutableMapOf<String, Any?>(
@@ -610,9 +631,7 @@ class AppRepository(context: Context) {
         "kind" to kind.name,
         "allowedStatus" to allowedStatus.map { it.name },
         "readerGrant" to readerGrant.name
-    ).apply {
-        programItem?.let { put("programItem", it) }
-    }
+    )
 
     private fun Meeting.toMap() = mapOf(
         "id" to id, "date" to date, "type" to type,
@@ -621,7 +640,17 @@ class AppRepository(context: Context) {
         "theme" to theme,
         // Grava o formato novo (mapas), não a string legada.
         "program" to program.map {
-            mapOf("section" to it.section, "number" to it.number, "title" to it.title, "minutes" to it.minutes)
+            mapOf(
+                "section" to it.section, "number" to it.number,
+                "title" to it.title, "minutes" to it.minutes,
+                // Sem o kind gravado, toda parte volta a INDIVIDUAL ao
+                // recarregar e a encenacao perde o agrupamento e o aviso.
+                "kind" to it.kind.name
+            )
+        },
+        // Contrato com o Firestore: a chave é "programAssignments".
+        "programAssignments" to programAssignments.map { pa ->
+            mapOf("item" to pa.item, "brotherIds" to pa.brotherIds.toList())
         }
     )
 
@@ -709,8 +738,7 @@ class AppRepository(context: Context) {
             maleOnly = maleOnly,
             kind = kind,
             allowedStatus = status,
-            readerGrant = grant,
-            programItem = (d["programItem"] as? Number)?.toInt()?.takeIf { it > 0 }
+            readerGrant = grant
         )
     }
 
@@ -738,6 +766,14 @@ class AppRepository(context: Context) {
                 else -> null
             }
         } ?: emptyList()
+        // Documento antigo não tem a chave: lista vazia. "brotherIds" ausente
+        // também — parte sem ninguém não invalida a parte.
+        val programAssignments = (d["programAssignments"] as? List<*>)?.mapNotNull { raw ->
+            val map = raw as? Map<*, *> ?: return@mapNotNull null
+            val item = (map["item"] as? Number)?.toInt() ?: return@mapNotNull null
+            val ids = (map["brotherIds"] as? List<*>)?.mapNotNull { (it as? Number)?.toLong() } ?: emptyList()
+            ProgramAssignment(item = item, brotherIds = ids)
+        } ?: emptyList()
         return Meeting(
             id = id,
             date = d["date"]?.toString() ?: return null,
@@ -745,7 +781,8 @@ class AppRepository(context: Context) {
             assignments = assignments,
             blockedBrotherIds = blocked,
             theme = theme,
-            program = program
+            program = program,
+            programAssignments = programAssignments
         )
     }
 

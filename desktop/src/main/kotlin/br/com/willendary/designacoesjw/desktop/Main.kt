@@ -501,10 +501,6 @@ class StoreController {
         data.copy(privileges = data.privileges.map { if (it.id == id) it.copy(readerGrant = grant) else it })
     )
 
-    fun setPrivilegeProgramItem(id: Long, item: Int?) = save(
-        data.copy(privileges = data.privileges.map { if (it.id == id) it.copy(programItem = item) else it })
-    )
-
     fun setPrivilegeAllowedStatus(id: Long, status: Set<BrotherStatus>) = save(
         data.copy(privileges = data.privileges.map { if (it.id == id) it.copy(allowedStatus = status) else it })
     )
@@ -641,6 +637,34 @@ class StoreController {
                 }
             )
         }))
+    }
+
+    /**
+     * Liga ou desliga [brotherId] da parte [position] (1-based) do programa.
+     *
+     * Sem guarda de permissão: o desktop é local. Não bloqueia por qualificação
+     * teocrática — a parte do programa é aberta a qualquer irmão ativo, e quem
+     * conduz a reunião decide quem faz a parte.
+     */
+    fun toggleProgramAssignment(meetingId: Long, position: Int, brotherId: Long) {
+        save(data.copy(meetings = data.meetings.map { m ->
+            if (m.id != meetingId) m else m.copy(
+                programAssignments = togglePart(m.programAssignments, position, brotherId)
+            )
+        }))
+    }
+
+    /** Alterna um irmão numa parte, criando a parte se ainda não existir. */
+    private fun togglePart(
+        current: List<ProgramAssignment>,
+        position: Int,
+        brotherId: Long
+    ): List<ProgramAssignment> {
+        val ids = current.firstOrNull { it.item == position }?.brotherIds.orEmpty()
+        val next = if (brotherId in ids) ids - brotherId else ids + brotherId
+        // Parte sem ninguém sai da lista: é lixo e voltaria sozinho no próximo clique.
+        val others = current.filterNot { it.item == position }
+        return others + if (next.isEmpty()) emptyList() else listOf(ProgramAssignment(position, next))
     }
 
     fun deleteMeeting(meetingId: Long) = save(data.copy(meetings = data.meetings.filterNot { it.id == meetingId }))
@@ -3174,7 +3198,11 @@ private fun History(c: StoreController) {
                             MeetingProgramList(
                                 meeting = m,
                                 brothers = c.data.brothers,
-                                privileges = c.data.privileges
+                                privileges = c.data.privileges,
+                                canAssign = c.data.brothers.filter { it.active },
+                                onToggleAssignment = { position, brotherId ->
+                                    c.toggleProgramAssignment(m.id, position, brotherId)
+                                }
                             )
 
                             if (m.type.contains("meio de semana", ignoreCase = true)) {

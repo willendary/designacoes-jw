@@ -10,9 +10,21 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.Icon
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -40,6 +52,10 @@ fun MeetingProgramList(
     meeting: Meeting,
     brothers: List<Brother>,
     privileges: List<Privilege>,
+    /** Alterna um irmão na parte de posição [position] (1-based). */
+    onToggleAssignment: (position: Int, brotherId: Long) -> Unit = { _, _ -> },
+    /** Irmãos que podem ser designados. Vazio esconde o botão de designar. */
+    canAssign: List<Brother> = emptyList(),
     modifier: Modifier = Modifier
 ) {
     if (meeting.program.isEmpty()) {
@@ -52,16 +68,15 @@ fun MeetingProgramList(
         return
     }
 
-    // Quem está designado para o item N do programa. O elo é
-    // Privilege.programItem; sem ele a parte fica sem responsável.
-    val byProgramItem: Map<Int, Privilege> =
-        privileges.mapNotNull { p -> p.programItem?.let { it to p } }.toMap()
-    fun assignedNames(index: Int): List<String> {
-        val privilege = byProgramItem[index] ?: return emptyList()
-        return meeting.assignments
-            .filter { it.privilegeId == privilege.id }
-            .mapNotNull { a -> brothers.firstOrNull { it.id == a.brotherId }?.name }
-    }
+    // Quem faz cada parte. O elo é a POSIÇÃO do item no programa
+    // (Meeting.programAssignments), não um privilégio cadastrado: a parte muda
+    // toda semana e não se cadastra, enquanto o privilégio mecânico é fixo.
+    val byPosition: Map<Int, List<Long>> =
+        meeting.programAssignments.associate { it.item to it.brotherIds }
+
+    fun assignedNames(index: Int): List<String> =
+        byPosition[index].orEmpty()
+            .mapNotNull { id -> brothers.firstOrNull { it.id == id }?.name }
 
     val sections = meeting.program.groupBy { it.section }
 
@@ -77,14 +92,17 @@ fun MeetingProgramList(
                 )
             }
             items.forEach { item ->
-                val index = item.number.takeIf { it > 0 }
-                    ?: (meeting.program.indexOf(item) + 1)
+                val index = item.positionIn(meeting.program)
                 ProgramPartRow(
                     title = item.title,
                     number = item.number.takeIf { it > 0 },
                     minutes = item.minutes,
-                    kind = byProgramItem[index]?.kind ?: PartKind.INDIVIDUAL,
-                    names = assignedNames(index)
+                    kind = item.kind,
+                    names = assignedNames(index),
+                    onToggleBrother = { brotherId ->
+                        onToggleAssignment(index, brotherId)
+                    },
+                    canAssign = canAssign
                 )
             }
         }
@@ -97,7 +115,9 @@ private fun ProgramPartRow(
     number: Int?,
     minutes: Int,
     kind: PartKind,
-    names: List<String>
+    names: List<String>,
+    onToggleBrother: (Long) -> Unit = {},
+    canAssign: List<Brother> = emptyList()
 ) {
     // Encenação é o tipo que mais importa ficar distinto: tem vários
     // participantes e não é "uma parte com dono".
@@ -180,6 +200,64 @@ private fun ProgramPartRow(
                         textAlign = TextAlign.End
                     )
                 }
+            }
+        }
+
+        // Designar. É aqui que a parte deixa de ser lista e vira decisão: o
+        // programa vem do jw.org, mas quem faz é escolhido aqui.
+        if (canAssign.isNotEmpty()) {
+            Box(Modifier.width(4.dp))
+            AssignButton(
+                names = names,
+                canAssign = canAssign,
+                onToggle = onToggleBrother
+            )
+        }
+    }
+}
+
+/**
+ * Menu de designação da parte.
+ *
+ * Lista os irmãos **já designados** primeiro e os disponíveis depois, para
+ * quem já está na parte achar o próprio nome em um toque. A parte do programa
+ * é aberta a qualquer irmão ativo — a qualificação teocrática é do privilégio
+ * mecânico, não daqui.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AssignButton(
+    names: List<String>,
+    canAssign: List<Brother>,
+    onToggle: (Long) -> Unit
+) {
+    var aberto by remember { mutableStateOf(false) }
+    Box {
+        FilledTonalIconButton(
+            onClick = { aberto = true },
+            modifier = Modifier.size(32.dp)
+        ) {
+            Icon(
+                if (names.isEmpty()) Icons.Filled.Add else Icons.Filled.Edit,
+                contentDescription = if (names.isEmpty()) "Designar para esta parte" else "Alterar designação",
+                modifier = Modifier.size(16.dp)
+            )
+        }
+        DropdownMenu(expanded = aberto, onDismissRequest = { aberto = false }) {
+            canAssign.forEach { irmao ->
+                val marcado = irmao.name in names
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            if (marcado) "${irmao.name}  ✓" else irmao.name,
+                            fontWeight = if (marcado) FontWeight.SemiBold else FontWeight.Normal
+                        )
+                    },
+                    onClick = {
+                        onToggle(irmao.id)
+                        aberto = false
+                    }
+                )
             }
         }
     }

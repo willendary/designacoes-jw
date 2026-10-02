@@ -4,6 +4,7 @@ import br.com.willendary.designacoesjw.data.Assignment
 import br.com.willendary.designacoesjw.data.Brother
 import br.com.willendary.designacoesjw.data.Meeting
 import br.com.willendary.designacoesjw.data.Privilege
+import br.com.willendary.designacoesjw.data.ProgramAssignment
 import br.com.willendary.designacoesjw.data.ProgramItem
 import java.time.LocalDate
 import java.time.YearMonth
@@ -131,12 +132,15 @@ class HtmlReportGeneratorTest {
     @Test
     fun testParteComDesignadoMostraOsNomes() {
         val program = listOf(ProgramItem(section = "MINISTERIO", number = 1, title = "Indicacao", minutes = 5))
-        // O elo parte<->privilegio: o privilegio diz a qual item corresponde.
-        val privilege = Privilege(1, "Indicacao", quantity = 2, programItem = 1)
+        // A parte do programa NAO e privilegio. Quem faz vem de
+        // ProgramAssignment, pela posicao do item na lista. O privilegio
+        // cadastro continua sendo so o mecanico, ao lado.
+        val privilege = Privilege(1, "Som", quantity = 1)
         val meeting = Meeting(
-            1, "07/10/2026", "Meio de Semana",
-            listOf(Assignment(1, 10), Assignment(1, 11)),
-            program = program
+            id = 1, date = "07/10/2026", type = "Meio de Semana",
+            assignments = listOf(Assignment(1, 10)),
+            program = program,
+            programAssignments = listOf(ProgramAssignment(item = 1, brotherIds = listOf(10, 11)))
         )
         val html = HtmlReportGenerator.generateHtml(
             month = YearMonth.of(2026, 10),
@@ -145,6 +149,7 @@ class HtmlReportGeneratorTest {
             privileges = listOf(privilege),
             hoje = LocalDate.of(2026, 10, 1)
         )
-        assertTrue(html.contains("Carlos · Daniel"))
+        // A parte mostra quem foi designado nela...
+        assertTrue(html.contains("Carlos · Daniel"), html)
     }
 }

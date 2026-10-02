@@ -428,7 +428,7 @@ fun App(
                                     Spacer(Modifier.width(6.dp))
                                     Text("Sair", color = MaterialTheme.colorScheme.error)
                                 }
-                                Text("v0.3.8", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                Text("v0.3.9", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                             }
                         }
                     }
@@ -1112,7 +1112,11 @@ private fun MeetingCardView(
             MeetingProgramList(
                 meeting = meeting,
                 brothers = vm.brothers.value,
-                privileges = vm.privileges.value
+                privileges = vm.privileges.value,
+                canAssign = vm.brothers.value.filter { it.active },
+                onToggleAssignment = { position, brotherId ->
+                    vm.toggleProgramAssignment(meeting.id, position, brotherId)
+                }
             )
 
             if (meeting.type.contains("meio de semana", ignoreCase = true) && importError != null) {
@@ -2097,39 +2101,6 @@ private fun PrivilegesScreen(vm: AppViewModel) {
                                         }
                                     }
                                 }
-                            }
-
-                            // A qual item do programa este privilégio corresponde.
-                            // É o elo que faltava: sem ele o app não sabia dizer
-                            // QUEM faz cada parte, e a tela mostrava duas listas
-                            // soltas — o programa de um lado, as designações de outro.
-                            Text("Parte do programa:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
-                            val linkedItem = privilege.programItem
-                            val weekProgram = vm.meetings.value
-                                .filter { it.program.isNotEmpty() }
-                                .sortedBy { AssignmentGenerator.parseDate(it.date) }
-                                .firstOrNull()?.program.orEmpty()
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                FilterChip(
-                                    selected = linkedItem == null,
-                                    onClick = { vm.setPrivilegeProgramItem(privilege.id, null) },
-                                    label = { Text("Não ligar") }
-                                )
-                                weekProgram.forEachIndexed { idx, item ->
-                                    val n = item.number.takeIf { it > 0 } ?: (idx + 1)
-                                    FilterChip(
-                                        selected = linkedItem == n,
-                                        onClick = { vm.setPrivilegeProgramItem(privilege.id, n) },
-                                        label = { Text("$n. ${item.title}".take(24)) }
-                                    )
-                                }
-                            }
-                            if (linkedItem != null) {
-                                Text(
-                                    "O vínculo é pela posição no programa. Se a ordem mudar na semana seguinte, reveja aqui.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
                             }
 
                             // Tipo da parte: individual, dupla, encenação ou grupo.

@@ -105,7 +105,8 @@ object HtmlReportGenerator {
     /**
      * Programa com as partes e QUEM faz cada uma.
      *
-     * O vínculo parte↔privilégio é `Privilege.programItem`; sem ele a parte
+     * A parte do programa **não** é um privilégio: quem faz vem de
+     * `Meeting.programAssignments`, pela posição do item na lista. Sem isso a
      * fica com "—", que é o sinal de que o vínculo não foi definido.
      */
     private fun StringBuilder.appendProgram(
@@ -114,8 +115,10 @@ object HtmlReportGenerator {
         privileges: List<Privilege>
     ) {
         if (meeting.program.isEmpty()) return
-        val byItem: Map<Int, Privilege> =
-            privileges.mapNotNull { p -> p.programItem?.let { it to p } }.toMap()
+        // A parte do programa não é privilégio: quem faz vem de
+        // Meeting.programAssignments, pela POSIÇÃO do item na lista.
+        val byPosition: Map<Int, List<Long>> =
+            meeting.programAssignments.associate { it.item to it.brotherIds }
 
         append("<div class=\"partes\">\n<h2>Programa</h2>\n<table>\n")
         meeting.program.groupBy { it.section }.forEach { (section, items) ->
@@ -123,12 +126,9 @@ object HtmlReportGenerator {
                 append("<tr><td colspan=\"4\" class=\"secao\">${xmlEscape(section)}</td></tr>\n")
             }
             items.forEach { item ->
-                val index = item.number.takeIf { it > 0 } ?: (meeting.program.indexOf(item) + 1)
-                val names = byItem[index]?.let { p ->
-                    meeting.assignments
-                        .filter { it.privilegeId == p.id }
-                        .mapNotNull { a -> brothers.firstOrNull { it.id == a.brotherId }?.name }
-                }.orEmpty()
+                val index = item.positionIn(meeting.program)
+                val names = byPosition[index].orEmpty()
+                    .mapNotNull { id -> brothers.firstOrNull { it.id == id }?.name }
 
                 append("<tr>")
                 append("<td class=\"n\">${item.number.takeIf { it > 0 } ?: ""}</td>")

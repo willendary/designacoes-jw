@@ -108,9 +108,6 @@ object DesktopFirestoreClient {
                 put("maleOnly", buildJsonObject { put("booleanValue", priv.maleOnly) })
                 put("kind", buildJsonObject { put("stringValue", priv.kind.name) })
                 put("readerGrant", buildJsonObject { put("stringValue", priv.readerGrant.name) })
-                priv.programItem?.let {
-                    put("programItem", buildJsonObject { put("integerValue", it.toString()) })
-                }
                 put("allowedStatus", buildJsonObject {
                     put("arrayValue", buildJsonObject {
                         put("values", buildJsonArray {
@@ -169,6 +166,30 @@ object DesktopFirestoreClient {
                 if (m.theme.isNotBlank()) {
                     put("theme", buildJsonObject { put("stringValue", m.theme) })
                 }
+                put("programAssignments", buildJsonObject {
+                    put("arrayValue", buildJsonObject {
+                        put("values", buildJsonArray {
+                            m.programAssignments.forEach { pa ->
+                                add(buildJsonObject {
+                                    put("mapValue", buildJsonObject {
+                                        put("fields", buildJsonObject {
+                                            put("item", buildJsonObject { put("integerValue", pa.item.toString()) })
+                                            put("brotherIds", buildJsonObject {
+                                                put("arrayValue", buildJsonObject {
+                                                    put("values", buildJsonArray {
+                                                        pa.brotherIds.forEach { bid ->
+                                                            add(buildJsonObject { put("integerValue", bid.toString()) })
+                                                        }
+                                                    })
+                                                })
+                                            })
+                                        })
+                                    })
+                                })
+                            }
+                        })
+                    })
+                })
                 if (m.program.isNotEmpty()) {
                     // Grava o formato novo (mapas), não a string legada.
                     put("program", buildJsonObject {
@@ -182,6 +203,7 @@ object DesktopFirestoreClient {
                                                 put("number", buildJsonObject { put("integerValue", p.number.toString()) })
                                                 put("title", buildJsonObject { put("stringValue", p.title) })
                                                 put("minutes", buildJsonObject { put("integerValue", p.minutes.toString()) })
+                                                put("kind", buildJsonObject { put("stringValue", p.kind.name) })
                                             })
                                         })
                                     })
@@ -385,9 +407,7 @@ object DesktopFirestoreClient {
         return Privilege(
             id = id, name = name, quantity = qty, active = active,
             allowedDays = allowedDays, minRole = minRole, maleOnly = maleOnly,
-            kind = kind, allowedStatus = allowedStatus, readerGrant = readerGrant,
-            programItem = fields["programItem"]?.jsonObject?.get("integerValue")
-                ?.jsonPrimitive?.content?.toIntOrNull()?.takeIf { it > 0 }
+            kind = kind, allowedStatus = allowedStatus, readerGrant = readerGrant
         )
     }
 
@@ -417,14 +437,38 @@ object DesktopFirestoreClient {
                     section = mapFields["section"]?.jsonObject?.get("stringValue")?.jsonPrimitive?.content ?: "",
                     number = mapFields["number"]?.jsonObject?.get("integerValue")?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
                     title = mapFields["title"]?.jsonObject?.get("stringValue")?.jsonPrimitive?.content ?: "",
-                    minutes = mapFields["minutes"]?.jsonObject?.get("integerValue")?.jsonPrimitive?.content?.toIntOrNull() ?: 0
+                    minutes = mapFields["minutes"]?.jsonObject?.get("integerValue")?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
+                    // Sem default explicito, parte antiga cai em INDIVIDUAL.
+                    kind = runCatching {
+                        PartKind.valueOf(
+                            mapFields["kind"]?.jsonObject?.get("stringValue")?.jsonPrimitive?.content ?: "INDIVIDUAL"
+                        )
+                    }.getOrDefault(PartKind.INDIVIDUAL)
                 )
             } else {
                 pVal.jsonObject["stringValue"]?.jsonPrimitive?.content?.let { parseLegacyProgramItem(it) }
             }
         }?.filter { it.title.isNotBlank() } ?: emptyList()
 
-        return Meeting(id, date, type, assignments, blocked, theme, program)
+        // Documento antigo não tem a chave: lista vazia. Item sem "brotherIds"
+        // também — parte sem ninguém não invalida a parte.
+        val paArray = fields["programAssignments"]?.jsonObject?.get("arrayValue")?.jsonObject?.get("values")?.jsonArray
+        val programAssignments = paArray?.mapNotNull { paVal ->
+            val paFields = paVal.jsonObject["mapValue"]?.jsonObject?.get("fields")?.jsonObject ?: return@mapNotNull null
+            val item = paFields["item"]?.jsonObject?.get("integerValue")?.jsonPrimitive?.content?.toIntOrNull()
+                ?: return@mapNotNull null
+            val idsArray = paFields["brotherIds"]?.jsonObject?.get("arrayValue")?.jsonObject?.get("values")?.jsonArray
+            val ids = idsArray
+                ?.mapNotNull { it.jsonObject["integerValue"]?.jsonPrimitive?.content?.toLongOrNull() }
+                ?: emptyList()
+            ProgramAssignment(item = item, brotherIds = ids)
+        } ?: emptyList()
+
+        return Meeting(
+            id = id, date = date, type = type, assignments = assignments,
+            blockedBrotherIds = blocked, theme = theme, program = program,
+            programAssignments = programAssignments
+        )
     }
 
     private fun parsePublicTalk(fields: JsonObject): PublicTalk? {

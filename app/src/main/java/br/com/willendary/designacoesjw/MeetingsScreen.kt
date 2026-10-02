@@ -182,7 +182,11 @@ private fun WeeklyMeetingCard(meeting: Meeting, vm: AppViewModel) {
             MeetingProgramList(
                 meeting = meeting,
                 brothers = vm.brothers.value,
-                privileges = vm.privileges.value
+                privileges = vm.privileges.value,
+                canAssign = vm.brothers.value.filter { it.active },
+                onToggleAssignment = { position, brotherId ->
+                    vm.toggleProgramAssignment(meeting.id, position, brotherId)
+                }
             )
 
             if (meeting.assignments.isNotEmpty()) {
