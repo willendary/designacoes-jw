@@ -433,7 +433,7 @@ fun App(
                                     Spacer(Modifier.width(6.dp))
                                     Text("Sair", color = MaterialTheme.colorScheme.error)
                                 }
-                                Text("v0.4.0", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                Text("v0.4.1", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                             }
                         }
                     }
@@ -2478,6 +2478,7 @@ private fun SettingsScreen(
 ) {
     val context = LocalContext.current
     var showImportDialog by remember { mutableStateOf(false) }
+    var showLogErros by remember { mutableStateOf(false) }
     var importCsvText by remember { mutableStateOf("") }
     var message by remember { mutableStateOf<String?>(null) }
 
@@ -2580,6 +2581,40 @@ private fun SettingsScreen(
                 }
             }
         }
+
+        // Log de erros. Existe por causa de um app que abria e fechava sem
+        // deixar rastro: sem isto, nem o usuário — que não tem como abrir o
+        // logcat — nem quem fosse reparar soube o porquê. Se o app voltar a
+        // travar na abertura, o texto daqui já diz a exceção.
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Diagnóstico", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Se o app fechar sozinho ao abrir, este log diz o porquê.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    OutlinedButton(
+                        onClick = { showLogErros = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Ver log de erros") }
+                }
+            }
+        }
+    }
+
+    if (showLogErros) {
+        AlertDialog(
+            onDismissRequest = { showLogErros = false },
+            title = { Text("Log de erros") },
+            text = {
+                Text(
+                    remember(showLogErros) { vm.lerLogDeErros().ifBlank { "Nenhum erro registrado." } },
+                    style = MaterialTheme.typography.bodySmall
+                )
+            },
+            confirmButton = { TextButton(onClick = { showLogErros = false }) { Text("Fechar") } }
+        )
     }
 
     if (showImportDialog) {

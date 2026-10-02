@@ -3,6 +3,7 @@ package br.com.willendary.designacoesjw
 import android.app.Application
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.AndroidViewModel
 import br.com.willendary.designacoesjw.data.*
@@ -12,8 +13,10 @@ import br.com.willendary.designacoesjw.export.MwbProgramImporter
 import br.com.willendary.designacoesjw.util.WhatsAppHelper
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.ListenerRegistration
+import java.io.File
 import java.text.SimpleDateFormat
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -32,6 +35,8 @@ import kotlin.random.Random
  */
 private const val TIPO_REUNIAO_MWB = "Reunião de Meio de Semana"
 
+private const val TAG = "AppViewModel"
+
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = AppRepository(app)
     private val accessRepo = UserAccessRepository()
@@ -39,13 +44,85 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var currentUserProfile = mutableStateOf<UserProfile?>(null); private set
     var users = mutableStateOf<List<UserProfile>>(emptyList()); private set
     var invitations = mutableStateOf<List<Invitation>>(emptyList()); private set
-    var brothers = mutableStateOf(repo.loadBrothers()); private set
-    var privileges = mutableStateOf(repo.loadPrivileges()); private set
-    var meetings = mutableStateOf(repo.loadMeetings()); private set
-    var schedule = mutableStateOf(repo.loadSchedule()); private set
-    var publicTalks = mutableStateOf(repo.loadPublicTalks()); private set
-    var fieldServiceGroups = mutableStateOf(repo.loadFieldServiceGroups()); private set
-    var cleaningSchedules = mutableStateOf(repo.loadCleaningSchedules()); private set
+    var brothers = mutableStateOf(carga("irmãos") { repo.loadBrothers() }); private set
+    var privileges = mutableStateOf(carga("privilégios") { repo.loadPrivileges() }); private set
+    var meetings = mutableStateOf(carga("reuniões") { repo.loadMeetings() }); private set
+    var schedule = mutableStateOf(cargaUnico("grade", MeetingSchedule()) { repo.loadSchedule() }); private set
+    var publicTalks = mutableStateOf(carga("discursos") { repo.loadPublicTalks() }); private set
+    var fieldServiceGroups = mutableStateOf(carga("grupos") { repo.loadFieldServiceGroups() }); private set
+    var cleaningSchedules = mutableStateOf(carga("limpeza") { repo.loadCleaningSchedules() }); private set
+
+    /**
+     * Falhas de carga do armazenamento local, anotadas durante a construção.
+     *
+     * Precisa existir **antes** das propriedades acima: elas chamam [carga] no
+     * inicializador, e o `lastActionError` só é criado depois.
+     */
+    private val falhasDeCarga = mutableListOf<String>()
+
+    /**
+     * Carrega uma lista do armazenamento local sem derrubar o app.
+     *
+     * Estas cargas rodam como inicializador de propriedade, dentro do `init`. Um
+     * `throw` aqui estoura a construção do ViewModel dentro do `viewModel()`, na
+     * composição — o app abre e morre, sem log e sem chance de recuperar. Dado
+     * local corrompido por uma versão antiga é exatamente o que produz isso, e o
+     * usuário não tem como sair do problema sem reinstalar.
+     *
+     * Devolve lista vazia e registra a falha, que aparece na tela e vai para
+     * `erros.log`. **Vazio, nunca overwritten**: a nuvem repõe o que faltar.
+     */
+    private inline fun <T> carga(rotulo: String, bloco: () -> List<T>): List<T> = try {
+        bloco()
+    } catch (e: Exception) {
+        registraFalhaDeCarga(rotulo, e)
+        emptyList()
+    }
+
+    /** Mesma rede para a carga que devolve um valor só, e não uma lista. */
+    private inline fun <T> cargaUnico(rotulo: String, vazio: T, bloco: () -> T): T = try {
+        bloco()
+    } catch (e: Exception) {
+        registraFalhaDeCarga(rotulo, e)
+        vazio
+    }
+
+    @PublishedApi
+    internal fun registraFalhaDeCarga(rotulo: String, erro: Exception) {
+        Log.e(TAG, "Falha ao carregar $rotulo do armazenamento local", erro)
+        val arquivo = anotaErro("Falha ao carregar $rotulo", erro)
+        falhasDeCarga += "Não consegui ler $rotulo do aparelho. Detalhes em $arquivo."
+    }
+
+    /**
+     * Grava a falha em `erros.log` e devolve o caminho.
+     *
+     * Sem isto o app morre em silêncio e ninguém descobre o porquê: nem o
+     * usuário, que não tem como abrir o logcat, nem quem for reparar.
+     */
+    private fun anotaErro(mensagem: String, erro: Throwable? = null): String {
+        val arquivo = File(getApplication<Application>().filesDir, "erros.log")
+        return try {
+            arquivo.appendText(
+                buildString {
+                    appendLine("--- ${LocalDateTime.now()} ---")
+                    appendLine(mensagem)
+                    if (erro != null) appendLine(erro.stackTraceToString().take(4000))
+                }
+            )
+            arquivo.absolutePath
+        } catch (e: Exception) {
+            "log não gravado: ${e.message}"
+        }
+    }
+
+    /** O log de erros, para a tela de configurações mostrar. */
+    fun lerLogDeErros(): String = try {
+        File(getApplication<Application>().filesDir, "erros.log")
+            .takeIf { it.exists() }?.readText().orEmpty()
+    } catch (e: Exception) {
+        "Não consegui ler o log: ${e.message}"
+    }
 
     /**
      * Último erro de sincronização ou de permissão, para a UI mostrar.
@@ -59,6 +136,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun reportError(message: String) { lastActionError.value = message }
 
     init {
+        if (falhasDeCarga.isNotEmpty()) {
+            lastActionError.value = falhasDeCarga.joinToString(" ")
+        }
         FirebaseAuth.getInstance().currentUser?.let { user ->
             accessRepo.observeCurrentUser(
                 uid = user.uid,

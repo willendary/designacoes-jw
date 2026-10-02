@@ -515,6 +515,9 @@ class AppRepository(context: Context) {
                         put("number", item.number)
                         put("title", item.title)
                         put("minutes", item.minutes)
+                        // Sem isto, `programItemFromJson` volta em INDIVIDUAL a
+                        // cada recarga local e a encenação perde o agrupamento.
+                        put("kind", item.kind.name)
                     })
                 }
                 put("program", pa)
