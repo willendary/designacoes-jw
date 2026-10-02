@@ -40,6 +40,7 @@ import kotlinx.coroutines.withContext
 import br.com.willendary.designacoesjw.notification.MeetingReminderHelper
 import br.com.willendary.designacoesjw.stats.EquityStatisticsHelper
 import br.com.willendary.designacoesjw.ui.MeetingProgramList
+import br.com.willendary.designacoesjw.export.MonthBoardPrint
 import br.com.willendary.designacoesjw.ui.MonthBoard
 import br.com.willendary.designacoesjw.util.WhatsAppHelper
 import kotlinx.coroutines.launch
@@ -433,7 +434,7 @@ fun App(
                                     Spacer(Modifier.width(6.dp))
                                     Text("Sair", color = MaterialTheme.colorScheme.error)
                                 }
-                                Text("v0.4.3", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                Text("v0.4.4", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                             }
                         }
                     }
@@ -539,6 +540,24 @@ fun App(
             }
         )
     }
+}
+
+/**
+ * Rótulo de bloco dentro de um card.
+ *
+ * Existe para separar o que é privilege **mecânico** (fixo: Som, Anunciante,
+ * Orações) do que é **parte do programa** (muda toda semana). São listas
+ * diferentes com origens diferentes, e juntas sem rótulo leem como uma só.
+ */
+@Composable
+private fun SectionLabel(texto: String) {
+    Text(
+        texto.uppercase(Locale("pt", "BR")),
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
+    )
 }
 
 @Composable
@@ -1114,16 +1133,6 @@ private fun MeetingCardView(
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
-            MeetingProgramList(
-                meeting = meeting,
-                brothers = vm.brothers.value,
-                privileges = vm.privileges.value,
-                canAssign = vm.brothers.value.filter { it.active },
-                onToggleAssignment = { position, brotherId ->
-                    vm.toggleProgramAssignment(meeting.id, position, brotherId)
-                }
-            )
-
             if (meeting.type.contains("meio de semana", ignoreCase = true) && importError != null) {
                 // Erro em linha, sem AlertDialog: na maioria das vezes o bimestre
                 // ainda nao foi publicado no jw.org, o que e condicao normal e
@@ -1153,6 +1162,26 @@ private fun MeetingCardView(
                     }
                 }
 
+                // Cabeçalho do bloco. Sem ele, a lista de privilégios e a de
+                // partes do programa leem como uma só: são duas naturezas
+                // diferentes — o mecânico é fixo, a parte muda toda semana.
+                // A separação no código veio no #51; na tela só veio agora.
+                if (meeting.program.isNotEmpty()) {
+                    SectionLabel("Programa da semana")
+                }
+                MeetingProgramList(
+                    meeting = meeting,
+                    brothers = vm.brothers.value,
+                    privileges = vm.privileges.value,
+                    canAssign = vm.brothers.value.filter { it.active },
+                    onToggleAssignment = { position, brotherId ->
+                        vm.toggleProgramAssignment(meeting.id, position, brotherId)
+                    }
+                )
+
+                if (meeting.assignments.isNotEmpty()) {
+                    SectionLabel("Privilégios")
+                }
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     meeting.assignments.forEach { assignment ->
                         val brother = vm.brothers.value.find { it.id == assignment.brotherId }
@@ -3137,10 +3166,10 @@ private fun RelatorioA4Screen(vm: AppViewModel) {
 /**
  * O quadro em tela cheia.
  *
- * **Por que não rasterizar.** O `ImageExport` sabe fazer isso, mas ele mede o
- * card da reunião numa `ComposeView` de largura fixa. Uma folha A4 sairia em
- * miniatura, ilegível de longe — que é a distância de quem lê o quadro do
- * salão. O usuário imprime a tela ou tira foto dela; é esse o formato pedido.
+ * **Imprimir, e não fotografar.** A primeira versão dizia "o usuário imprime a
+ * tela ou tira foto dela" — verdade no desktop, onde `Ctrl+P` existe. No
+ * celular não existe atalho de teclado, e a única saída era foto da tela, que é
+ * o contrário de imprimir. `PrintManager` é a via nativa e resolve.
  */
 @Composable
 private fun QuadroDoMesDialog(
@@ -3149,6 +3178,9 @@ private fun QuadroDoMesDialog(
     onMonthChange: (YearMonth) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var imprimindo by remember { mutableStateOf(false) }
     val reunioes = remember(mes, vm.meetings.value) { reunioesDoMes(vm.meetings.value, mes) }
 
     Dialog(
@@ -3172,6 +3204,37 @@ private fun QuadroDoMesDialog(
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 SeletorMes(mes, onMonthChange)
+                TextButton(
+                    onClick = {
+                        if (imprimindo) return@TextButton
+                        imprimindo = true
+                        scope.launch {
+                            val ok = withContext(Dispatchers.Main) {
+                                MonthBoardPrint.imprimir(
+                                    context, mes, reunioes,
+                                    vm.brothers.value, vm.privileges.value
+                                )
+                            }
+                            imprimindo = false
+                            if (!ok) {
+                                Toast.makeText(
+                                    context,
+                                    "Não consegui preparar o quadro para imprimir.",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        }
+                    },
+                    enabled = !imprimindo
+                ) {
+                    Icon(
+                        Icons.Filled.Print,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (imprimindo) "Preparando…" else "Imprimir")
+                }
                 TextButton(onClick = onDismiss) { Text("Fechar") }
             }
         }
