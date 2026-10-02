@@ -14,6 +14,8 @@ import com.google.firebase.firestore.SetOptions
  * - SharedPreferences mantém o cache local e permite abrir o app offline.
  * - Cloud Firestore sincroniza os mesmos dados entre Android, Desktop e Web.
  */
+private const val TAG_REPO = "AppRepository"
+
 class AppRepository(context: Context) {
     private val prefs = context.getSharedPreferences("designacoes_jw", Context.MODE_PRIVATE)
     private val firestore = FirebaseFirestore.getInstance()
@@ -89,6 +91,49 @@ class AppRepository(context: Context) {
         }
     }
 
+    /**
+     * Registra um listener de snapshot sem deixar exceção matar o processo.
+     *
+     * **Por que isto existe:** o callback do `addSnapshotListener` roda na
+     * thread do Firestore. Uma exceção ali **não** é capturada pelo
+     * `runCatching` de quem chamou e não aparece no logcat com contexto — ela
+     * derruba o processo inteiro. O sintoma é o app abrir, pintar a tela
+     * principal e fechar sozinho, sem rastro nenhum.
+     *
+     * Foi exatamente o que aconteceu: `loadMeetings()` era chamado de dentro
+     * do listener, na migração de cache, e o `init` do ViewModel chamava a
+     * mesma função. Proteger só o `init` não adiantou — a segunda chamada
+     * continuava sem rede, e o fechamento continuou.
+     */
+    private fun com.google.firebase.firestore.CollectionReference.ouvir(
+        rotulo: String,
+        onError: (String) -> Unit,
+        corpo: (com.google.firebase.firestore.QuerySnapshot?, Exception?) -> Unit
+    ): ListenerRegistration = addSnapshotListener { snapshot, error ->
+        try {
+            corpo(snapshot, error)
+        } catch (e: Exception) {
+            val mensagem = "Falha ao sincronizar $rotulo: ${e.message}"
+            Log.e(TAG_REPO, mensagem, e)
+            onError(mensagem)
+        }
+    }
+
+    /** Mesma rede para documento único. */
+    private fun com.google.firebase.firestore.DocumentReference.ouvir(
+        rotulo: String,
+        onError: (String) -> Unit,
+        corpo: (com.google.firebase.firestore.DocumentSnapshot?, Exception?) -> Unit
+    ): ListenerRegistration = addSnapshotListener { snapshot, error ->
+        try {
+            corpo(snapshot, error)
+        } catch (e: Exception) {
+            val mensagem = "Falha ao sincronizar $rotulo: ${e.message}"
+            Log.e(TAG_REPO, mensagem, e)
+            onError(mensagem)
+        }
+    }
+
     fun closeCloudSync() {
         listeners.forEach { it.remove() }
         listeners.clear()
@@ -106,10 +151,10 @@ class AppRepository(context: Context) {
     ) {
         closeCloudSync()
 
-        listeners += brothersCollection.addSnapshotListener { snapshot, error ->
+        listeners += brothersCollection.ouvir("irmãos", onError) { snapshot, error ->
             if (error != null) {
                 onError(error.localizedMessage ?: "Erro ao sincronizar irmãos.")
-                return@addSnapshotListener
+                return@ouvir
             }
             val items = snapshot?.documents?.mapNotNull(::brotherFromDocument) ?: emptyList()
             if (items.isEmpty() && !cloudMigrationDone("brothers")) {
@@ -118,7 +163,7 @@ class AppRepository(context: Context) {
                 if (local.isNotEmpty()) {
                     saveBrothers(local)
                     onBrothers(local)
-                    return@addSnapshotListener
+                    return@ouvir
                 }
             } else if (items.isNotEmpty()) {
                 cloudMigrationDone("brothers", true)
@@ -127,10 +172,10 @@ class AppRepository(context: Context) {
             onBrothers(items)
         }
 
-        listeners += privilegesCollection.addSnapshotListener { snapshot, error ->
+        listeners += privilegesCollection.ouvir("privilégios", onError) { snapshot, error ->
             if (error != null) {
                 onError(error.localizedMessage ?: "Erro ao sincronizar privilégios.")
-                return@addSnapshotListener
+                return@ouvir
             }
             val items = snapshot?.documents?.mapNotNull(::privilegeFromDocument) ?: emptyList()
             if (items.isEmpty() && !cloudMigrationDone("privileges")) {
@@ -139,7 +184,7 @@ class AppRepository(context: Context) {
                 if (local.isNotEmpty()) {
                     savePrivileges(local)
                     onPrivileges(local)
-                    return@addSnapshotListener
+                    return@ouvir
                 }
             } else if (items.isNotEmpty()) {
                 cloudMigrationDone("privileges", true)
@@ -148,10 +193,10 @@ class AppRepository(context: Context) {
             onPrivileges(items)
         }
 
-        listeners += meetingsCollection.addSnapshotListener { snapshot, error ->
+        listeners += meetingsCollection.ouvir("reuniões", onError) { snapshot, error ->
             if (error != null) {
                 onError(error.localizedMessage ?: "Erro ao sincronizar histórico.")
-                return@addSnapshotListener
+                return@ouvir
             }
             val items = snapshot?.documents?.mapNotNull(::meetingFromDocument) ?: emptyList()
             if (items.isEmpty() && !cloudMigrationDone("meetings")) {
@@ -160,7 +205,7 @@ class AppRepository(context: Context) {
                 if (local.isNotEmpty()) {
                     saveMeetings(local)
                     onMeetings(local)
-                    return@addSnapshotListener
+                    return@ouvir
                 }
             } else if (items.isNotEmpty()) {
                 cloudMigrationDone("meetings", true)
@@ -169,10 +214,10 @@ class AppRepository(context: Context) {
             onMeetings(items)
         }
 
-        listeners += settingsDocument.addSnapshotListener { snapshot, error ->
+        listeners += settingsDocument.ouvir("configurações", onError) { snapshot, error ->
             if (error != null) {
                 onError(error.localizedMessage ?: "Erro ao sincronizar configurações.")
-                return@addSnapshotListener
+                return@ouvir
             }
             val data = snapshot?.data
             if (data == null) {
@@ -181,7 +226,7 @@ class AppRepository(context: Context) {
                     saveSchedule(local)
                     onSchedule(local)
                 }
-                return@addSnapshotListener
+                return@ouvir
             }
             val schedule = MeetingSchedule(
                 (data["firstDay"] as? Number)?.toInt() ?: 3,
@@ -192,7 +237,7 @@ class AppRepository(context: Context) {
         }
 
         if (onPublicTalks != null) {
-            listeners += publicTalksCollection.addSnapshotListener { snapshot, error ->
+            listeners += publicTalksCollection.ouvir("discursos públicos", onError) { snapshot, error ->
                 if (error == null && snapshot != null) {
                     val items = snapshot.documents.mapNotNull(::publicTalkFromDocument)
                     savePublicTalksLocal(items)
@@ -202,7 +247,7 @@ class AppRepository(context: Context) {
         }
 
         if (onGroups != null) {
-            listeners += groupsCollection.addSnapshotListener { snapshot, error ->
+            listeners += groupsCollection.ouvir("grupos de campo", onError) { snapshot, error ->
                 if (error == null && snapshot != null) {
                     val items = snapshot.documents.mapNotNull(::groupFromDocument)
                     saveFieldServiceGroupsLocal(items)
@@ -212,7 +257,7 @@ class AppRepository(context: Context) {
         }
 
         if (onCleaning != null) {
-            listeners += cleaningCollection.addSnapshotListener { snapshot, error ->
+            listeners += cleaningCollection.ouvir("limpeza", onError) { snapshot, error ->
                 if (error == null && snapshot != null) {
                     val items = snapshot.documents.mapNotNull(::cleaningFromDocument)
                     saveCleaningSchedulesLocal(items)

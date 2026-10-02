@@ -24,6 +24,9 @@ import com.google.firebase.auth.FirebaseAuth
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Primeiro código do app: é aqui que a rede de queda tem que entrar,
+        // senão a exceção do start acontece antes de existir quem a capture.
+        CrashLog.instalar(this)
         captureEmailLink(intent)
         val prefs = getSharedPreferences("designacoes_jw", Context.MODE_PRIVATE)
         // O canal precisa existir antes de pedir a permissao: pedir sem um canal

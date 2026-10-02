@@ -117,12 +117,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** O log de erros, para a tela de configurações mostrar. */
-    fun lerLogDeErros(): String = try {
-        File(getApplication<Application>().filesDir, "erros.log")
-            .takeIf { it.exists() }?.readText().orEmpty()
-    } catch (e: Exception) {
-        "Não consegui ler o log: ${e.message}"
-    }
+    fun lerLogDeErros(): String = CrashLog.ler(getApplication())
 
     /**
      * Último erro de sincronização ou de permissão, para a UI mostrar.
