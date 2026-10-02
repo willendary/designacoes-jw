@@ -24,6 +24,17 @@ object ReportGenerator {
     fun shareIcs(context: Context, month: YearMonth, meetings: List<Meeting>, brothers: List<Brother>, privileges: List<Privilege>) =
         share(context, generateIcs(context, month, meetings, brothers, privileges), "text/calendar")
 
+    /**
+     * Grade do mês em PDF, paisagem A4 (842×595).
+     *
+     * É a mesma ideia da versão em tela, `MonthBoard`, de `shared`: uma linha
+     * por reunião, uma coluna por privilégio mecânico ativo. Aqui sai
+     * vetorial, para quem quer imprimir em qualidade infinita; lá é o que o
+     * usuário fotografa na parede. **As duas precisam evoluir juntas** — duas
+     * grades do mês que divergem em quebra de linha ou em privilégio é
+     * exatamente o defeito que a `MonthBoard` veio unificar, então qualquer
+     * mudança numa tem que entrar na outra.
+     */
     private fun generatePdf(context: Context, month: YearMonth, meetings: List<Meeting>, brothers: List<Brother>, privileges: List<Privilege>): File {
         val dir = File(context.cacheDir, "reports").apply { mkdirs() }
         val file = File(dir, "designacoes-${month.year}-${month.monthValue.toString().padStart(2, '0')}.pdf")

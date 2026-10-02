@@ -29,9 +29,16 @@ import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PrintReportScreen(vm: AppViewModel) {
+fun PrintReportScreen(
+    vm: AppViewModel,
+    // Mês controlado de fora: o quadro do mês e a exportação de imagens abrem
+    // a partir desta tela e precisam mostrar o mesmo mês. Com o estado aqui
+    // dentro, trocar de mês num diálogo deixava o relatório mostrando outro.
+    month: YearMonth = YearMonth.now(),
+    onMonthChange: (YearMonth) -> Unit = {}
+) {
     val context = LocalContext.current
-    var selectedMonth by remember { mutableStateOf(YearMonth.now()) }
+    val selectedMonth = month
 
     val monthPrefix = remember(selectedMonth) {
         selectedMonth.format(java.time.format.DateTimeFormatter.ofPattern("MM/yyyy"))
@@ -56,7 +63,7 @@ fun PrintReportScreen(vm: AppViewModel) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = { selectedMonth = selectedMonth.minusMonths(1) }) {
+                    IconButton(onClick = { onMonthChange(selectedMonth.minusMonths(1)) }) {
                         Icon(Icons.Default.ChevronLeft, "Mês anterior")
                     }
                     Text(
@@ -64,7 +71,7 @@ fun PrintReportScreen(vm: AppViewModel) {
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
-                    IconButton(onClick = { selectedMonth = selectedMonth.plusMonths(1) }) {
+                    IconButton(onClick = { onMonthChange(selectedMonth.plusMonths(1)) }) {
                         Icon(Icons.Default.ChevronRight, "Próximo mês")
                     }
                 }

@@ -18,6 +18,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
@@ -43,6 +45,7 @@ import br.com.willendary.designacoesjw.sync.CoalescingWorker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import br.com.willendary.designacoesjw.ui.MeetingProgramList
+import br.com.willendary.designacoesjw.ui.MonthBoard
 import br.com.willendary.designacoesjw.util.WhatsAppHelper
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -1116,7 +1119,7 @@ fun DesktopApp(c: StoreController, onShowUpdate: (WindowsUpdateInfo) -> Unit = {
                     1 -> History(c)
                     3 -> PublicTalksScreen(c)
                     4 -> GroupsAndCleaningScreen(c)
-                    5 -> DesktopPrintReportScreen(c)
+                    5 -> RelatorioComAcoesExtras(c)
                     6 -> Brothers(c)
                     7 -> DesktopUnavailabilityScreen(c)
                     8 -> Privileges(c)
@@ -1125,6 +1128,258 @@ fun DesktopApp(c: StoreController, onShowUpdate: (WindowsUpdateInfo) -> Unit = {
                 }
             }
         }
+    }
+}
+
+/**
+ * Aba 5: o relatório A4 que já existia, mais as duas ações que não couberam
+ * dentro dele — o quadro do mês em tela cheia e as imagens do mês.
+ *
+ * **Por que uma barra própria e não botões dentro de `DesktopPrintReportScreen`.**
+ * A tela do relatório tem o mês dela em estado privado, que não dá para ler de
+ * fora. Para não mostrar um quadro de um mês e as imagens de outro, esta barra
+ * tem o próprio seletor, com o mês escrito no rótulo — quem usa sabe qual mês os
+ * botões vão usar, mesmo que a grade acima esteja mostrando outro.
+ */
+@Composable
+private fun RelatorioComAcoesExtras(c: StoreController) {
+    var mes by remember { mutableStateOf(YearMonth.now()) }
+    var mostrarQuadro by remember { mutableStateOf(false) }
+    var infoMessage by remember { mutableStateOf<String?>(null) }
+    var salvando by remember { mutableStateOf(false) }
+
+    val prefixo = mes.format(DateTimeFormatter.ofPattern("MM/yyyy"))
+    val reunioesDoMes = c.data.meetings
+        .filter { it.date.endsWith("/$prefixo") }
+        .sortedBy { AssignmentGenerator.parseDate(it.date) }
+    val rotuloMes = mes.month.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))
+        .replaceFirstChar { it.uppercase() } + " de " + mes.year
+
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                "Quadro e imagens — $rotuloMes",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            IconButton(onClick = { mes = mes.minusMonths(1) }) {
+                Icon(Icons.Default.ChevronLeft, "Mês anterior do quadro e das imagens")
+            }
+            IconButton(onClick = { mes = mes.plusMonths(1) }) {
+                Icon(Icons.Default.ChevronRight, "Próximo mês do quadro e das imagens")
+            }
+
+            OutlinedButton(
+                enabled = reunioesDoMes.isNotEmpty(),
+                onClick = { mostrarQuadro = true }
+            ) {
+                Icon(Icons.Default.Dashboard, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Quadro do Mês")
+            }
+
+            OutlinedButton(
+                enabled = reunioesDoMes.isNotEmpty() && !salvando,
+                onClick = {
+                    // Desenha e grava: centenas de ms por reunião, e um mês cheio
+                    // de reuniões congelaria a janela. Mesma razão do "Imagem PNG"
+                    // da lista de reuniões.
+                    salvando = true
+                    salvarImagensDoMes(
+                        c = c,
+                        reunioes = reunioesDoMes,
+                        aoTerminar = { pasta, salvas, falhas ->
+                            salvando = false
+                            infoMessage = if (falhas.isEmpty()) {
+                                "$salvas imagens salvas em: ${pasta.absolutePath}"
+                            } else {
+                                "$salvas imagens salvas em: ${pasta.absolutePath}. Falharam: ${falhas.size}"
+                            }
+                        },
+                        aoReportarErro = { mensagem ->
+                            salvando = false
+                            c.reportError(mensagem)
+                        }
+                    )
+                }
+            ) {
+                Icon(Icons.Default.Save, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(if (salvando) "Salvando..." else "Salvar as imagens do mês")
+            }
+
+            Spacer(Modifier.weight(1f))
+            infoMessage?.let { msg ->
+                IconButton(onClick = { infoMessage = null }) {
+                    Icon(Icons.Default.Close, "Fechar aviso")
+                }
+            }
+        }
+
+        infoMessage?.let { msg ->
+            Text(
+                msg,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+
+        Spacer(Modifier.height(8.dp))
+        Box(Modifier.weight(1f)) {
+            DesktopPrintReportScreen(c)
+        }
+    }
+
+    if (mostrarQuadro) {
+        MonthBoardDialog(
+            month = mes,
+            meetings = reunioesDoMes,
+            brothers = c.data.brothers,
+            privileges = c.data.privileges,
+            onFechar = { mostrarQuadro = false }
+        )
+    }
+}
+
+/**
+ * O quadro do mês em janela própria, do tamanho da tela.
+ *
+ * **Por que uma `Dialog` e não rasterizar para PNG.** O usuário imprime com
+ * Ctrl+P direto daqui. Rasterizar Compose para bitmap no desktop nunca foi
+ * testado, seria o único ponto frágil da issue, e o `MonthBoard` já vem na
+ * proporção de paisagem A4 — o que sai da impressora do salão.
+ *
+ * O nome da congregação fica vazio: não há campo para ele em `Store`, e inventar
+ * um seria mostrar um cabeçalho errado na parede.
+ */
+@Composable
+private fun MonthBoardDialog(
+    month: YearMonth,
+    meetings: List<Meeting>,
+    brothers: List<Brother>,
+    privileges: List<Privilege>,
+    onFechar: () -> Unit
+) {
+    // Esc e o "X" chegam pelo mesmo caminho: `onDismissRequest`. Não há
+    // `onKeyEvent` aqui de propósito — o `Dialog` do Compose Desktop já chama
+    // esse callback na tecla Esc, e é como os outros diálogos do projeto fecham.
+    Dialog(
+        onDismissRequest = onFechar,
+        // Sem isto a janela do diálogo nasce estreita (largura padrão da
+        // plataforma) e o quadro sai espremido, sem a proporção A4.
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .background(Color.White)
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    "Ctrl+P imprime o quadro. Esc fecha.",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = onFechar) { Text("Fechar") }
+            }
+
+            MonthBoard(
+                month = month,
+                meetings = meetings,
+                brothers = brothers,
+                privileges = privileges,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+/**
+ * Gera e grava o card de cada reunião do mês em `~/.designacoes-jw/cards/`.
+ *
+ * Só salva arquivo: a área de transferência guarda **uma** imagem por vez, então
+ * um mês inteiro passaria por lá sem o usuário ver o resultado. O que ele quer
+ * é a pasta com os PNGs para mandar no grupo.
+ *
+ * Roda fora da thread de UI e volta por `EventQueue.invokeLater`, como o
+ * "Imagem PNG" da lista de reuniões: `c.reportError` escreve em estado do
+ * Compose, que não pode ser tocado da thread de desenho.
+ */
+private fun salvarImagensDoMes(
+    c: StoreController,
+    reunioes: List<Meeting>,
+    aoTerminar: (pasta: File, salvas: Int, falhas: List<String>) -> Unit,
+    aoReportarErro: (String) -> Unit
+) {
+    // Cópia do estado agora: entre a leitura e o desenho o usuário pode editar
+    // qualquer coisa, e o card precisa sair do que estava na tela quando ele
+    // apertou o botão.
+    val irmaos = c.data.brothers
+    val privilegios = c.data.privileges
+    val discursos = c.data.publicTalks
+    val escalas = c.data.cleaningSchedules
+    val grupos = c.data.fieldServiceGroups
+
+    val pasta = File(System.getProperty("user.home"), ".designacoes-jw/cards").apply { mkdirs() }
+
+    Thread {
+        // Uma reunião que falha não derruba as outras: um único card com letra
+        // ausente não pode custar o mês inteiro de imagens.
+        var salvas = 0
+        val falhas = mutableListOf<String>()
+
+        reunioes.forEach { reuniao ->
+            val dataSafe = reuniao.date.replace("/", "-")
+            val discurso = discursos.find { it.date == reuniao.date }
+            val limpeza = escalas.find { it.weekDate == reuniao.date }
+            val grupo = grupos.find { it.id == limpeza?.groupId }
+
+            runCatching {
+                val imagem = ImageExportHelper.generateMeetingCard(
+                    meeting = reuniao,
+                    brothers = irmaos,
+                    privileges = privilegios,
+                    publicTalk = discurso,
+                    cleaningSchedule = limpeza,
+                    cleaningGroup = grupo
+                )
+                ImageExportHelper.saveToPngFile(imagem, File(pasta, "card-$dataSafe.png"))
+            }.onSuccess {
+                salvas++
+                c.logImageOk(reuniao.date, it.absolutePath)
+            }.onFailure { erro ->
+                c.logImageError("falha ao gerar a imagem de ${reuniao.date}", erro)
+                falhas += "${reuniao.date}: ${erro.message}"
+            }
+        }
+
+        java.awt.EventQueue.invokeLater {
+            // Falha parcial ainda é sucesso: as imagens que saíram estão no
+            // disco. Por isso o resumo vem sempre, e o erro é um acréscimo —
+            // senão o usuário fica procurando um arquivo que nunca apareceu.
+            aoTerminar(pasta, salvas, falhas)
+            if (falhas.isNotEmpty()) {
+                aoReportarErro(
+                    "Some das imagens não saíram (${falhas.size} de ${reunioes.size}): " +
+                        falhas.joinToString("; ")
+                )
+            }
+        }
+    }.apply {
+        isDaemon = true
+        name = "export-imagens-mes"
+        start()
     }
 }
 

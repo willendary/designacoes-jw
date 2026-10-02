@@ -3,6 +3,7 @@ package br.com.willendary.designacoesjw
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -25,8 +26,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import br.com.willendary.designacoesjw.data.*
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
@@ -36,6 +40,7 @@ import kotlinx.coroutines.withContext
 import br.com.willendary.designacoesjw.notification.MeetingReminderHelper
 import br.com.willendary.designacoesjw.stats.EquityStatisticsHelper
 import br.com.willendary.designacoesjw.ui.MeetingProgramList
+import br.com.willendary.designacoesjw.ui.MonthBoard
 import br.com.willendary.designacoesjw.util.WhatsAppHelper
 import kotlinx.coroutines.launch
 import java.time.DayOfWeek
@@ -428,7 +433,7 @@ fun App(
                                     Spacer(Modifier.width(6.dp))
                                     Text("Sair", color = MaterialTheme.colorScheme.error)
                                 }
-                                Text("v0.3.9", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                Text("v0.4.0", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                             }
                         }
                     }
@@ -479,7 +484,7 @@ fun App(
                         5 -> UserManagementScreen(vm)
                         11 -> br.com.willendary.designacoesjw.screens.PublicTalksAndroidScreen(vm)
                         12 -> br.com.willendary.designacoesjw.screens.GroupsAndCleaningAndroidScreen(vm)
-                        13 -> br.com.willendary.designacoesjw.screens.PrintReportScreen(vm)
+                        13 -> RelatorioA4Screen(vm)
                         14 -> br.com.willendary.designacoesjw.screens.UnavailabilityScreen(vm)
                         15 -> br.com.willendary.designacoesjw.screens.EquityStatisticsScreen(vm)
                     }
@@ -3045,3 +3050,204 @@ private fun EditPrivilegeDialog(privilege: Privilege, onSave: (String, Int) -> U
         dismissButton = { TextButton(onDismiss) { Text("Cancelar") } }
     )
 }
+
+private const val TAG_IMAGENS_MES = "ImagensReuniao"
+
+/**
+ * Aba 13 — relatório A4.
+ *
+ * O mês mora **aqui**, e o `PrintReportScreen` o recebe por parâmetro. Com o
+ * mês preso dentro dele, o quadro e a exportação de imagens abriam o mês de
+ * outubro enquanto o relatório embaixo continuava mostrando setembro — três
+ * coisas na mesma tela discordando de qual mês é o atual.
+ */
+@Composable
+private fun RelatorioA4Screen(vm: AppViewModel) {
+    var quadroAberto by remember { mutableStateOf(false) }
+    var envioAberto by remember { mutableStateOf(false) }
+    var mes by remember { mutableStateOf(YearMonth.now()) }
+
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            OutlinedButton(onClick = { quadroAberto = true }, modifier = Modifier.weight(1f)) {
+                Icon(Icons.Filled.GridView, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Quadro do mês", style = MaterialTheme.typography.labelMedium)
+            }
+            OutlinedButton(onClick = { envioAberto = true }, modifier = Modifier.weight(1f)) {
+                Icon(Icons.Filled.Collections, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Imagens do mês", style = MaterialTheme.typography.labelMedium)
+            }
+        }
+
+        br.com.willendary.designacoesjw.screens.PrintReportScreen(
+            vm = vm,
+            month = mes,
+            onMonthChange = { mes = it }
+        )
+    }
+
+    if (quadroAberto) {
+        QuadroDoMesDialog(vm, mes, onMonthChange = { mes = it }, onDismiss = { quadroAberto = false })
+    }
+    if (envioAberto) {
+        ImagensDoMesDialog(vm, mes, onDismiss = { envioAberto = false })
+    }
+}
+
+/**
+ * O quadro em tela cheia.
+ *
+ * **Por que não rasterizar.** O `ImageExport` sabe fazer isso, mas ele mede o
+ * card da reunião numa `ComposeView` de largura fixa. Uma folha A4 sairia em
+ * miniatura, ilegível de longe — que é a distância de quem lê o quadro do
+ * salão. O usuário imprime a tela ou tira foto dela; é esse o formato pedido.
+ */
+@Composable
+private fun QuadroDoMesDialog(
+    vm: AppViewModel,
+    mes: YearMonth,
+    onMonthChange: (YearMonth) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val reunioes = remember(mes, vm.meetings.value) { reunioesDoMes(vm.meetings.value, mes) }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            MonthBoard(
+                month = mes,
+                meetings = reunioes,
+                brothers = vm.brothers.value,
+                privileges = vm.privileges.value,
+                modifier = Modifier.fillMaxSize()
+            )
+
+            // Controles no rodapé, não sobre o quadro: quem fotografa a tela
+            // não quer botão nenhum no meio da foto da parede.
+            Row(
+                Modifier.align(Alignment.BottomCenter).padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                SeletorMes(mes, onMonthChange)
+                TextButton(onClick = onDismiss) { Text("Fechar") }
+            }
+        }
+    }
+}
+
+/**
+ * Gera a imagem de cada reunião do mês e salva todas na galeria.
+ *
+ * Não abre o compartilhador: o Android não aguenta N intents de uma vez, e o
+ * usuário não quer escolher um app de cada imagem. Uma pasta na galeria e um
+ * aviso com a quantidade resolve — e é o mesmo destino que o botão do card já
+ * usava.
+ */
+@Composable
+private fun ImagensDoMesDialog(vm: AppViewModel, mes: YearMonth, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var enviando by remember { mutableStateOf(false) }
+    val reunioes = remember(mes, vm.meetings.value) { reunioesDoMes(vm.meetings.value, mes) }
+
+    fun gerar() {
+        if (enviando) return
+        if (reunioes.isEmpty()) {
+            Toast.makeText(context, "Nenhuma reunião neste mês.", Toast.LENGTH_LONG).show()
+            return
+        }
+        scope.launch {
+            enviando = true
+            var salvas = 0
+            var falhas = 0
+            for (reuniao in reunioes) {
+                // Uma reunião quebrada não pode derrubar o mês inteiro: quem
+                // pediu foram as 8 imagens, não a 3ª delas.
+                try {
+                    // O `render` monta um ComposeView, então só na main thread.
+                    val bitmap = withContext(Dispatchers.Main) {
+                        ImageExport.render(context, reuniao, vm.brothers.value, vm.privileges.value)
+                    } ?: throw IllegalStateException("render devolveu null")
+                    val uri = withContext(Dispatchers.IO) {
+                        ImageExport.saveToGallery(context, bitmap, ImageExport.fileNameFor(reuniao))
+                    } ?: throw IllegalStateException("saveToGallery devolveu null")
+                    salvas++
+                } catch (e: Exception) {
+                    Log.e(TAG_IMAGENS_MES, "Falha ao gerar a imagem de ${reuniao.date}", e)
+                    falhas++
+                }
+            }
+            enviando = false
+            onDismiss()
+            val destino = "Imagens/Designações JW"
+            Toast.makeText(
+                context,
+                if (falhas == 0) "$salvas imagens salvas em $destino."
+                else "$salvas salvas e $falhas falharam, em $destino.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Imagens de todas as reuniões") },
+        text = {
+            Column(
+                Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Sem seletor aqui: o mês é o mesmo que o usuário escolheu na
+                // tela de baixo, e dois seletores na mesma tela discordariam.
+                Text(
+                    "${reunioes.size} reuniões em ${rotuloMes(mes)}. As imagens vão para a galeria.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center
+                )
+                if (enviando) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { gerar() }, enabled = !enviando) {
+                Text(if (enviando) "Gerando…" else "Gerar e salvar")
+            }
+        },
+        dismissButton = { TextButton(onDismiss) { Text("Cancelar") } }
+    )
+}
+
+/** Mesma conta de mês do `PrintReportScreen`: a data é `dd/MM/yyyy`. */
+private fun reunioesDoMes(meetings: List<Meeting>, mes: YearMonth): List<Meeting> {
+    val prefixo = mes.format(DateTimeFormatter.ofPattern("MM/yyyy"))
+    return meetings.filter { it.date.endsWith("/$prefixo") }
+        .sortedBy { AssignmentGenerator.parseDate(it.date) }
+}
+
+/** Um seletor só, para os dois diálogos: os dois precisam do mesmo mês. */
+@Composable
+private fun SeletorMes(mes: YearMonth, onChange: (YearMonth) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = { onChange(mes.minusMonths(1)) }) {
+            Icon(Icons.Filled.ChevronLeft, "Mês anterior")
+        }
+        Text(rotuloMes(mes), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+        IconButton(onClick = { onChange(mes.plusMonths(1)) }) {
+            Icon(Icons.Filled.ChevronRight, "Próximo mês")
+        }
+    }
+}
+
+private fun rotuloMes(mes: YearMonth): String =
+    mes.month.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))
+        .replaceFirstChar { it.uppercase() } + " de ${mes.year}"
