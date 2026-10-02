@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -13,12 +15,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -109,6 +111,7 @@ fun MeetingProgramList(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ProgramPartRow(
     title: String,
@@ -128,13 +131,14 @@ private fun ProgramPartRow(
         Color.Transparent
     }
     val shape = RoundedCornerShape(8.dp)
+    var aberto by remember { mutableStateOf(false) }
 
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (highlighted) Modifier.background(container, shape).padding(8.dp) else Modifier),
-        verticalAlignment = Alignment.CenterVertically
+            .then(if (highlighted) Modifier.background(container, shape).padding(8.dp) else Modifier)
     ) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
         if (number != null) {
             Text(
                 "$number.",
@@ -210,55 +214,124 @@ private fun ProgramPartRow(
             AssignButton(
                 names = names,
                 canAssign = canAssign,
-                onToggle = onToggleBrother
+                onToggle = onToggleBrother,
+                onAbrir = { aberto = !aberto },
+                aberto = aberto
+            )
+        }
+    }
+
+        if (aberto) {
+            ListaDeDesignacao(
+                names = names,
+                canAssign = canAssign,
+                onToggle = onToggleBrother,
+                onFechar = { aberto = false }
             )
         }
     }
 }
 
 /**
- * Menu de designação da parte.
+ * Botão que abre a lista de designação da parte.
  *
- * Lista os irmãos **já designados** primeiro e os disponíveis depois, para
- * quem já está na parte achar o próprio nome em um toque. A parte do programa
- * é aberta a qualquer irmão ativo — a qualificação teocrática é do privilégio
- * mecânico, não daqui.
+ * Só um botão — a lista em si é [ListaDeDesignacao], desenhada dentro da linha.
+ *
+ * **Não use `DropdownMenu` neste módulo.** `shared` é `kotlin("jvm")` com o
+ * plugin Compose Multiplatform, então compila contra o Compose **desktop**:
+ * `DropdownMenu` resolve para a implementação de desktop, que referencia
+ * `SkikoMenu_skikoKt`. Essa classe não existe no APK do Android, e o erro só
+ * aparece em runtime, na hora de desenhar a linha:
+ *
+ * ```
+ * NoClassDefFoundError: Failed resolution of
+ *     Landroidx/compose/material3/SkikoMenu_skikoKt;
+ * ```
+ *
+ * O app compilava, os testes passavam, e o Android caía assim que a lista de
+ * irmãos aparecia na tela. API de material3 **comum** (`Text`, `Icon`,
+ * `Surface`, botões) funciona; o que não pode entrar aqui é o que tem
+ * implementação por plataforma — popup, menu, diálogo.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AssignButton(
     names: List<String>,
     canAssign: List<Brother>,
-    onToggle: (Long) -> Unit
+    onToggle: (Long) -> Unit,
+    onAbrir: () -> Unit,
+    aberto: Boolean
 ) {
-    var aberto by remember { mutableStateOf(false) }
-    Box {
-        FilledTonalIconButton(
-            onClick = { aberto = true },
-            modifier = Modifier.size(32.dp)
+    FilledTonalIconButton(
+        onClick = onAbrir,
+        modifier = Modifier.size(32.dp)
+    ) {
+        Icon(
+            if (aberto) Icons.Filled.Edit else if (names.isEmpty()) Icons.Filled.Add else Icons.Filled.Edit,
+            contentDescription = if (names.isEmpty()) "Designar para esta parte" else "Alterar designação",
+            modifier = Modifier.size(16.dp)
+        )
+    }
+}
+
+/**
+ * Lista de irmãos para designar, aberta dentro da própria linha.
+ *
+ * Fica inline em vez de popup por causa do [SkikoMenu] — ver [AssignButton].
+ * E inline funciona melhor aqui: em tela de salão quem designa quer ver a
+ * lista inteira e o nome de quem já está marcado, sem o menu fechar a cada
+ * clique.
+ *
+ * Os **já designados** vêm primeiro, para quem já está na parte achar o
+ * próprio nome em um toque. A parte do programa é aberta a qualquer irmão
+ * ativo — a qualificação teocrática é do privilégio mecânico, não daqui.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ListaDeDesignacao(
+    names: List<String>,
+    canAssign: List<Brother>,
+    onToggle: (Long) -> Unit,
+    onFechar: () -> Unit
+) {
+    val designados = canAssign.filter { it.name in names }
+    val disponiveis = canAssign.filter { it.name !in names }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Icon(
-                if (names.isEmpty()) Icons.Filled.Add else Icons.Filled.Edit,
-                contentDescription = if (names.isEmpty()) "Designar para esta parte" else "Alterar designação",
-                modifier = Modifier.size(16.dp)
-            )
-        }
-        DropdownMenu(expanded = aberto, onDismissRequest = { aberto = false }) {
-            canAssign.forEach { irmao ->
+            (designados + disponiveis).forEach { irmao ->
                 val marcado = irmao.name in names
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            if (marcado) "${irmao.name}  ✓" else irmao.name,
-                            fontWeight = if (marcado) FontWeight.SemiBold else FontWeight.Normal
-                        )
-                    },
-                    onClick = {
-                        onToggle(irmao.id)
-                        aberto = false
+                Surface(
+                    onClick = { onToggle(irmao.id) },
+                    shape = RoundedCornerShape(6.dp),
+                    color = if (marcado) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
                     }
-                )
+                ) {
+                    Text(
+                        if (marcado) "${irmao.name} ✓" else irmao.name,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (marcado) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (marcado) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        }
+                    )
+                }
             }
         }
+        TextButton(onClick = onFechar) { Text("Pronto", style = MaterialTheme.typography.labelSmall) }
     }
 }

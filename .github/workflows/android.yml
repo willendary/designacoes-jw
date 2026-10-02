@@ -41,6 +41,15 @@ jobs:
           set -o pipefail
           gradle assembleDebug 2>&1 | tee build.log || { echo "=== BUILD FAILED ==="; tail -n 150 build.log; exit 1; }
 
+      - name: Conferir que o APK não referencia Compose Desktop
+        # shared é kotlin("jvm") e compila contra o Compose desktop. API de
+        # material3 com implementação por plataforma (DropdownMenu, popup, menu)
+        # resolve para Skiko*_skikoKt, que não existe no APK. O app compila,
+        # os testes passam, e o Android morre em runtime ao desenhar a tela —
+        # aconteceu na 0.4.2 e só o dex denuncia.
+        shell: bash
+        run: python scripts/check_apk_desktop.py app/build/outputs/apk/debug/app-debug.apk
+
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
