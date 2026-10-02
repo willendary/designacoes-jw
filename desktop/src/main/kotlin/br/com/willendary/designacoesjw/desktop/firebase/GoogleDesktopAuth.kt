@@ -1,6 +1,8 @@
 package br.com.willendary.designacoesjw.desktop.firebase
 
 import br.com.willendary.designacoesjw.desktop.CURRENT_VERSION
+import com.sun.net.httpserver.HttpExchange
+import com.sun.net.httpserver.HttpHandler
 import com.sun.net.httpserver.HttpServer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -146,20 +148,9 @@ object GoogleDesktopAuth {
         var serverError: String? = null
         val latch = CountDownLatch(1)
 
-        val server = try {
-            // Loopback IPv4 explicito. Em curinga o bind sai dual-stack e
-            // funciona nos dois, mas vincular o loopback deixa o comportamento
-            // previsivel e e o que o Google recomenda para app Desktop.
-            HttpServer.create(InetSocketAddress(java.net.InetAddress.getByName("127.0.0.1"), CALLBACK_PORT), 0)
-        } catch (e: Exception) {
-            log("servidor de callback nao iniciou: ${e.message}")
-            return GoogleAuthResult(
-                error = "Não foi possível iniciar o servidor de callback na porta $CALLBACK_PORT. " +
-                    "Outro programa pode estar usando essa porta. Feche-o e tente de novo. (${e.message})"
-            )
-        }
-
-        server.createContext("/callback") { exchange ->
+        // A troca de código e o descarte do resto viram funções porque os
+        // dois precisam ser registrados em cada um dos sockets.
+        fun trataCallback(exchange: HttpExchange) {
             try {
                 val query = exchange.requestURI.query ?: ""
                 val params = parseQuery(query)
@@ -177,14 +168,16 @@ object GoogleDesktopAuth {
                 exchange.responseHeaders.add("Content-Type", "text/html; charset=UTF-8")
                 exchange.sendResponseHeaders(200, bytes.size.toLong())
                 exchange.responseBody.use { it.write(bytes) }
+            } catch (e: Exception) {
+                log("falha ao responder o callback: ${e.message}")
             } finally {
                 latch.countDown()
             }
         }
 
-        // Qualquer outro caminho (o /favicon.ico do Chrome, por exemplo) não
-        // pode virar recusa de conexão depois que o app autenticar.
-        server.createContext("/") { exchange ->
+        /** Qualquer outro caminho (o /favicon.ico do Chrome, por exemplo) não
+         * pode virar recusa de conexão depois que o app autenticar. */
+        fun trataOutros(exchange: HttpExchange) {
             try {
                 exchange.sendResponseHeaders(204, -1)
             } catch (_: Exception) {
@@ -194,9 +187,51 @@ object GoogleDesktopAuth {
             }
         }
 
+        // **Dois** sockets de loopback, não um.
+        //
+        // O redirect URI é `http://localhost:8181/callback`. No Windows, Chrome
+        // e Edge resolvem `localhost` para `::1` (IPv6) **antes** de tentar
+        // `127.0.0.1`. Ouvindo só no IPv4, o navegador vai em `[::1]:8181`,
+        // não encontra nada, e o login morre em "connection refused" — com o
+        // Google já tendo redirecionado, código e tudo, para a porta certa.
+        //
+        // A versão anterior evitava o curinga de propósito, e estava certo no
+        // espírito: `0.0.0.0` abriria o callback para quem estiver na rede
+        // local, e aí qualquer um injeta código. Ouvir nos dois endereços de
+        // loopback resolve sem abrir nada.
+        val handlers = listOf<HttpHandler>(
+            HttpHandler { exchange -> trataCallback(exchange) },
+            HttpHandler { exchange -> trataOutros(exchange) }
+        )
+
+        val servers = ArrayList<HttpServer>(2)
+        var ultimoErro: Exception? = null
+        for (endereco in listOf("::1", "127.0.0.1")) {
+            try {
+                val servidor = HttpServer.create(
+                    InetSocketAddress(java.net.InetAddress.getByName(endereco), CALLBACK_PORT), 0
+                )
+                handlers.forEachIndexed { i, handler -> servidor.createContext(if (i == 0) "/callback" else "/", handler) }
+                servers += servidor
+            } catch (e: Exception) {
+                // IPv6 ausente é normal em máquina sem o stack; IPv4 ausente é
+                // porta ocupada. Só interessa se nenhum dos dois subiu.
+                ultimoErro = e
+                log("callback nao pode ouvir em $endereco: ${e.message}")
+            }
+        }
+
+        if (servers.isEmpty()) {
+            log("servidor de callback nao iniciou: ${ultimoErro?.message}")
+            return GoogleAuthResult(
+                error = "Não foi possível iniciar o servidor de callback na porta $CALLBACK_PORT. " +
+                    "Outro programa pode estar usando essa porta. Feche-o e tente de novo. (${ultimoErro?.message})"
+            )
+        }
+
         try {
-            server.start()
-            log("servidor de callback ouvindo em $REDIRECT_URI")
+            servers.forEach { it.start() }
+            log("servidor de callback ouvindo em $REDIRECT_URI (${servers.size} endereco(s): ${servers.joinToString { it.address.toString() }})")
         } catch (e: Exception) {
             // Sem isto a thread morre aqui e a tela fica travada em
             // "Aguardando Google..." para sempre, sem explicação.
@@ -229,7 +264,9 @@ object GoogleDesktopAuth {
             log("callback recebido; mantendo o servidor por ${SHUTDOWN_GRACE_SECONDS}s")
             Thread.sleep(SHUTDOWN_GRACE_SECONDS * 1000)
         }
-        server.stop(0)
+        // Derruba os dois sockets. `stop(0)` não lança se o servidor nunca
+        // chegou a subir, então dá para chamar direto.
+        servers.forEach { it.stop(0) }
         log("servidor de callback encerrado")
 
         if (cancelled) {
