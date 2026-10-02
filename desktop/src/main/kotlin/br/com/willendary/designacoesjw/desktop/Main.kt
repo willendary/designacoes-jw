@@ -566,9 +566,39 @@ class StoreController {
         }))
     }
 
-    /** Vai para stderr: o app empacotado não tem console, mas o launcher exibe. */
+    /**
+     * Vai para stderr **e** para um arquivo.
+     *
+     * O app empacotado quase nunca é aberto a partir de um prompt, então só o
+     * stderr não resolve: quando o usuário relatava "não consegui gerar a
+     * imagem" não havia como saber a causa. O arquivo fica em
+     * `~/.designacoes-jw/erros.log`, é limitado a 200 KB e mantém as últimas
+     * linhas.
+     */
     private fun log(message: String) {
+        val line = "[${java.time.LocalDateTime.now()}] $message"
         System.err.println("[StoreController] $message")
+        runCatching {
+            val dir = File(System.getProperty("user.home"), ".designacoes-jw")
+            dir.mkdirs()
+            val logFile = File(dir, "erros.log")
+            if (logFile.length() > 200_000) {
+                // Mantem a metade mais recente: o começo é o que já foi lido.
+                val lines = logFile.readLines()
+                logFile.writeText(lines.drop(lines.size / 2).joinToString("\n"))
+            }
+            logFile.appendText("$line\n")
+        }
+    }
+
+    /** Detalhe de falha da exportação de imagem, com stack trace, em `erros.log`. */
+    fun logImageError(what: String, e: Throwable) {
+        log("$what: ${e.javaClass.name}: ${e.message}")
+        e.stackTrace.take(12).forEach { log("    em $it") }
+    }
+
+    fun logImageOk(meetingDate: String, caminho: String) {
+        log("imagem gerada para a reuniao $meetingDate -> $caminho")
     }
 
     /**
@@ -1791,8 +1821,15 @@ private fun MeetingCardItem(
                         val privileges = c.data.privileges
                         val dateSafe = m.date.replace("/", "-")
                         Thread {
-                            val erro = runCatching {
-                                val img = ImageExportHelper.generateMeetingCard(
+                            // Cada etapa e independente. A versao anterior
+                            // jogava as tres num unico runCatching, na ordem
+                            // gerar -> area de transferencia -> salvar: se a
+                            // area falhasse, o PNG nunca era gravado e o
+                            // usuario via "nao consegui gerar a imagem" sem
+                            // ter arquivo nenhum. Salvar e o que importa; a
+                            // area de transferencia e conveniencia.
+                            val imagem = runCatching {
+                                ImageExportHelper.generateMeetingCard(
                                     meeting = m,
                                     brothers = brothers,
                                     privileges = privileges,
@@ -1800,17 +1837,42 @@ private fun MeetingCardItem(
                                     cleaningSchedule = clean,
                                     cleaningGroup = group
                                 )
-                                ImageExportHelper.copyImageToClipboard(img)
-                                val cardDir = File(System.getProperty("user.home"), ".designacoes-jw/cards")
-                                    .apply { mkdirs() }
-                                ImageExportHelper.saveToPngFile(img, File(cardDir, "card-reuniao-$dateSafe.png"))
-                            }.exceptionOrNull()
-                            if (erro != null) {
-                                System.err.println("[StoreController] imagem falhou: ${erro.message}")
+                            }.getOrElse { erro ->
+                                c.logImageError("falha ao desenhar a imagem", erro)
                                 java.awt.EventQueue.invokeLater {
-                                    c.reportError("Não consegui gerar a imagem: ${erro.message}")
+                                    c.reportError("Não consegui desenhar a imagem: ${erro.message}")
+                                }
+                                return@Thread
+                            }
+
+                            val cardDir = File(System.getProperty("user.home"), ".designacoes-jw/cards")
+                                .apply { mkdirs() }
+                            val arquivo = File(cardDir, "card-reuniao-$dateSafe.png")
+                            runCatching { ImageExportHelper.saveToPngFile(imagem, arquivo) }
+                                .onFailure { erro ->
+                                    c.logImageError("falha ao salvar o PNG", erro)
+                                    java.awt.EventQueue.invokeLater {
+                                        c.reportError("Desenhei a imagem mas não consegui salvar: ${erro.message}")
+                                    }
+                                    return@Thread
+                                }
+
+                            // A area de transferencia e do AWT e nao gosta de
+                            // thread paralela; e falhar aqui ja nao importa,
+                            // porque o arquivo esta no disco.
+                            runCatching {
+                                java.awt.EventQueue.invokeAndWait {
+                                    ImageExportHelper.copyImageToClipboard(imagem)
+                                }
+                            }.onFailure { erro ->
+                                c.logImageError("imagem salva, mas a area de transferencia falhou", erro)
+                                java.awt.EventQueue.invokeLater {
+                                    c.reportError("Imagem salva em ${arquivo.name}, mas não consegui copiar para a área de transferência.")
                                 }
                             }
+
+                            c.logImageOk(m.date, arquivo.absolutePath)
+
                         }.apply {
                             isDaemon = true
                             name = "export-image"
