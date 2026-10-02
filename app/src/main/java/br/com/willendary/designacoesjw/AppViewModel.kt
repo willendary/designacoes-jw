@@ -534,6 +534,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         repo.savePrivileges(privileges.value)
     }
 
+    fun setPrivilegeMaleOnly(id: Long, maleOnly: Boolean) {
+        if (!can(AppPermissions.MANAGE_PRIVILEGES)) { lastActionError.value = denied(AppPermissions.MANAGE_PRIVILEGES, "alterar quem pode fazer a parte"); return }
+        privileges.value = privileges.value.map { if (it.id == id) it.copy(maleOnly = maleOnly) else it }
+        repo.savePrivileges(privileges.value)
+    }
+
     fun setPrivilegeReaderGrant(id: Long, grant: ReaderGrant) {
         if (!can(AppPermissions.MANAGE_PRIVILEGES)) { lastActionError.value = denied(AppPermissions.MANAGE_PRIVILEGES, "alterar privilégios"); return }
         privileges.value = privileges.value.map { if (it.id == id) it.copy(readerGrant = grant) else it }

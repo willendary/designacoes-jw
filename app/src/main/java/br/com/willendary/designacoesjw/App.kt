@@ -38,6 +38,8 @@ import br.com.willendary.designacoesjw.export.ImageExport
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import br.com.willendary.designacoesjw.notification.MeetingReminderHelper
+import br.com.willendary.designacoesjw.screens.EditBrotherDialog
+import br.com.willendary.designacoesjw.screens.EditPrivilegeDialog
 import br.com.willendary.designacoesjw.stats.EquityStatisticsHelper
 import br.com.willendary.designacoesjw.ui.MeetingProgramList
 import br.com.willendary.designacoesjw.export.MonthBoardPrint
@@ -62,20 +64,22 @@ private val weekdays = listOf(
     DayOfWeek.SUNDAY to "Domingo"
 )
 
-private fun kindLabel(kind: PartKind): String = when (kind) {
+// Rótulos usados também pelos diálogos de edição, em `screens/EditDialogs.kt`:
+// um lugar só para o nome de cada valor.
+internal fun kindLabel(kind: PartKind): String = when (kind) {
     PartKind.INDIVIDUAL -> "Individual"
     PartKind.PAIR -> "Dupla"
     PartKind.DEMONSTRATION -> "Encenação"
     PartKind.GROUP -> "Grupo"
 }
 
-private fun readerGrantLabel(grant: ReaderGrant): String = when (grant) {
+internal fun readerGrantLabel(grant: ReaderGrant): String = when (grant) {
     ReaderGrant.NONE -> "Ninguém (só marcado)"
     ReaderGrant.BOOK -> "Leitor"
     ReaderGrant.SENTINEL -> "Leitor de A Sentinela"
 }
 
-private fun dayLabel(value: Int): String =
+internal fun dayLabel(value: Int): String =
     weekdays.firstOrNull { it.first.value == value }?.second ?: "—"
 
 private fun getInitials(name: String): String {
@@ -146,21 +150,7 @@ fun App(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     var tab by remember { mutableIntStateOf(3) }
 
-    val currentTitle = when (tab) {
-        0 -> "Configurações"
-        1 -> "Histórico de Reuniões"
-        16 -> "Reuniões"
-        2 -> "Irmãos & Irmãs"
-        3 -> "Quadro de Reuniões"
-        4 -> "Privilégios"
-        5 -> "Usuários & Acesso"
-        11 -> "Discursos Públicos"
-        12 -> "Grupos & Limpeza"
-        13 -> "Relatório de Impressão A4"
-        14 -> "Férias & Ausências"
-        15 -> "Estatísticas de Equidade"
-        else -> "Designações JW"
-    }
+    val currentTitle = tituloDaTela(tab)
 
     if (tab == 10) {
         br.com.willendary.designacoesjw.screens.KioskScreen(vm, onClose = { tab = 3 })
@@ -243,198 +233,33 @@ fun App(
                             Spacer(Modifier.height(8.dp))
                         }
 
-                        // Seção 1: REUNIÕES & ESCALAS
-                        item {
-                            Text(
-                                "REUNIÕES & ESCALAS",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-                            )
-                        }
-                        item {
-                            NavigationDrawerItem(
-                                label = { Text("Início (Quadro Semanal)") },
-                                icon = { Icon(Icons.Filled.Home, null) },
-                                selected = tab == 3,
-                                onClick = { tab = 3; scope.launch { drawerState.close() } },
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
-                            )
-                        }
-                        item {
-                            NavigationDrawerItem(
-                                label = { Text("Histórico de Reuniões") },
-                                icon = { Icon(Icons.Filled.History, null) },
-                                selected = tab == 1,
-                                onClick = { tab = 1; scope.launch { drawerState.close() } },
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
-                            )
-                        }
-                        item {
-                            NavigationDrawerItem(
-                                label = { Text("Reuniões") },
-                                icon = { Icon(Icons.Filled.Event, null) },
-                                selected = tab == 16,
-                                onClick = { tab = 16; scope.launch { drawerState.close() } },
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
-                            )
-                        }
-                        item {
-                            NavigationDrawerItem(
-                                label = { Text("Modo Telão (Kiosk)") },
-                                icon = { Icon(Icons.Filled.Tv, null) },
-                                badge = {
-                                    Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.tertiaryContainer) {
-                                        Text("TV", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 4.dp))
-                                    }
-                                },
-                                selected = false,
-                                onClick = { tab = 10; scope.launch { drawerState.close() } },
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
-                            )
-                        }
-
-                        // Seção 2: PROGRAMAÇÃO ESPECIAL
-                        item {
-                            Spacer(Modifier.height(8.dp))
-                            Divider(modifier = Modifier.padding(horizontal = 16.dp))
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                "PROGRAMAÇÃO ESPECIAL",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-                            )
-                        }
-                        item {
-                            NavigationDrawerItem(
-                                label = { Text("Discursos Públicos") },
-                                icon = { Icon(Icons.Filled.RecordVoiceOver, null) },
-                                selected = tab == 11,
-                                onClick = { tab = 11; scope.launch { drawerState.close() } },
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
-                            )
-                        }
-                        item {
-                            NavigationDrawerItem(
-                                label = { Text("Grupos & Limpeza") },
-                                icon = { Icon(Icons.Filled.CleaningServices, null) },
-                                selected = tab == 12,
-                                onClick = { tab = 12; scope.launch { drawerState.close() } },
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
-                            )
-                        }
-                        item {
-                            NavigationDrawerItem(
-                                label = { Text("Relatório Diagramado A4") },
-                                icon = { Icon(Icons.Filled.Print, null) },
-                                selected = tab == 13,
-                                onClick = { tab = 13; scope.launch { drawerState.close() } },
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
-                            )
-                        }
-
-                        // Seção 3: PESSOAS & EQUIDADE
-                        item {
-                            Spacer(Modifier.height(8.dp))
-                            Divider(modifier = Modifier.padding(horizontal = 16.dp))
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                "PESSOAS & EQUIDADE",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-                            )
-                        }
-                        item {
-                            NavigationDrawerItem(
-                                label = { Text("Irmãos & Irmãs") },
-                                icon = { Icon(Icons.Filled.Groups, null) },
-                                selected = tab == 2,
-                                onClick = { tab = 2; scope.launch { drawerState.close() } },
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
-                            )
-                        }
-                        item {
-                            NavigationDrawerItem(
-                                label = { Text("Férias & Ausências") },
-                                icon = { Icon(Icons.Filled.EventBusy, null) },
-                                selected = tab == 14,
-                                onClick = { tab = 14; scope.launch { drawerState.close() } },
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
-                            )
-                        }
-                        item {
-                            NavigationDrawerItem(
-                                label = { Text("Privilégios da Reunião") },
-                                icon = { Icon(Icons.Filled.Work, null) },
-                                selected = tab == 4,
-                                onClick = { tab = 4; scope.launch { drawerState.close() } },
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
-                            )
-                        }
-                        item {
-                            NavigationDrawerItem(
-                                label = { Text("Estatísticas de Equidade") },
-                                icon = { Icon(Icons.Filled.BarChart, null) },
-                                selected = tab == 15,
-                                onClick = { tab = 15; scope.launch { drawerState.close() } },
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
-                            )
-                        }
-
-                        // Seção 4: ADMINISTRAÇÃO
-                        item {
-                            Spacer(Modifier.height(8.dp))
-                            Divider(modifier = Modifier.padding(horizontal = 16.dp))
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                "ADMINISTRAÇÃO",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-                            )
-                        }
-                        item {
-                            NavigationDrawerItem(
-                                label = { Text("Configurações") },
-                                icon = { Icon(Icons.Filled.Settings, null) },
-                                selected = tab == 0,
-                                onClick = { tab = 0; scope.launch { drawerState.close() } },
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
-                            )
-                        }
-                        if (vm.can(AppPermissions.MANAGE_USERS)) {
-                            item {
-                                NavigationDrawerItem(
-                                    label = { Text("Usuários & Acesso") },
-                                    icon = { Icon(Icons.Filled.AdminPanelSettings, null) },
-                                    selected = tab == 5,
-                                    onClick = { tab = 5; scope.launch { drawerState.close() } },
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                        // O menu é uma lista de dado (Menu.kt), não treze
+                        // NavigationDrawerItem escritos à mão: reorganizar
+                        // virou editar um item de lista em vez de caçar o
+                        // bloco certo no meio de 200 linhas.
+                        items(MENU) { entrada ->
+                            when (entrada) {
+                                is MenuSection -> Text(
+                                    entrada.titulo,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
                                 )
-                            }
-                        }
 
-                        // Rodapé do Drawer
-                        item {
-                            Spacer(Modifier.height(16.dp))
-                            Divider(modifier = Modifier.padding(horizontal = 16.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                TextButton(onClick = onSignOut) {
-                                    Icon(Icons.Filled.Logout, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.error)
-                                    Spacer(Modifier.width(6.dp))
-                                    Text("Sair", color = MaterialTheme.colorScheme.error)
+                                is MenuItem -> {
+                                    val selecionado = tab == entrada.tab
+                                    NavigationDrawerItem(
+                                        label = { Text(entrada.rotulo) },
+                                        icon = { Icon(entrada.icone, null) },
+                                        selected = selecionado,
+                                        onClick = {
+                                            tab = entrada.tab
+                                            scope.launch { drawerState.close() }
+                                        },
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                                    )
                                 }
-                                Text("v0.4.4", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                             }
                         }
                     }
@@ -1704,15 +1529,10 @@ private fun BrothersScreen(vm: AppViewModel) {
 
     editing?.let { brother ->
         EditBrotherDialog(
-            brother,
-            onSave = { n, p, r ->
-                error = vm.updateBrother(brother.id, n, p)
-                if (error == null) {
-                    vm.setBrotherRole(brother.id, r)
-                    editing = null
-                }
-            },
-            onDismiss = { editing = null }
+            vm = vm,
+            brother = brother,
+            onErro = { error = it },
+            onFechar = { editing = null }
         )
     }
 
@@ -2291,12 +2111,10 @@ private fun PrivilegesScreen(vm: AppViewModel) {
 
     editing?.let { privilege ->
         EditPrivilegeDialog(
-            privilege,
-            onSave = { n, q ->
-                error = vm.updatePrivilege(privilege.id, n, q)
-                if (error == null) editing = null
-            },
-            onDismiss = { editing = null }
+            vm = vm,
+            privilege = privilege,
+            onErro = { error = it },
+            onFechar = { editing = null }
         )
     }
 
@@ -3008,35 +2826,6 @@ private fun ReplaceDialog(candidates: List<Brother>, onSelect: (Long) -> Unit, o
 }
 
 @Composable
-private fun EditBrotherDialog(brother: Brother, onSave: (String, String, BrotherRole) -> Unit, onDismiss: () -> Unit) {
-    var name by remember(brother.id) { mutableStateOf(brother.name) }
-    var phone by remember(brother.id) { mutableStateOf(brother.phone) }
-    var role by remember(brother.id) { mutableStateOf(brother.role) }
-    var roleDropdown by remember { mutableStateOf(false) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Editar irmão") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(name, { name = it }, label = { Text("Nome") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(phone, { phone = it }, label = { Text("WhatsApp") }, modifier = Modifier.fillMaxWidth())
-                Box {
-                    OutlinedButton({ roleDropdown = true }, Modifier.fillMaxWidth()) { Text("Cargo: " + role.label) }
-                    DropdownMenu(roleDropdown, { roleDropdown = false }) {
-                        BrotherRole.values().forEach { r ->
-                            DropdownMenuItem(text = { Text(r.label) }, onClick = { role = r; roleDropdown = false })
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton({ onSave(name, phone, role) }) { Text("Salvar") } },
-        dismissButton = { TextButton(onDismiss) { Text("Cancelar") } }
-    )
-}
-
-@Composable
 private fun BrotherUnavailabilityDialog(
     brother: Brother,
     onAdd: (String, String, String) -> String?,
@@ -3094,24 +2883,6 @@ private fun BrotherUnavailabilityDialog(
             }
         },
         confirmButton = { TextButton(onDismiss) { Text("Concluir") } }
-    )
-}
-
-@Composable
-private fun EditPrivilegeDialog(privilege: Privilege, onSave: (String, Int) -> Unit, onDismiss: () -> Unit) {
-    var name by remember(privilege.id) { mutableStateOf(privilege.name) }
-    var quantity by remember(privilege.id) { mutableStateOf(privilege.quantity.toString()) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Editar privilégio") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(name, { name = it }, label = { Text("Nome") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(quantity, { quantity = it.filter(Char::isDigit) }, label = { Text("Quantidade") }, modifier = Modifier.fillMaxWidth())
-            }
-        },
-        confirmButton = { TextButton({ onSave(name, quantity.toIntOrNull() ?: 1) }) { Text("Salvar") } },
-        dismissButton = { TextButton(onDismiss) { Text("Cancelar") } }
     )
 }
 
