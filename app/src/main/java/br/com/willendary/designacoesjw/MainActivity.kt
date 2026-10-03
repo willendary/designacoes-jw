@@ -19,6 +19,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.*
 import androidx.core.content.ContextCompat
 import br.com.willendary.designacoesjw.notification.MeetingReminderHelper
+import br.com.willendary.designacoesjw.ui.JwPalette
+import br.com.willendary.designacoesjw.ui.JwThemeProvider
 import com.google.firebase.auth.FirebaseAuth
 
 class MainActivity : ComponentActivity() {
@@ -35,34 +37,13 @@ class MainActivity : ComponentActivity() {
         setContent {
             val themeIndexState = remember { mutableIntStateOf(prefs.getInt("theme_index", 0)) }
             val themeIndex = themeIndexState.intValue
-            // O Android so tinha lightColorScheme: quem usa o sistema em modo
-            // escuro tinha o app estourando a tela. Cada variante ganha o par.
-            val isDark = isSystemInDarkTheme()
-            val scheme = remember(themeIndex, isDark) {
-                val palettes = listOf(
-                    Color(0xFF1565C0) to Color(0xFF42A5F5),
-                    Color(0xFF2E7D32) to Color(0xFF66BB6A),
-                    Color(0xFF6A1B9A) to Color(0xFFAB47BC),
-                    Color(0xFFEF6C00) to Color(0xFFFFA726),
-                    Color(0xFF8E244D) to Color(0xFFAD4F73)
-                )
-                val (primary, secondary) = palettes[themeIndex.coerceIn(0, palettes.lastIndex)]
-                if (isDark) {
-                    darkColorScheme(
-                        primary = Color(0xFF90CAF9),
-                        secondary = Color(0xFF80CBC4),
-                        surface = Color(0xFF12161C)
-                    )
-                } else {
-                    lightColorScheme(primary = primary, secondary = secondary)
-                }
-            }
-            MaterialTheme(colorScheme = scheme) {
+            // Paleta e modo escuro saem de shared, iguais aos do desktop.
+            JwThemeProvider(paleta = JwPalette.porIndice(themeIndex)) {
                 Surface {
                     FirebaseAuthGate(
                         themeIndex = themeIndex,
-                        onThemeChange = { newIndex ->
-                            themeIndexState.intValue = newIndex.coerceIn(0, 4)
+                        onThemeChange = { novoIndice ->
+                            themeIndexState.intValue = JwPalette.porIndice(novoIndice).ordinal
                             prefs.edit().putInt("theme_index", themeIndexState.intValue).apply()
                         }
                     )

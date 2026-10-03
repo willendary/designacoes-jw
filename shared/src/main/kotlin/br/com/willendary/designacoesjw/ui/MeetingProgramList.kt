@@ -1,6 +1,8 @@
 package br.com.willendary.designacoesjw.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -82,15 +85,16 @@ fun MeetingProgramList(
 
     val sections = meeting.program.groupBy { it.section }
 
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    val espacamento = JwTheme.spacing
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(espacamento.sm)) {
         sections.forEach { (section, items) ->
             if (section.isNotBlank()) {
                 Text(
                     section,
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 4.dp)
+                    modifier = Modifier.padding(top = espacamento.xs)
                 )
             }
             items.forEach { item ->
@@ -125,18 +129,23 @@ private fun ProgramPartRow(
     // Encenação é o tipo que mais importa ficar distinto: tem vários
     // participantes e não é "uma parte com dono".
     val highlighted = kind == PartKind.DEMONSTRATION
-    val container = if (highlighted) {
-        MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.35f)
-    } else {
-        Color.Transparent
-    }
-    val shape = RoundedCornerShape(8.dp)
     var aberto by remember { mutableStateOf(false) }
 
+    // Cartão com traço, não bloco sem separação: quem lê o quadro do fundo do
+    // salão precisa ver onde uma parte termina e a outra começa, e cor de fundo
+    // sozinha some no projetor e na impressão a laser.
+    val shape = RoundedCornerShape(10.dp)
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (highlighted) Modifier.background(container, shape).padding(8.dp) else Modifier)
+            .clip(shape)
+            .background(if (highlighted) {
+                MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f)
+            } else {
+                superficieDeCartao(isSystemInDarkTheme())
+            })
+            .border(1.dp, corDeContorno(), shape)
+            .padding(horizontal = JwTheme.spacing.md, vertical = JwTheme.spacing.sm)
     ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         if (number != null) {
@@ -198,7 +207,7 @@ private fun ProgramPartRow(
                     }
                     Text(
                         names.joinToString(" · "),
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.primary,
                         textAlign = TextAlign.End

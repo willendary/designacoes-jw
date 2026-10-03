@@ -45,6 +45,7 @@ import br.com.willendary.designacoesjw.sync.CoalescingWorker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import br.com.willendary.designacoesjw.ui.MeetingProgramList
+import br.com.willendary.designacoesjw.ui.JwThemeProvider
 import br.com.willendary.designacoesjw.ui.MonthBoard
 import br.com.willendary.designacoesjw.util.WhatsAppHelper
 import kotlinx.serialization.encodeToString
@@ -835,26 +836,9 @@ fun main() = application {
         title = "Designações JW $CURRENT_VERSION",
         state = rememberWindowState(width = 1280.dp, height = 800.dp)
     ) {
-        MaterialTheme(
-            colorScheme = if (isDark) darkColorScheme(
-                primary = Color(0xFF90CAF9),
-                onPrimary = Color(0xFF0D47A1),
-                primaryContainer = Color(0xFF1E3A5F),
-                onPrimaryContainer = Color(0xFFE3F2FD),
-                secondary = Color(0xFF81D4FA),
-                background = Color(0xFF121212),
-                surface = Color(0xFF1E1E1E),
-                surfaceVariant = Color(0xFF2C2C2C)
-            ) else lightColorScheme(
-                primary = Color(0xFF1565C0),
-                onPrimary = Color.White,
-                primaryContainer = Color(0xFFE3F2FD),
-                onPrimaryContainer = Color(0xFF0D47A1),
-                secondary = Color(0xFF0288D1),
-                background = Color(0xFFF5F7FB),
-                surface = Color.White
-            )
-        ) {
+        // Paleta e modo escuro vêm de shared, o mesmo caminho do Android.
+        // Aqui havia uma lista de cor própria, e as duas já não eram iguais.
+        JwThemeProvider(isDark = isDark) {
             // Erro de ação. O StoreController.reportError() existia, mas
             // nada lia o estado — a mensagem sumia. Sem isto, "não consegui
             // gerar a imagem" e os erros de permissão eram engolidos.
