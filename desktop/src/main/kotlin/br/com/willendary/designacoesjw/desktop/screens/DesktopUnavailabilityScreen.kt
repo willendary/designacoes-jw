@@ -11,12 +11,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import br.com.willendary.designacoesjw.data.Brother
 import br.com.willendary.designacoesjw.desktop.StoreController
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
+import br.com.willendary.designacoesjw.ui.JwCard
+import br.com.willendary.designacoesjw.ui.JwCardRail
+import br.com.willendary.designacoesjw.ui.JwCardTitle
+import br.com.willendary.designacoesjw.ui.JwTheme
 import java.time.LocalDate
 
 @Composable
@@ -33,7 +36,8 @@ fun DesktopUnavailabilityScreen(c: StoreController) {
         searchQuery.isBlank() || b.name.contains(searchQuery, ignoreCase = true)
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    // Desktop é janela de trabalho: respiro de celular aqui vira linha vazia.
+    Column(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.md)) {
         // Cabeçalho da Tela
         Row(
             Modifier.fillMaxWidth(),
@@ -70,53 +74,51 @@ fun DesktopUnavailabilityScreen(c: StoreController) {
         )
 
         if (filtered.isEmpty()) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
+            JwCard {
                 Column(
-                    Modifier.padding(32.dp).fillMaxWidth(),
+                    Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)
                 ) {
-                    Icon(Icons.Default.CheckCircle, null, modifier = Modifier.size(48.dp), tint = Color(0xFF2E7D32))
-                    Text("Nenhum irmão ausente no momento", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text("Todos os irmãos ativos estão disponíveis para receber designações nas reuniões.", color = MaterialTheme.colorScheme.outline)
+                    Icon(Icons.Default.CheckCircle, null, modifier = Modifier.size(40.dp), tint = JwTheme.colors.sucesso)
+                    JwCardTitle("Nenhum irmão ausente no momento")
+                    Text(
+                        "Todos os irmãos ativos estão disponíveis para receber designações nas reuniões.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
                 }
             }
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm), modifier = Modifier.fillMaxSize()) {
                 items(filtered, key = { "${it.first.id}_${it.second.id}" }) { (brother, period) ->
                     val startDate = AssignmentGenerator.parseDate(period.startDate)
                     val endDate = AssignmentGenerator.parseDate(period.endDate)
                     val isCurrentlyAbsent = !today.isBefore(startDate) && !today.isAfter(endDate)
                     val isPast = today.isAfter(endDate)
 
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = when {
-                                isCurrentlyAbsent -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
-                                isPast -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                                else -> MaterialTheme.colorScheme.surface
+                    JwCard {
+                        // Situação no trilho, não no fundo: era o cartão inteiro
+                        // tingido de vermelho, que não sobrevive à impressão.
+                        JwCardRail(
+                            when {
+                                isCurrentlyAbsent -> JwTheme.colors.perigo
+                                isPast -> JwTheme.colors.grade
+                                else -> JwTheme.colors.sucesso
                             }
                         )
-                    ) {
+
                         Row(
-                            Modifier.padding(16.dp).fillMaxWidth(),
+                            Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.xs)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)) {
                                     Text(brother.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                                     Surface(
                                         shape = RoundedCornerShape(8.dp),
-                                        color = when {
-                                            isCurrentlyAbsent -> Color(0xFFFFEBEE)
-                                            isPast -> Color(0xFFECEFF1)
-                                            else -> Color(0xFFE8F5E9)
-                                        }
+                                        color = if (isPast) MaterialTheme.colorScheme.surfaceVariant else JwTheme.colors.sucessoContainer
                                     ) {
                                         Text(
                                             text = when {
@@ -125,18 +127,18 @@ fun DesktopUnavailabilityScreen(c: StoreController) {
                                                 else -> "Programada"
                                             },
                                             color = when {
-                                                isCurrentlyAbsent -> Color(0xFFC62828)
-                                                isPast -> Color(0xFF546E7A)
-                                                else -> Color(0xFF2E7D32)
+                                                isCurrentlyAbsent -> JwTheme.colors.perigo
+                                                isPast -> MaterialTheme.colorScheme.onSurfaceVariant
+                                                else -> JwTheme.colors.sucesso
                                             },
                                             style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                            modifier = Modifier.padding(horizontal = JwTheme.spacing.sm, vertical = 2.dp)
                                         )
                                     }
                                 }
 
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)) {
                                     Icon(Icons.Default.DateRange, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
                                     Text(
                                         if (period.startDate == period.endDate) "Dia ${period.startDate}" else "De ${period.startDate} até ${period.endDate}",
@@ -151,7 +153,7 @@ fun DesktopUnavailabilityScreen(c: StoreController) {
                             }
 
                             IconButton(onClick = { c.removeUnavailability(brother.id, period.id) }) {
-                                Icon(Icons.Default.Delete, "Remover ausência", tint = MaterialTheme.colorScheme.error)
+                                Icon(Icons.Default.Delete, "Remover ausência", modifier = Modifier.size(22.dp), tint = JwTheme.colors.perigo)
                             }
                         }
                     }

@@ -1,7 +1,9 @@
 package br.com.willendary.designacoesjw.desktop.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
@@ -12,13 +14,16 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import br.com.willendary.designacoesjw.desktop.StoreController
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
+import br.com.willendary.designacoesjw.ui.JwCard
+import br.com.willendary.designacoesjw.ui.JwTheme
+import br.com.willendary.designacoesjw.ui.corDeContorno
+import br.com.willendary.designacoesjw.ui.superficieDeCartao
 import java.awt.Desktop
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
@@ -45,7 +50,7 @@ fun DesktopPrintReportScreen(c: StoreController) {
     val monthFormatted = selectedMonth.month.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))
         .replaceFirstChar { it.uppercase() } + " de " + selectedMonth.year
 
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxSize()) {
+    Column(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.md), modifier = Modifier.fillMaxSize()) {
         // Cabeçalho da Tela
         Row(
             Modifier.fillMaxWidth(),
@@ -135,14 +140,10 @@ fun DesktopPrintReportScreen(c: StoreController) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Card(shape = RoundedCornerShape(10.dp)) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+            JwCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { selectedMonth = selectedMonth.minusMonths(1) }) {
-                        Icon(Icons.Default.ChevronLeft, "Mês anterior")
+                        Icon(Icons.Default.ChevronLeft, "Mês anterior", modifier = Modifier.size(22.dp))
                     }
                     Text(
                         monthFormatted,
@@ -151,37 +152,41 @@ fun DesktopPrintReportScreen(c: StoreController) {
                         modifier = Modifier.padding(horizontal = 8.dp)
                     )
                     IconButton(onClick = { selectedMonth = selectedMonth.plusMonths(1) }) {
-                        Icon(Icons.Default.ChevronRight, "Próximo mês")
+                        Icon(Icons.Default.ChevronRight, "Próximo mês", modifier = Modifier.size(22.dp))
                     }
                 }
             }
 
             actionMessage?.let { msg ->
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                // Aviso de ação, não cartão: precisa do fundo de destaque para
+                // ser lido, e `JwCard` não tem essa cor.
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        modifier = Modifier.padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
                         Text(msg, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                        IconButton(onClick = { actionMessage = null }, modifier = Modifier.size(24.dp)) {
-                            Icon(Icons.Default.Close, null, modifier = Modifier.size(14.dp))
+                        IconButton(onClick = { actionMessage = null }, modifier = Modifier.size(28.dp)) {
+                            Icon(Icons.Default.Close, null, modifier = Modifier.size(16.dp))
                         }
                     }
                 }
             }
         }
 
-        // Visualização da Folha Diagramada (Folha A4)
-        Card(
+        // Visualização da Folha Diagramada (Folha A4). A folha é a "unidade"
+        // desta tela: mesmo papel e mesmo traço dos `JwCard` de fora, para a
+        // janela não parecer feita de dois sistemas de cartão diferentes.
+        Surface(
             modifier = Modifier.fillMaxWidth().weight(1f),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(12.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            color = superficieDeCartao(isSystemInDarkTheme()),
+            shape = RoundedCornerShape(14.dp),
+            border = BorderStroke(1.dp, corDeContorno())
         ) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(24.dp),
@@ -251,15 +256,14 @@ fun DesktopPrintReportScreen(c: StoreController) {
                                 }
                             }
 
-                            Divider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
+                            HorizontalDivider(thickness = 2.dp, color = corDeContorno())
 
-                            // Linhas das Reuniões
-                            monthMeetings.forEachIndexed { idx, meeting ->
-                                val rowBg = if (idx % 2 == 0) Color.Transparent else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                            // Linhas das Reuniões. Sem zebra: a linha já tem
+                            // divisória, e fundo alternado é o que some na
+                            // impressão a laser.
+                            monthMeetings.forEach { meeting ->
                                 Row(
-                                    modifier = Modifier
-                                        .background(rowBg)
-                                        .padding(vertical = 10.dp, horizontal = 8.dp),
+                                    modifier = Modifier.padding(vertical = 10.dp, horizontal = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
@@ -290,7 +294,7 @@ fun DesktopPrintReportScreen(c: StoreController) {
                                         )
                                     }
                                 }
-                                Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                                HorizontalDivider(color = corDeContorno())
                             }
                         }
                     }

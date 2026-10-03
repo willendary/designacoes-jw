@@ -20,6 +20,10 @@ import br.com.willendary.designacoesjw.data.PublicTalk
 import br.com.willendary.designacoesjw.desktop.StoreController
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
 import br.com.willendary.designacoesjw.util.WhatsAppHelper
+import br.com.willendary.designacoesjw.ui.JwCard
+import br.com.willendary.designacoesjw.ui.JwCardRail
+import br.com.willendary.designacoesjw.ui.JwTheme
+import br.com.willendary.designacoesjw.ui.corDeContorno
 import java.awt.Desktop
 import java.net.URI
 import java.time.LocalDate
@@ -36,7 +40,7 @@ fun PublicTalksScreen(c: StoreController) {
     val allTalks = c.data.publicTalks.sortedByDescending { AssignmentGenerator.parseDate(it.date) }
     val talks = if (filterConfirmedOnly) allTalks.filter { it.confirmed } else allTalks
 
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.md)) {
         // Barra Superior
         Row(
             Modifier.fillMaxWidth(),
@@ -69,17 +73,13 @@ fun PublicTalksScreen(c: StoreController) {
         }
 
         if (talks.isEmpty()) {
-            Card(
-                Modifier.fillMaxWidth().padding(top = 24.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-            ) {
+            JwCard {
                 Column(
-                    Modifier.fillMaxWidth().padding(48.dp),
+                    Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)
                 ) {
-                    Icon(Icons.Default.RecordVoiceOver, null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
+                    Icon(Icons.Default.RecordVoiceOver, null, modifier = Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary)
                     Text("Nenhum discurso público agendado", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                     Text("Cadastre os oradores visitantes dos próximos fins de semana para organizar a hospitalidade.", style = MaterialTheme.typography.bodySmall)
                     Button(onClick = { editingTalk = null; showDialog = true }) {
@@ -88,7 +88,8 @@ fun PublicTalksScreen(c: StoreController) {
                 }
             }
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            // Um discurso é uma unidade, com hospitalidade e ações: cartão.
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)) {
                 items(talks) { talk ->
                     PublicTalkCardItem(
                         talk = talk,
@@ -151,21 +152,18 @@ private fun PublicTalkCardItem(
             .replaceFirstChar { it.uppercase(Locale("pt", "BR")) }
     } else ""
 
-    Card(
-        Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (talk.confirmed) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-            else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
-        )
-    ) {
+    JwCard {
+        // Situação no trilho, não no fundo: `destaque` é "o que se precisa ver
+        // primeiro", e status não é destaque — pendente é a maioria da lista.
+        JwCardRail(if (talk.confirmed) JwTheme.colors.sucesso else JwTheme.colors.alerta)
+
         Row(
-            Modifier.fillMaxWidth().padding(16.dp),
+            Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.xs), modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)) {
                     Text(
                         text = "📅 ${talk.date} ($weekday)",
                         fontWeight = FontWeight.Bold,
@@ -173,7 +171,7 @@ private fun PublicTalkCardItem(
                         color = MaterialTheme.colorScheme.primary
                     )
                     Badge(
-                        containerColor = if (talk.confirmed) Color(0xFF2E7D32) else MaterialTheme.colorScheme.tertiary
+                        containerColor = if (talk.confirmed) JwTheme.colors.sucesso else MaterialTheme.colorScheme.tertiary
                     ) {
                         Text(
                             text = if (talk.confirmed) "CONFIRMADO" else "PENDENTE",
@@ -209,7 +207,7 @@ private fun PublicTalkCardItem(
                 }
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.xs), verticalAlignment = Alignment.CenterVertically) {
                 // Botão WhatsApp Orador
                 Button(
                     onClick = {
@@ -221,9 +219,9 @@ private fun PublicTalkCardItem(
                         val url = WhatsAppHelper.buildWebLink(talk.speakerPhone, text)
                         if (Desktop.isDesktopSupported()) Desktop.getDesktop().browse(URI.create(url))
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+                    colors = ButtonDefaults.buttonColors(containerColor = JwTheme.colors.whatsapp)
                 ) {
-                    Icon(Icons.Default.Send, null, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Send, null, modifier = Modifier.size(22.dp))
                     Spacer(Modifier.width(6.dp))
                     Text("WhatsApp")
                 }
@@ -232,16 +230,19 @@ private fun PublicTalkCardItem(
                     Icon(
                         if (talk.confirmed) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
                         contentDescription = "Confirmar",
-                        tint = if (talk.confirmed) Color(0xFF2E7D32) else MaterialTheme.colorScheme.outline
+                        modifier = Modifier.size(22.dp),
+                        tint = if (talk.confirmed) JwTheme.colors.sucesso else MaterialTheme.colorScheme.outline
                     )
                 }
 
                 IconButton(onClick = onEdit) {
-                    Icon(Icons.Default.Edit, contentDescription = "Editar")
+                    Icon(Icons.Default.Edit, contentDescription = "Editar", modifier = Modifier.size(22.dp))
                 }
 
+                // Destrutivo separado dos demais ícones da linha.
+                VerticalDivider(color = corDeContorno())
                 IconButton(onClick = onDelete) {
-                    Icon(Icons.Default.Delete, contentDescription = "Excluir", tint = MaterialTheme.colorScheme.error)
+                    Icon(Icons.Default.Delete, contentDescription = "Excluir", modifier = Modifier.size(22.dp), tint = JwTheme.colors.perigo)
                 }
             }
         }

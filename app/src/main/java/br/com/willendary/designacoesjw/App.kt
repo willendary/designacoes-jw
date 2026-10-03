@@ -43,6 +43,7 @@ import br.com.willendary.designacoesjw.screens.EditPrivilegeDialog
 import br.com.willendary.designacoesjw.stats.EquityStatisticsHelper
 import br.com.willendary.designacoesjw.ui.MeetingProgramList
 import br.com.willendary.designacoesjw.export.MonthBoardPrint
+import br.com.willendary.designacoesjw.sync.Changelog
 import br.com.willendary.designacoesjw.ui.JwCard
 import br.com.willendary.designacoesjw.ui.JwCardTitle
 import br.com.willendary.designacoesjw.ui.JwSectionLabel
@@ -96,6 +97,17 @@ private fun getInitials(name: String): String {
     }
 }
 
+/**
+ * "1 irmao" ou "3 irmaos", com acento certo.
+ *
+ * Existe porque `${n} irmao(s)` espalhado por varias telas e `${n} irmao(s)`
+ * em cada uma delas, para sempre, e alguem sempre esquece de um. A versao do
+ * desktop mora em `components/Contagem.kt`; a daqui e a mesma ideia, porque o
+ * modulo `app` nao enxerga o `desktop`.
+ */
+private fun contar(n: Int, singular: String, plural: String): String =
+    "$n " + (if (n == 1) singular else plural)
+
 private val avatarColors = listOf(
     Color(0xFF1E88E5), Color(0xFF43A047), Color(0xFF8E24AA),
     Color(0xFFE53935), Color(0xFFFB8C00), Color(0xFF00ACC1),
@@ -148,8 +160,12 @@ fun App(
         checkingUpdate = false
     }
 
+    // O "o que ha de novo" e a checagem de atualizacao sao a mesma ida ao
+    // servidor: uma so chamada de rede na abertura, nao duas.
+    var novidades by remember { mutableStateOf<Changelog?>(null) }
     LaunchedEffect(Unit) {
         refreshUpdate()
+        novidades = carregarChangelogSeMostrar(context)
     }
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -322,6 +338,10 @@ fun App(
                 }
             }
         }
+    }
+
+    novidades?.let { changelog ->
+        DialogoNovidades(changelog, aoFechar = { novidades = null })
     }
 
     availableUpdate?.let { update ->
@@ -2080,7 +2100,7 @@ private fun PrivilegesScreen(vm: AppViewModel) {
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    "✓ $authorizedCount irmão(s) autorizados",
+                                    "✓ ${contar(authorizedCount, "irmão autorizado", "irmãos autorizados")}",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.primary
@@ -2528,7 +2548,9 @@ private fun SettingsScreen(
                         val count = vm.importBrothersCsv(importCsvText)
                         showImportDialog = false
                         importCsvText = ""
-                        message = if (count > 0) "$count irmão(s) importado(s) com sucesso!" else "Nenhum irmão novo encontrado no CSV."
+                        message = if (count > 0) {
+                            "${contar(count, "irmão importado", "irmãos importados")} com sucesso!"
+                        } else "Nenhum irmão novo encontrado no CSV."
                     }
                 ) { Text("Importar") }
             },
@@ -2777,7 +2799,7 @@ private fun EquityStatisticsDialog(
                         ) {
                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(
-                                    "⚠ ${report.unassignedActiveBrothers.size} irmão(s) ativo(s) sem designação no mês:",
+                                    "⚠ ${contar(report.unassignedActiveBrothers.size, "irmão ativo", "irmãos ativos")} sem designação no mês:",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onErrorContainer

@@ -51,11 +51,27 @@ data class JwColors(
     val perigo: Color,
     /** Verde do WhatsApp. Cor de marca: não segue o tema. */
     val whatsapp: Color,
-    /** Fundo de tela lida do fundo do salão. Sempre claro. */
+    /**
+     * **Impressão.** Fundo do quadro do mês, porque vai para papel.
+     *
+     * Claro, e não por gosto: fundo escuro consome toner e a folha sai suja.
+     */
     val salaoFundo: Color,
     val salaoTexto: Color,
-    /** Fundo do cabeçalho do quadro e do kiosk. */
     val salaoPrimaria: Color,
+    /**
+     * **Display.** Fundo da tela do salão, porque vai para projetor.
+     *
+     * Escuro, e o oposto de [salaoFundo]: projetor em sala fechada ofusca quem
+     * está na frente, e o quadro do telão é lido a metros por gente que não pode
+     * levantar.
+     *
+     * Estes dois não podem ser o mesmo token. Eram um só, e a parede ficou
+     * branca: fica bom no telefone e é ilegível no salão.
+     */
+    val telaoFundo: Color,
+    val telaoTexto: Color,
+    val telaoPrimaria: Color,
     /** Traço de grade, no quadro do mês. */
     val grade: Color
 )
@@ -87,6 +103,9 @@ val LocalJwColors = staticCompositionLocalOf {
         salaoFundo = Color(0xFFFFFFFF),
         salaoTexto = Color(0xFF1E293B),
         salaoPrimaria = Color(0xFF1565C0),
+        telaoFundo = Color(0xFF0B1220),
+        telaoTexto = Color(0xFFF1F5F9),
+        telaoPrimaria = Color(0xFF60A5FA),
         grade = Color(0xFFCBD5E1)
     )
 }

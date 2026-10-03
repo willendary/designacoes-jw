@@ -2,6 +2,7 @@ package br.com.willendary.designacoesjw.desktop.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,6 +19,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import br.com.willendary.designacoesjw.desktop.StoreController
+import br.com.willendary.designacoesjw.ui.JwTheme
+import br.com.willendary.designacoesjw.ui.corDeContorno
+import br.com.willendary.designacoesjw.ui.superficieDeCartao
 import java.awt.Desktop
 import java.net.URI
 
@@ -38,7 +42,7 @@ fun CloudSyncBar(c: StoreController) {
     } else {
         Surface(
             shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+            color = MaterialTheme.colorScheme.primaryContainer,
             modifier = Modifier.clip(RoundedCornerShape(20.dp))
         ) {
             Row(
@@ -49,7 +53,7 @@ fun CloudSyncBar(c: StoreController) {
                 Icon(
                     Icons.Default.CloudDone,
                     contentDescription = null,
-                    tint = Color(0xFF2E7D32),
+                    tint = JwTheme.colors.sucesso,
                     modifier = Modifier.size(18.dp)
                 )
                 Text(
@@ -159,12 +163,8 @@ fun DesktopLoginDialog(
                     },
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.fillMaxWidth().height(48.dp)
-                        .border(
-                            1.dp,
-                            MaterialTheme.colorScheme.outlineVariant,
-                            RoundedCornerShape(8.dp)
-                        ),
-                    color = MaterialTheme.colorScheme.surface
+                        .border(1.dp, corDeContorno(), RoundedCornerShape(8.dp)),
+                    color = superficieDeCartao(isSystemInDarkTheme())
                 ) {
                     Row(
                         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
@@ -201,8 +201,11 @@ fun DesktopLoginDialog(
 
                 // Status do Google login (mensagem informativa + fallback manual)
                 statusMessage?.let { msg ->
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                    // Bloco de status, não cartão: precisa do fundo de destaque
+                    // para ser lido, e `JwCard` não tem essa cor.
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(
@@ -228,7 +231,7 @@ fun DesktopLoginDialog(
                                     maxLines = 3,
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(4.dp))
+                                        .background(superficieDeCartao(isSystemInDarkTheme()), RoundedCornerShape(4.dp))
                                         .padding(6.dp)
                                 )
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -261,9 +264,9 @@ fun DesktopLoginDialog(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Divider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
+                    HorizontalDivider(modifier = Modifier.weight(1f), color = corDeContorno())
                     Text("ou entre com e-mail", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                    Divider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
+                    HorizontalDivider(modifier = Modifier.weight(1f), color = corDeContorno())
                 }
 
                 // ── Formulário E-mail/Senha ───────────────────────────────
@@ -290,8 +293,10 @@ fun DesktopLoginDialog(
 
                 // ── Mensagem de Erro ─────────────────────────────────────
                 errorMessage?.let { err ->
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                    // Mesmo caso do status: bloco com cor de sentido, não cartão.
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
@@ -303,7 +308,7 @@ fun DesktopLoginDialog(
                                 Icons.Default.Error,
                                 null,
                                 tint = MaterialTheme.colorScheme.onErrorContainer,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(22.dp)
                             )
                             Text(
                                 text = err,

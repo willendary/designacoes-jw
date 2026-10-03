@@ -20,6 +20,10 @@ import br.com.willendary.designacoesjw.data.FieldServiceGroup
 import br.com.willendary.designacoesjw.desktop.StoreController
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
 import br.com.willendary.designacoesjw.util.WhatsAppHelper
+import br.com.willendary.designacoesjw.ui.JwCard
+import br.com.willendary.designacoesjw.ui.JwTheme
+import br.com.willendary.designacoesjw.ui.corDeContorno
+import br.com.willendary.designacoesjw.desktop.components.contar
 import java.awt.Desktop
 import java.net.URI
 import java.time.YearMonth
@@ -30,7 +34,7 @@ fun GroupsAndCleaningScreen(c: StoreController) {
     var subTab by remember { mutableIntStateOf(0) }
     val subLabels = listOf("🧹 Escala de Limpeza", "👥 Grupos de Campo")
 
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.md)) {
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -74,14 +78,14 @@ private fun CleaningSection(c: StoreController) {
 
     val schedules = c.data.cleaningSchedules.sortedBy { AssignmentGenerator.parseDate(it.weekDate) }
 
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.md)) {
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                "Escala de Limpeza (${schedules.size} registros)",
+                "Escala de Limpeza (${contar(schedules.size, "registro", "registros")})",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
@@ -102,15 +106,11 @@ private fun CleaningSection(c: StoreController) {
         }
 
         if (schedules.isEmpty()) {
-            Card(
-                Modifier.fillMaxWidth().padding(top = 16.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-            ) {
+            JwCard {
                 Column(
-                    Modifier.fillMaxWidth().padding(32.dp),
+                    Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)
                 ) {
                     Icon(Icons.Default.CleaningServices, null, modifier = Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary)
                     Text("Nenhuma escala de limpeza cadastrada", fontWeight = FontWeight.Bold)
@@ -121,29 +121,28 @@ private fun CleaningSection(c: StoreController) {
                 }
             }
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            // A escala é uma lista repetida de datas, uma por linha: divisória.
+            // Cartão aqui seria uma borda por semana do mês, e a página
+            // ficaria mais lenta de varrer do que de ler.
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.xs)) {
                 items(schedules) { item ->
                     val group = c.data.fieldServiceGroups.firstOrNull { it.id == item.groupId }
                     val overseer = c.data.brothers.firstOrNull { it.id == group?.overseerBrotherId }
 
-                    Card(
-                        Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (item.completed) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                            else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
-                        )
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = JwTheme.spacing.sm),
+                        verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.xs)
                     ) {
                         Row(
-                            Modifier.fillMaxWidth().padding(14.dp),
+                            Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.xs), modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)) {
                                     Text("📅 Data: ${item.weekDate}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                                     if (item.completed) {
-                                        Badge(containerColor = Color(0xFF2E7D32)) {
+                                        Badge(containerColor = JwTheme.colors.sucesso) {
                                             Text("CONCLUÍDA", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
@@ -167,7 +166,7 @@ private fun CleaningSection(c: StoreController) {
                                 }
                             }
 
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.xs), verticalAlignment = Alignment.CenterVertically) {
                                 Button(
                                     onClick = {
                                         val text = WhatsAppHelper.buildCleaningScheduleMessage(
@@ -179,9 +178,9 @@ private fun CleaningSection(c: StoreController) {
                                         val url = WhatsAppHelper.buildWebLink(overseer?.phone ?: "", text)
                                         if (Desktop.isDesktopSupported()) Desktop.getDesktop().browse(URI.create(url))
                                     },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+                                    colors = ButtonDefaults.buttonColors(containerColor = JwTheme.colors.whatsapp)
                                 ) {
-                                    Icon(Icons.Default.Send, null, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Default.Send, null, modifier = Modifier.size(22.dp))
                                     Spacer(Modifier.width(6.dp))
                                     Text("WhatsApp")
                                 }
@@ -190,19 +189,23 @@ private fun CleaningSection(c: StoreController) {
                                     Icon(
                                         if (item.completed) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
                                         contentDescription = "Concluir",
-                                        tint = if (item.completed) Color(0xFF2E7D32) else MaterialTheme.colorScheme.outline
+                                        modifier = Modifier.size(22.dp),
+                                        tint = if (item.completed) JwTheme.colors.sucesso else MaterialTheme.colorScheme.outline
                                     )
                                 }
 
                                 IconButton(onClick = { editingSchedule = item; showDialog = true }) {
-                                    Icon(Icons.Default.Edit, contentDescription = "Editar")
+                                    Icon(Icons.Default.Edit, contentDescription = "Editar", modifier = Modifier.size(22.dp))
                                 }
 
+                                // Destrutivo separado dos demais ícones da linha.
+                                VerticalDivider(color = corDeContorno())
                                 IconButton(onClick = { c.deleteCleaningSchedule(item.id) }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Excluir", tint = MaterialTheme.colorScheme.error)
+                                    Icon(Icons.Default.Delete, contentDescription = "Excluir", modifier = Modifier.size(22.dp), tint = JwTheme.colors.perigo)
                                 }
                             }
                         }
+                        HorizontalDivider(color = corDeContorno())
                     }
                 }
             }
@@ -300,13 +303,17 @@ private fun GroupsSection(c: StoreController) {
 
     val groups = c.data.fieldServiceGroups.sortedBy { it.number }
 
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.md)) {
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Grupos de Serviço de Campo (${groups.size} cadastrados)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(
+                "Grupos de Serviço de Campo (${contar(groups.size, "cadastrado", "cadastrados")})",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
             Button(onClick = { editingGroup = null; showDialog = true }) {
                 Icon(Icons.Default.Add, null)
                 Spacer(Modifier.width(6.dp))
@@ -315,15 +322,11 @@ private fun GroupsSection(c: StoreController) {
         }
 
         if (groups.isEmpty()) {
-            Card(
-                Modifier.fillMaxWidth().padding(top = 16.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-            ) {
+            JwCard {
                 Column(
-                    Modifier.fillMaxWidth().padding(32.dp),
+                    Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)
                 ) {
                     Icon(Icons.Default.Groups, null, modifier = Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary)
                     Text("Nenhum grupo de campo cadastrado", fontWeight = FontWeight.Bold)
@@ -334,33 +337,40 @@ private fun GroupsSection(c: StoreController) {
                 }
             }
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            // Um grupo é uma unidade, com dirigentes e ações: cartão.
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)) {
                 items(groups) { g ->
                     val overseer = c.data.brothers.firstOrNull { it.id == g.overseerBrotherId }
                     val assistant = c.data.brothers.firstOrNull { it.id == g.assistantBrotherId }
                     val publishersInGroup = c.data.brothers.count { it.groupId == g.id }
 
-                    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
+                    JwCard {
                         Row(
-                            Modifier.fillMaxWidth().padding(14.dp),
+                            Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.xs)) {
                                 Text(g.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                                 Text("👤 Dirigente: ${overseer?.name ?: "Não definido"}", style = MaterialTheme.typography.bodyMedium)
                                 if (assistant != null) {
                                     Text("🤝 Ajudante: ${assistant.name}", style = MaterialTheme.typography.bodySmall)
                                 }
-                                Text("👥 $publishersInGroup publicador(es) vinculado(s)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    "👥 ${contar(publishersInGroup, "publicador vinculado", "publicadores vinculados")}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
 
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.xs)) {
                                 IconButton(onClick = { editingGroup = g; showDialog = true }) {
-                                    Icon(Icons.Default.Edit, contentDescription = "Editar")
+                                    Icon(Icons.Default.Edit, contentDescription = "Editar", modifier = Modifier.size(22.dp))
                                 }
+                                // Destrutivo separado dos demais ícones da linha.
+                                VerticalDivider(color = corDeContorno())
                                 IconButton(onClick = { deletingGroup = g }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Excluir", tint = MaterialTheme.colorScheme.error)
+                                    Icon(Icons.Default.Delete, contentDescription = "Excluir", modifier = Modifier.size(22.dp), tint = JwTheme.colors.perigo)
                                 }
                             }
                         }

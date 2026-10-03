@@ -124,6 +124,9 @@ private fun JwPalette.cores(isDark: Boolean): CoresDoTema {
                 salaoFundo = Color(0xFFFFFFFF),
                 salaoTexto = Color(0xFF1E293B),
                 salaoPrimaria = Color(0xFF1565C0),
+                telaoFundo = Color(0xFF0B1220),
+                telaoTexto = Color(0xFFF1F5F9),
+                telaoPrimaria = Color(0xFF60A5FA),
                 grade = Color(0xFF94A3B8)
             )
         } else {
@@ -136,6 +139,9 @@ private fun JwPalette.cores(isDark: Boolean): CoresDoTema {
                 salaoFundo = Color(0xFFFFFFFF),
                 salaoTexto = Color(0xFF1E293B),
                 salaoPrimaria = Color(0xFF1565C0),
+                telaoFundo = Color(0xFF0B1220),
+                telaoTexto = Color(0xFFF1F5F9),
+                telaoPrimaria = Color(0xFF60A5FA),
                 grade = Color(0xFFCBD5E1)
             )
         }

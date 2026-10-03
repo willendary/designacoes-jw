@@ -9,12 +9,16 @@ android {
     namespace = "br.com.willendary.designacoesjw"
     compileSdk = 35
 
+    buildFeatures {
+        // App.kt precisa ler a versao instalada para saber o que falta mostrar.
+        buildConfig = true
+    }
     defaultConfig {
         applicationId = "br.com.willendary.designacoesjw"
         minSdk = 26
         targetSdk = 35
-        versionCode = 42
-        versionName = "0.6.2"
+        versionCode = 43
+        versionName = "0.7.0"
     }
 
     // ── Assinatura ──────────────────────────────────────────────────────────

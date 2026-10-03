@@ -1,0 +1,116 @@
+{
+  "0.6.2": {
+    "android": [
+      "Estatísticas, Grupos e Limpeza, Relatório, Discursos, Férias, Configurações, Usuários e Histórico migraram para o cartão único",
+      "Corrigido: o botão dizia \"Gerar Escala de January\" — o mês vinha do nome do enum, em inglês",
+      "Corrigido: o arquivo exportado pelo relatório saía com \"January 2026\"",
+      "Textos de quantidade pararam de ler como robô: \"1 irmão\" em vez de \"1 irmão(s)\"",
+      "Excluir ganhou cor própria e um traço separando dos outros botões"
+    ],
+    "desktop": []
+  },
+  "0.6.1": {
+    "android": [
+      "Quadro do Mês, Irmãos e Privilégios migraram para o cartão único",
+      "Corrigido: excluir irmão ficava a um toque de distância do botão editar",
+      "Corrigido: o telefone estava escrito \"WhatsApp:\" sendo um número de telefone",
+      "Irmão inativo agora escurece o nome em vez de apagar o cartão inteiro — sumia na impressão"
+    ],
+    "desktop": []
+  },
+  "0.6.0": {
+    "android": [
+      "Tema novo, com cinco paletas e modo escuro corrigido",
+      "A paleta saía de dois lugares diferentes no Android e no desktop, e já não eram iguais",
+      "As partes do programa viraram cartão com traço, legíveis a distância"
+    ],
+    "desktop": [
+      "Tema novo, com cinco paletas e modo escuro corrigido",
+      "A paleta saía de dois lugares diferentes no Android e no desktop, e já não eram iguais"
+    ]
+  },
+  "0.5.3": {
+    "android": [
+      "Corrigido: nuvem vazia não apaga mais o que está no aparelho",
+      "Se a nuvem devolvesse lista vazia por falta de permissão, a tela ficava vazia e o mês de trabalho ia embora sem aviso"
+    ],
+    "desktop": []
+  },
+  "0.5.2": {
+    "android": [
+      "Corrigido: nuvem vazia não apaga mais o que está no aparelho",
+      "O caminho de escrita já era seguro; o de leitura não era"
+    ],
+    "desktop": []
+  },
+  "0.5.1": {
+    "android": [],
+    "desktop": [
+      "Corrigido: login com Google não recebia o retorno no Windows",
+      "O navegador ia em IPv6 e o servidor só escutava em IPv4 — a URL estava certa e mesmo assim não conectava"
+    ]
+  },
+  "0.5.0": {
+    "android": [
+      "Menu reorganizado e renomeado: \"Início (Quadro Semanal)\" era mensal, não semanal",
+      "\"Relatório de Impressão A4\" virou \"Quadro e Imagens do Mês\" — o quadro do mês estava escondido atrás de um nome que não prometia nada",
+      "Editar irmão e privilégio no celular: gênero, situação, batizado, aprendiz, leitor, leitor da Sentinela, papel e dias da semana",
+      "Antes só dava para cadastrar, nunca corrigir"
+    ],
+    "desktop": []
+  },
+  "0.4.4": {
+    "android": [
+      "Botão Imprimir no quadro do mês, usando a impressão nativa do Android",
+      "Antes não havia como imprimir no celular: a única saída era fotografar a tela",
+      "As partes do programa e os privilégios finally têm títulos separados — antes se liam como uma lista só"
+    ],
+    "desktop": []
+  },
+  "0.4.3": {
+    "android": [
+      "Corrigido: o app abria e fechava sozinho depois do login",
+      "Causa: um componente de menu do desktop tinha vazado para o celular e quebrava ao desenhar a tela",
+      "As falhas de sincronização passaram a virar aviso em vez de derrubar o app",
+      "Se o app fechar de novo, há um log em Downloads/Designações JW"
+    ],
+    "desktop": []
+  },
+  "0.4.2": {
+    "android": [
+      "Diagnóstico: agora qualquer queda do app é gravada e pode ser lida dentro do Configurações",
+      "Correções de sincronização — esta versão era de diagnóstico, não de conserto"
+    ],
+    "desktop": []
+  },
+  "0.4.1": {
+    "android": [
+      "O app parava de morrer quando uma falha de sincronização acontecia",
+      "Correções de sincronização — esta versão era de diagnóstico, não de conserto"
+    ],
+    "desktop": []
+  },
+  "0.4.0": {
+    "android": [
+      "Quadro do mês para a parede do salão, com uma linha por reunião e uma coluna por privilégio",
+      "Botão para gerar e salvar a imagem de todas as reuniões do mês",
+      "A página por reunião já existia em HTML e a grade em PDF — os dois foram unificados"
+    ],
+    "desktop": [
+      "Quadro do mês para a parede do salão, com uma linha por reunião e uma coluna por privilégio",
+      "Botão para salvar a imagem de todas as reuniões do mês"
+    ]
+  },
+  "0.3.9": {
+    "android": [
+      "As partes do programa deixaram de serilo um privilégio",
+      "Antes cada parte do programa era um privilégio cadastrado, e o app tratava \"Indicação\" como se fosse \"Som\"",
+      "Agora a parte se designa direto no card, e o privilégio mecânico continua na lista",
+      "A parte do programa é aberta a qualquer irmão ativo — a qualificação de verdade é do privilégio"
+    ],
+    "desktop": [
+      "As partes do programa deixaram de ser um privilégio",
+      "A parte do programa é designada direto no card"
+    ]
+  }
+}

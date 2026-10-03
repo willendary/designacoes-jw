@@ -3,6 +3,7 @@ package br.com.willendary.designacoesjw.desktop
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -25,6 +26,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import br.com.willendary.designacoesjw.data.*
 import br.com.willendary.designacoesjw.desktop.components.CloudSyncBar
+import br.com.willendary.designacoesjw.desktop.components.contar
 import br.com.willendary.designacoesjw.desktop.export.ImageExportHelper
 import br.com.willendary.designacoesjw.desktop.firebase.DesktopAuthManager
 import br.com.willendary.designacoesjw.desktop.firebase.DesktopFirestoreClient
@@ -45,8 +47,16 @@ import br.com.willendary.designacoesjw.sync.CoalescingWorker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import br.com.willendary.designacoesjw.ui.MeetingProgramList
+import br.com.willendary.designacoesjw.ui.JwCard
+import br.com.willendary.designacoesjw.ui.JwCardRail
+import br.com.willendary.designacoesjw.ui.JwCardTitle
+import br.com.willendary.designacoesjw.ui.JwSectionLabel
+import br.com.willendary.designacoesjw.ui.JwTheme
+import br.com.willendary.designacoesjw.sync.Changelog
 import br.com.willendary.designacoesjw.ui.JwThemeProvider
 import br.com.willendary.designacoesjw.ui.MonthBoard
+import br.com.willendary.designacoesjw.ui.corDeContorno
+import br.com.willendary.designacoesjw.ui.superficieDeCartao
 import br.com.willendary.designacoesjw.util.WhatsAppHelper
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -817,12 +827,17 @@ fun main() = application {
     var updateInfo by remember { mutableStateOf<WindowsUpdateInfo?>(null) }
     var checkingUpdate by remember { mutableStateOf(true) }
 
+    // "O que ha de novo" e a checagem de atualizacao sao a mesma ida ao
+    // servidor. Uma so chamada na abertura, nao duas.
+    var novidades by remember { mutableStateOf<Changelog?>(null) }
+
     LaunchedEffect(Unit) {
         // checkForUpdate faz GET no GitHub com timeout de 8 s. Em
         // LaunchedEffect(Unit) rodava na main e travava a janela na abertura.
         val info = withContext(Dispatchers.IO) { WindowsUpdateManager.checkForUpdate() }
         updateInfo = info
         checkingUpdate = false
+        novidades = withContext(Dispatchers.IO) { carregarChangelogSeMostrar(c) }
     }
 
     val isDark = when (c.data.themeMode) {
@@ -855,6 +870,9 @@ fun main() = application {
                     snackbarHostState,
                     Modifier.align(Alignment.BottomCenter).padding(20.dp)
                 )
+            }
+            novidades?.let { changelog ->
+                DialogoNovidades(changelog, aoFechar = { novidades = null })
             }
             if (!checkingUpdate && updateInfo != null) {
                 UpdateDialog(
@@ -898,16 +916,11 @@ private fun UpdateDialog(info: WindowsUpdateInfo, onDismiss: () -> Unit) {
                 when (val state = updateState) {
                     is UpdateState.Idle -> {
                         Text("Uma nova versão do Designações JW está disponível para instalação.")
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text("Versão instalada: v$CURRENT_VERSION", style = MaterialTheme.typography.bodySmall)
-                                Text("Nova versão: v${info.version}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                                if (info.sizeBytes > 0) {
-                                    Text("Tamanho aproximado: ${WindowsUpdateManager.formatBytes(info.sizeBytes)}", style = MaterialTheme.typography.bodySmall)
-                                }
+                        JwCard {
+                            Text("Versão instalada: v$CURRENT_VERSION", style = MaterialTheme.typography.bodySmall)
+                            Text("Nova versão: v${info.version}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            if (info.sizeBytes > 0) {
+                                Text("Tamanho aproximado: ${WindowsUpdateManager.formatBytes(info.sizeBytes)}", style = MaterialTheme.typography.bodySmall)
                             }
                         }
                         Text(
@@ -1459,7 +1472,7 @@ private fun DesktopSidebar(
                 // Seção 2: PROGRAMAÇÃO ESPECIAL
                 item {
                     Spacer(Modifier.height(6.dp))
-                    Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), modifier = Modifier.padding(horizontal = 4.dp))
+                    HorizontalDivider(color = corDeContorno(), modifier = Modifier.padding(horizontal = 4.dp))
                     Spacer(Modifier.height(6.dp))
                     Text(
                         "PROGRAMAÇÃO ESPECIAL",
@@ -1497,7 +1510,7 @@ private fun DesktopSidebar(
                 // Seção 3: CONGREGAÇÃO
                 item {
                     Spacer(Modifier.height(6.dp))
-                    Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), modifier = Modifier.padding(horizontal = 4.dp))
+                    HorizontalDivider(color = corDeContorno(), modifier = Modifier.padding(horizontal = 4.dp))
                     Spacer(Modifier.height(6.dp))
                     Text(
                         "CONGREGAÇÃO",
@@ -1543,7 +1556,7 @@ private fun DesktopSidebar(
                 // Seção 4: SISTEMA
                 item {
                     Spacer(Modifier.height(6.dp))
-                    Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), modifier = Modifier.padding(horizontal = 4.dp))
+                    HorizontalDivider(color = corDeContorno(), modifier = Modifier.padding(horizontal = 4.dp))
                     Spacer(Modifier.height(6.dp))
                     Text(
                         "SISTEMA",
@@ -1567,13 +1580,13 @@ private fun DesktopSidebar(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(10.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                color = superficieDeCartao(isSystemInDarkTheme())
             ) {
                 Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Box(
                             modifier = Modifier.size(8.dp).background(
-                                if (c.authSession != null) Color(0xFF4CAF50) else Color(0xFFFF9800),
+                                if (c.authSession != null) JwTheme.colors.sucesso else JwTheme.colors.alerta,
                                 CircleShape
                             )
                         )
@@ -1671,24 +1684,22 @@ private fun Home(c: StoreController) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         // Banner Inteligente da Próxima Reunião
         nextMeetingInfo?.let { (nextMeeting, daysUntil) ->
-            Card(
-                Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f))
-            ) {
+            JwCard(destaque = true) {
                 Row(
-                    Modifier.padding(16.dp).fillMaxWidth(),
+                    Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.xs), modifier = Modifier.weight(1f)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm), verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Event, null, tint = MaterialTheme.colorScheme.primary)
-                            Text("Próxima Reunião", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                            JwCardTitle("Próxima Reunião")
                             Badge(
-                                containerColor = if (daysUntil == 0L) MaterialTheme.colorScheme.error
-                                else if (daysUntil == 1L) MaterialTheme.colorScheme.tertiary
-                                else MaterialTheme.colorScheme.primary
+                                containerColor = when {
+                                    daysUntil == 0L -> MaterialTheme.colorScheme.error
+                                    daysUntil == 1L -> MaterialTheme.colorScheme.tertiary
+                                    else -> MaterialTheme.colorScheme.primary
+                                }
                             ) {
                                 Text(
                                     when (daysUntil) {
@@ -1716,7 +1727,7 @@ private fun Home(c: StoreController) {
                         val url = WhatsAppHelper.buildWebLink("", text)
                         if (Desktop.isDesktopSupported()) Desktop.getDesktop().browse(URI.create(url))
                     }) {
-                        Icon(Icons.Default.Share, null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Share, null, modifier = Modifier.size(22.dp))
                         Spacer(Modifier.width(6.dp))
                         Text("Avisar no WhatsApp")
                     }
@@ -1725,11 +1736,8 @@ private fun Home(c: StoreController) {
         }
 
         // Cabeçalho de Navegação e Chips Informativos
-        Card(
-            Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-        ) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        JwCard {
+            Column(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)) {
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1746,31 +1754,31 @@ private fun Home(c: StoreController) {
 
                 Row(
                     Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     AssistChip(
                         onClick = { showDaysDialog = true },
                         label = { Text("Dias: ${dayName(c.data.firstDay).take(3)} e ${dayName(c.data.secondDay).take(3)}") },
                         leadingIcon = { Icon(Icons.Default.CalendarMonth, null, modifier = Modifier.size(16.dp)) },
-                        trailingIcon = { Icon(Icons.Default.Edit, null, modifier = Modifier.size(14.dp)) }
+                        trailingIcon = { Icon(Icons.Default.Edit, null, modifier = Modifier.size(16.dp)) }
                     )
                     AssistChip(
                         onClick = {},
                         enabled = false,
-                        label = { Text("${c.data.brothers.count { it.active }} irmãos ativos") },
+                        label = { Text(contar(c.data.brothers.count { it.active }, "irmão ativo", "irmãos ativos")) },
                         leadingIcon = { Icon(Icons.Default.Groups, null, modifier = Modifier.size(16.dp)) }
                     )
                     AssistChip(
                         onClick = {},
                         enabled = false,
-                        label = { Text("${c.data.privileges.count { it.active }} privilégios") },
+                        label = { Text(contar(c.data.privileges.count { it.active }, "privilégio", "privilégios")) },
                         leadingIcon = { Icon(Icons.Default.Work, null, modifier = Modifier.size(16.dp)) }
                     )
                     AssistChip(
                         onClick = {},
                         enabled = false,
-                        label = { Text("${meetings.size} reuniões") },
+                        label = { Text(contar(meetings.size, "reunião", "reuniões")) },
                         leadingIcon = { Icon(Icons.Default.Event, null, modifier = Modifier.size(16.dp)) }
                     )
                 }
@@ -1837,10 +1845,12 @@ private fun Home(c: StoreController) {
         }
 
         infoMessage?.let { msg ->
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-                Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            // Aviso de ação, não cartão: precisa do fundo de destaque para ser
+            // lido, e `JwCard` não tem essa cor.
+            Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(10.dp)) {
+                Row(Modifier.padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(msg, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                    IconButton({ infoMessage = null }) { Icon(Icons.Default.Close, null) }
+                    IconButton({ infoMessage = null }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Close, null, modifier = Modifier.size(16.dp)) }
                 }
             }
         }
@@ -2005,15 +2015,10 @@ private fun MeetingCardItem(
     }.getOrNull()
     val dayOfWeekShort = parsedDate?.dayOfWeek?.getDisplayName(TextStyle.SHORT, Locale("pt", "BR"))?.uppercase() ?: "REU"
 
-    Card(
-        Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-        )
-    ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    // Uma reunião é uma unidade, e é o que se lê primeiro: cartão. Selecionada
+    // vira `destaque` — o realce é o que o usuário abriu, não um alfa no fundo.
+    JwCard(destaque = isSelected) {
+        Column(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)) {
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -2021,7 +2026,7 @@ private fun MeetingCardItem(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.md)
                 ) {
                     // Bloco Visual de Data
                     Box(
@@ -2048,13 +2053,13 @@ private fun MeetingCardItem(
                     }
 
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(m.type, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        JwCardTitle(m.type)
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             if (missing.isEmpty()) {
-                                Badge(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)) {
+                                Badge(containerColor = JwTheme.colors.sucessoContainer) {
                                     Text(
-                                        "✓ ${m.assignments.size} designações",
-                                        color = MaterialTheme.colorScheme.primary,
+                                        "✓ ${contar(m.assignments.size, "designação", "designações")}",
+                                        color = JwTheme.colors.sucesso,
                                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                                     )
                                 }
@@ -2142,7 +2147,7 @@ private fun MeetingCardItem(
                             start()
                         }
                     }) {
-                        Icon(Icons.Default.Image, null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Image, null, modifier = Modifier.size(22.dp))
                         Spacer(Modifier.width(6.dp))
                         Text("Imagem PNG")
                     }
@@ -2154,7 +2159,7 @@ private fun MeetingCardItem(
                         val url = WhatsAppHelper.buildWebLink("", text)
                         if (Desktop.isDesktopSupported()) Desktop.getDesktop().browse(URI.create(url))
                     }) {
-                        Icon(Icons.Default.Share, null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Share, null, modifier = Modifier.size(22.dp))
                         Spacer(Modifier.width(6.dp))
                         Text("WhatsApp")
                     }
@@ -2169,45 +2174,42 @@ private fun MeetingCardItem(
             }
 
             if (isSelected) {
-                HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                HorizontalDivider(Modifier.padding(vertical = 4.dp), color = corDeContorno())
+                // Cada designação é uma linha repetida dentro do cartão:
+                // divisória, não um cartão dentro do cartão.
+                Column {
                     m.assignments.forEach { a ->
                         val p = c.data.privileges.find { it.id == a.privilegeId }
                         val b = c.data.brothers.find { it.id == a.brotherId }
 
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.surface
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = JwTheme.spacing.sm),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(Modifier.weight(1f)) {
-                                    Text(p?.name ?: "Privilégio", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                                    Text(b?.name ?: "Irmão", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-                                }
+                            Column(Modifier.weight(1f)) {
+                                Text(p?.name ?: "Privilégio", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                Text(b?.name ?: "Irmão", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                            }
 
-                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    if (b?.phone?.isNotBlank() == true && p != null) {
-                                        TextButton(onClick = {
-                                            val text = WhatsAppHelper.buildSingleMessage(c.data.whatsappSingleTemplate, b, p, m)
-                                            val url = WhatsAppHelper.buildWebLink(b.phone, text)
-                                            if (Desktop.isDesktopSupported()) Desktop.getDesktop().browse(URI.create(url))
-                                        }) {
-                                            Icon(Icons.Default.Share, null, modifier = Modifier.size(14.dp))
-                                            Spacer(Modifier.width(4.dp))
-                                            Text("Avisar")
-                                        }
+                            Row(horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.xs), verticalAlignment = Alignment.CenterVertically) {
+                                if (b?.phone?.isNotBlank() == true && p != null) {
+                                    TextButton(onClick = {
+                                        val text = WhatsAppHelper.buildSingleMessage(c.data.whatsappSingleTemplate, b, p, m)
+                                        val url = WhatsAppHelper.buildWebLink(b.phone, text)
+                                        if (Desktop.isDesktopSupported()) Desktop.getDesktop().browse(URI.create(url))
+                                    }) {
+                                        Icon(Icons.Default.Share, null, modifier = Modifier.size(22.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("Avisar")
                                     }
-                                    IconButton(onClick = { onReplace(Triple(m.id, a.privilegeId, a.brotherId)) }) {
-                                        Icon(Icons.Default.SwapHoriz, "Trocar")
-                                    }
+                                }
+                                IconButton(onClick = { onReplace(Triple(m.id, a.privilegeId, a.brotherId)) }) {
+                                    Icon(Icons.Default.SwapHoriz, "Trocar", modifier = Modifier.size(22.dp))
                                 }
                             }
                         }
+                        HorizontalDivider(color = corDeContorno())
                     }
                 }
 
@@ -2262,8 +2264,8 @@ private fun DesktopQuickUnavailabilityDialog(
                                 if (!alreadyUnavailable) onAdd(b.id, meetingDate, meetingDate, "Ausente na reunião")
                             },
                             shape = RoundedCornerShape(6.dp),
-                            color = if (alreadyUnavailable) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
-                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                            color = if (alreadyUnavailable) MaterialTheme.colorScheme.errorContainer
+                            else superficieDeCartao(isSystemInDarkTheme())
                         ) {
                             Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Text(b.name, fontWeight = FontWeight.Medium)
@@ -2295,11 +2297,8 @@ private fun DesktopCalendarGrid(
     val totalCells = firstDayOfWeek + daysInMonth
     val totalRows = (totalCells + 6) / 7
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-    ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    JwCard {
+        Column(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 daysOfWeek.forEach { dayName ->
                     Text(
@@ -2312,7 +2311,7 @@ private fun DesktopCalendarGrid(
                     )
                 }
             }
-            HorizontalDivider(Modifier.padding(vertical = 4.dp))
+            HorizontalDivider(Modifier.padding(vertical = 4.dp), color = corDeContorno())
 
             for (row in 0 until totalRows) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -2339,7 +2338,7 @@ private fun DesktopCalendarGrid(
                                                 .clickable { onSelectMeeting(meeting.id) }
                                         } else {
                                             Modifier.background(
-                                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
+                                                MaterialTheme.colorScheme.surfaceVariant,
                                                 shape = RoundedCornerShape(8.dp)
                                             )
                                         }
@@ -2402,11 +2401,8 @@ private fun DesktopEquityDialog(
         text = {
             LazyColumn(Modifier.width(600.dp).heightIn(max = 500.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 item {
-                    Card(
-                        Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-                    ) {
-                        Row(Modifier.padding(14.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
+                    JwCard {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("${report.totalMeetings}", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                                 Text("Reuniões", style = MaterialTheme.typography.labelMedium)
@@ -2431,23 +2427,20 @@ private fun DesktopEquityDialog(
 
                 if (report.unassignedActiveBrothers.isNotEmpty()) {
                     item {
-                        Card(
-                            Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f))
-                        ) {
-                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(
-                                    "⚠ ${report.unassignedActiveBrothers.size} irmão(s) ativo(s) sem designação no mês:",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                                Text(
-                                    report.unassignedActiveBrothers.joinToString(", ") { "${it.name} (${it.role.label})" },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                            }
+                        // Alerta: precisa do vermelho de `errorContainer`, que
+                        // `JwCard` não tem. Trilho no lugar do fundo tingido.
+                        JwCard {
+                            JwCardRail(MaterialTheme.colorScheme.error)
+                            Text(
+                                "⚠ ${contar(report.unassignedActiveBrothers.size, "irmão ativo", "irmãos ativos")} sem designação no mês:",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                report.unassignedActiveBrothers.joinToString(", ") { "${it.name} (${it.role.label})" },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
@@ -2457,29 +2450,30 @@ private fun DesktopEquityDialog(
                 }
 
                 items(report.ranking) { item ->
-                    Card(
-                        Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (item.count == 0) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                            else MaterialTheme.colorScheme.surfaceVariant
-                        )
-                    ) {
-                        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(item.brother.name, fontWeight = FontWeight.Bold)
-                                    Badge { Text(item.brother.role.label) }
-                                }
-                                Text("${item.count} vez(es)", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    // Linha de ranking: item repetido. Divisória, não cartão.
+                    Column(Modifier.fillMaxWidth().padding(vertical = JwTheme.spacing.sm)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+                                Text(item.brother.name, fontWeight = FontWeight.Bold)
+                                Badge { Text(item.brother.role.label) }
                             }
-                            if (item.privilegesCount.isNotEmpty()) {
-                                Text(
-                                    item.privilegesCount.entries.joinToString(" • ") { "${it.key}: ${it.value}" },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                            Text(
+                                contar(item.count, "vez", "vezes"),
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
                         }
+                        if (item.privilegesCount.isNotEmpty()) {
+                            Text(
+                                item.privilegesCount.entries.joinToString(" • ") { "${it.key}: ${it.value}" },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        HorizontalDivider(
+                            Modifier.padding(top = JwTheme.spacing.sm),
+                            color = corDeContorno()
+                        )
                     }
                 }
 
@@ -2488,8 +2482,8 @@ private fun DesktopEquityDialog(
                         Text("Totais por Privilégio", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
                     item {
-                        Card(Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        JwCard {
+                            Column {
                                 report.privilegeTotals.forEach { (priv, count) ->
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                         Text(priv, style = MaterialTheme.typography.bodyMedium)
@@ -2584,14 +2578,14 @@ private fun Brothers(c: StoreController) {
         }
 
         // Lista de Irmãos com Avatar
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)) {
             if (filtered.isEmpty()) {
                 item {
-                    Card(Modifier.fillMaxWidth().padding(top = 16.dp)) {
+                    JwCard {
                         Column(
-                            Modifier.padding(32.dp).fillMaxWidth(),
+                            Modifier.fillMaxWidth(),
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                            verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.xs)
                         ) {
                             Text("Nenhum irmão encontrado", fontWeight = FontWeight.Bold)
                             Text("Utilize o botão 'Novo Irmão' para cadastrar publicadores e servos.", color = MaterialTheme.colorScheme.outline)
@@ -2601,21 +2595,15 @@ private fun Brothers(c: StoreController) {
             }
 
             items(filtered) { b ->
-                Card(
-                    Modifier
-                        .fillMaxWidth()
-                        .clickable { selectedBrotherForProfile = b },
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (b.active) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
-                    )
-                ) {
+                // Uma pessoa é uma unidade: cartão. E o cartão inteiro é
+                // clicável, então o `.clickable` solto vira `onClick` do JwCard.
+                JwCard(onClick = { selectedBrotherForProfile = b }) {
                     Row(
-                        Modifier.padding(14.dp).fillMaxWidth(),
+                        Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.md)) {
                             // Avatar Circular
                             Box(
                                 modifier = Modifier
@@ -2626,9 +2614,9 @@ private fun Brothers(c: StoreController) {
                                 Text(getInitials(b.name), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                             }
 
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(b.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Column(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.xs)) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+                                    JwCardTitle(b.name)
                                     Badge { Text(b.role.label) }
                                     if (!b.active) {
                                         Badge(containerColor = MaterialTheme.colorScheme.errorContainer) {
@@ -2637,7 +2625,7 @@ private fun Brothers(c: StoreController) {
                                     }
                                     if (b.unavailabilities.isNotEmpty()) {
                                         Badge(containerColor = MaterialTheme.colorScheme.tertiaryContainer) {
-                                            Text("🏖 ${b.unavailabilities.size} ausência(s)")
+                                            Text("🏖 " + contar(b.unavailabilities.size, "ausência", "ausências"))
                                         }
                                     }
                                 }
@@ -2649,11 +2637,13 @@ private fun Brothers(c: StoreController) {
                             }
                         }
 
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.xs), verticalAlignment = Alignment.CenterVertically) {
                             TextButton({ unavailBrother = b }) { Text("Ausências") }
                             TextButton({ c.toggleBrotherActive(b.id) }) { Text(if (b.active) "Desativar" else "Ativar") }
-                            IconButton({ editingBrother = b }) { Icon(Icons.Default.Edit, "Editar") }
-                            IconButton({ deletingBrother = b }) { Icon(Icons.Default.Delete, "Excluir") }
+                            IconButton({ editingBrother = b }) { Icon(Icons.Default.Edit, "Editar", modifier = Modifier.size(22.dp)) }
+                            // Destrutivo separado dos demais ícones da linha.
+                            VerticalDivider(color = corDeContorno())
+                            IconButton({ deletingBrother = b }) { Icon(Icons.Default.Delete, "Excluir", modifier = Modifier.size(22.dp), tint = JwTheme.colors.perigo) }
                         }
                     }
                 }
@@ -2863,8 +2853,8 @@ private fun DesktopBrotherProfileDialog(
         text = {
             LazyColumn(modifier = Modifier.width(480.dp).heightIn(max = 440.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 item {
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))) {
-                        Row(Modifier.padding(14.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
+                    JwCard {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("$totalAssignments", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.headlineMedium)
                                 Text("Designações realizadas", style = MaterialTheme.typography.labelSmall)
@@ -2881,29 +2871,33 @@ private fun DesktopBrotherProfileDialog(
                     val myAssignment = m.assignments.find { it.brotherId == brother.id }
                     val privName = c.data.privileges.find { it.id == myAssignment?.privilegeId }?.name ?: "Designação"
                     item {
-                        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f))) {
-                            Column(Modifier.padding(10.dp)) {
-                                Text("Última participação:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
-                                Text("${m.date} — $privName (${m.type})", style = MaterialTheme.typography.bodyMedium)
-                            }
+                        // Última participação é o que o usuário procura aqui.
+                        JwCard(destaque = true) {
+                            JwSectionLabel("Última participação")
+                            Text("${m.date} — $privName (${m.type})", style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                 }
 
                 if (privilegeCounts.isNotEmpty()) {
                     item {
-                        Text("Frequência por Privilégio:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                        JwSectionLabel("Frequência por privilégio")
                     }
                     items(privilegeCounts.entries.toList()) { (priv, count) ->
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(6.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                        ) {
-                            Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        // Item repetido: linha com divisória, não cartão.
+                        Column(Modifier.fillMaxWidth().padding(vertical = JwTheme.spacing.xs)) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(priv, style = MaterialTheme.typography.bodyMedium)
-                                Text("$count vez(es)", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    contar(count, "vez", "vezes"),
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
                             }
+                            HorizontalDivider(
+                                Modifier.padding(top = JwTheme.spacing.xs),
+                                color = corDeContorno()
+                            )
                         }
                     }
                 }
@@ -3066,24 +3060,33 @@ private fun Privileges(c: StoreController) {
                 val isBook = p.readerGrant == ReaderGrant.BOOK
                 val isSentinel = p.readerGrant == ReaderGrant.SENTINEL
 
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                JwCard {
+                    Column(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column {
-                                Text(p.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                Text("Quantidade: ${p.quantity} irmão(s) • Cargo mínimo: ${p.minRole.label} • ${if (p.active) "Ativo" else "Inativo"}")
+                                JwCardTitle(p.name)
+                                Text(
+                                    // "1 irmão(s)" era o texto: o número é o que
+                                    // importa e a concordância errava todo
+                                    // singular — "1 irmão(s)" lê como robô.
+                                    text = "Quantidade: ${contar(p.quantity, "irmão", "irmãos")} • Cargo mínimo: ${p.minRole.label} • ${if (p.active) "Ativo" else "Inativo"}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.xs), verticalAlignment = Alignment.CenterVertically) {
                                 TextButton({ c.togglePrivilegeActive(p.id) }) { Text(if (p.active) "Desativar" else "Ativar") }
-                                IconButton({ editingPrivilege = p }) { Icon(Icons.Default.Edit, "Editar") }
-                                IconButton({ deletingPrivilege = p }) { Icon(Icons.Default.Delete, "Excluir") }
+                                IconButton({ editingPrivilege = p }) { Icon(Icons.Default.Edit, "Editar", modifier = Modifier.size(22.dp)) }
+                                // Destrutivo separado dos demais ícones da linha.
+                                VerticalDivider(color = corDeContorno())
+                                IconButton({ deletingPrivilege = p }) { Icon(Icons.Default.Delete, "Excluir", modifier = Modifier.size(22.dp), tint = JwTheme.colors.perigo) }
                             }
                         }
 
                         // Destaque Teocrático Inteligente
                         if (isBook) {
-                            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f))) {
-                                Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            JwCard(destaque = true) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)) {
                                     Icon(Icons.Default.MenuBook, null, tint = MaterialTheme.colorScheme.primary)
                                     Column {
                                         Text("📖 Reunião de Meio de Semana (Quarta-feira)", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
@@ -3092,8 +3095,8 @@ private fun Privileges(c: StoreController) {
                                 }
                             }
                         } else if (isSentinel) {
-                            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f))) {
-                                Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            JwCard(destaque = true) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)) {
                                     Icon(Icons.Default.Article, null, tint = MaterialTheme.colorScheme.secondary)
                                     Column {
                                         Text("📰 Reunião de Fim de Semana (Sábado/Domingo)", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
@@ -3104,9 +3107,9 @@ private fun Privileges(c: StoreController) {
                         }
 
                         // Tipo de parte: individual, dupla, encenação ou grupo.
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("Tipo de parte:", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelMedium)
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Column {
+                            JwSectionLabel("Tipo de parte")
+                            Row(horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.xs)) {
                                 PartKind.entries.forEach { kind ->
                                     FilterChip(
                                         selected = p.kind == kind,
@@ -3118,9 +3121,9 @@ private fun Privileges(c: StoreController) {
                         }
 
                         // Quem pode fazer a parte.
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("Pode ser feito por:", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelMedium)
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Column {
+                            JwSectionLabel("Pode ser feito por")
+                            Row(horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.xs)) {
                                 BrotherStatus.entries.forEach { status ->
                                     FilterChip(
                                         selected = status in p.allowedStatus,
@@ -3141,9 +3144,9 @@ private fun Privileges(c: StoreController) {
                         }
 
                         // Qual habilitação do irmão concede este privilégio.
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("Concedido a quem é:", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelMedium)
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Column {
+                            JwSectionLabel("Concedido a quem é")
+                            Row(horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.xs)) {
                                 ReaderGrant.entries.forEach { grant ->
                                     FilterChip(
                                         selected = p.readerGrant == grant,
@@ -3155,8 +3158,8 @@ private fun Privileges(c: StoreController) {
                         }
 
                         // Dias permitidos
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Dias permitidos:", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelMedium)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)) {
+                            JwSectionLabel("Dias permitidos")
                             listOf(c.data.firstDay, c.data.secondDay).distinct().forEach { d ->
                                 FilterChip(
                                     selected = d in p.allowedDays,
@@ -3171,7 +3174,7 @@ private fun Privileges(c: StoreController) {
                             )
                         }
 
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                        HorizontalDivider(color = corDeContorno())
 
                         // Botão de Gerenciamento de Irmãos Autorizados
                         Row(
@@ -3180,14 +3183,14 @@ private fun Privileges(c: StoreController) {
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                "✓ $authorizedCount irmão(s) autorizados",
+                                "✓ ${contar(authorizedCount, "irmão autorizado", "irmãos autorizados")}",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
                             )
 
                             Button(onClick = { manageBrothersPrivilege = p }) {
-                                Icon(Icons.Default.Groups, null, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.Groups, null, modifier = Modifier.size(22.dp))
                                 Spacer(Modifier.width(6.dp))
                                 Text("Gerenciar Autorizações")
                             }
@@ -3334,11 +3337,10 @@ private fun DesktopManagePrivilegeBrothersDialog(
                 )
 
                 if (isBook) {
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))) {
+                    JwCard(destaque = true) {
                         Text(
                             "Nota teocrática: Leitores da Sentinela já são qualificados automaticamente para o Livro.",
-                            modifier = Modifier.padding(8.dp),
-                            style = MaterialTheme.typography.labelSmall
+                            style = MaterialTheme.typography.labelMedium
                         )
                     }
                 }
@@ -3359,8 +3361,8 @@ private fun DesktopManagePrivilegeBrothersDialog(
                                     c.toggleBrotherPrivilege(brother.id, privilege.id)
                                 },
                             shape = RoundedCornerShape(8.dp),
-                            color = if (direct || inherited) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
-                            else MaterialTheme.colorScheme.surface
+                            color = if (direct || inherited) MaterialTheme.colorScheme.primaryContainer
+                            else superficieDeCartao(isSystemInDarkTheme())
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
@@ -3405,24 +3407,30 @@ private fun History(c: StoreController) {
         it.date.substringAfterLast("/")
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.md)) {
         Text("Histórico de Reuniões", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text("${c.data.meetings.size} reunião(ões) registrada(s)")
+        Text(contar(c.data.meetings.size, "reunião registrada", "reuniões registradas"))
 
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)) {
             groups.forEach { (year, meetings) ->
                 item {
-                    Text(year, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+                    JwSectionLabel(year, Modifier.padding(top = JwTheme.spacing.sm))
                 }
                 items(meetings) { m ->
-                    Card(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // Uma reunião é uma unidade e traz o programa inteiro
+                    // dentro: cartão, não linha de tabela.
+                    JwCard {
+                        Column(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.xs)) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
-                                    Text(m.date + " — " + m.type, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                    Text("${m.assignments.size} designação(ões)")
+                                    JwCardTitle(m.date + " — " + m.type)
+                                    Text(
+                                        contar(m.assignments.size, "designação", "designações"),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
-                                IconButton({ confirmDelete = m }) { Icon(Icons.Default.Delete, "Excluir") }
+                                IconButton({ confirmDelete = m }) { Icon(Icons.Default.Delete, "Excluir", modifier = Modifier.size(22.dp), tint = JwTheme.colors.perigo) }
                             }
 
                             if (m.theme.isNotBlank()) {
@@ -3505,9 +3513,9 @@ private fun Settings(c: StoreController, onShowUpdate: (WindowsUpdateInfo) -> Un
             Text("Configurações do Sistema", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         }
         item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Dias de Reunião da Congregação", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            JwCard {
+                Column(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)) {
+                    JwCardTitle("Dias de Reunião da Congregação")
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Selector("Primeiro dia", first) { first = it; c.setMeetingDays(first, second) }
                         Selector("Segundo dia", second) { second = it; c.setMeetingDays(first, second) }
@@ -3516,9 +3524,9 @@ private fun Settings(c: StoreController, onShowUpdate: (WindowsUpdateInfo) -> Un
             }
         }
         item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Aparência e Tema", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            JwCard {
+                Column(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)) {
+                    JwCardTitle("Aparência e Tema")
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         ThemeMode.values().forEach { mode ->
                             FilterChip(
@@ -3535,9 +3543,9 @@ private fun Settings(c: StoreController, onShowUpdate: (WindowsUpdateInfo) -> Un
             }
         }
         item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Mensagens personalizadas do WhatsApp", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            JwCard {
+                Column(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)) {
+                    JwCardTitle("Mensagens personalizadas do WhatsApp")
                     Text("Variáveis disponíveis: {nome}, {privilegio}, {data}, {diaSemana}, {tipo}, {designacoes}", style = MaterialTheme.typography.bodySmall)
                     OutlinedTextField(
                         value = singleTmpl,
@@ -3561,9 +3569,9 @@ private fun Settings(c: StoreController, onShowUpdate: (WindowsUpdateInfo) -> Un
             }
         }
         item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Importação e Exportação (CSV e Backup)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            JwCard {
+                Column(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)) {
+                    JwCardTitle("Importação e Exportação (CSV e Backup)")
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         OutlinedButton({
                             val f = c.exportBrothersCsv()
@@ -3578,18 +3586,18 @@ private fun Settings(c: StoreController, onShowUpdate: (WindowsUpdateInfo) -> Un
             }
         }
         item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Regras teocráticas de leitores", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text("• Leitor do Livro (EBC): Atua exclusivamente nas reuniões de meio de semana (quarta-feira). Irmãos qualificados como Leitor da Sentinela podem ler o Livro automaticamente.")
-                    Text("• Leitor da Sentinela: Atua nas reuniões de fim de semana (sábado/domingo). Irmãos habilitados apenas para o Livro nunca leem a Sentinela.")
+            JwCard {
+                Column(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.xs)) {
+                    JwCardTitle("Regras teocráticas de leitores")
+                    Text("• Leitor do Livro (EBC): Atua exclusivamente nas reuniões de meio de semana (quarta-feira). Irmãos qualificados como Leitor da Sentinela podem ler o Livro automaticamente.", style = MaterialTheme.typography.bodyMedium)
+                    Text("• Leitor da Sentinela: Atua nas reuniões de fim de semana (sábado/domingo). Irmãos habilitados apenas para o Livro nunca leem a Sentinela.", style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }
         item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Atualizações e Armazenamento", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            JwCard {
+                Column(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)) {
+                    JwCardTitle("Atualizações e Armazenamento")
                     Text("Armazenamento local do Windows: ${c.file.absolutePath}", style = MaterialTheme.typography.bodySmall)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -3619,7 +3627,7 @@ private fun Settings(c: StoreController, onShowUpdate: (WindowsUpdateInfo) -> Un
                                     }
                                 }
                             }) {
-                                Icon(Icons.Default.Refresh, null, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.Refresh, null, modifier = Modifier.size(22.dp))
                                 Spacer(Modifier.width(6.dp))
                                 Text("Verificar atualizações")
                             }
@@ -3633,10 +3641,12 @@ private fun Settings(c: StoreController, onShowUpdate: (WindowsUpdateInfo) -> Un
         }
         statusMsg?.let { msg ->
             item {
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                // Aviso de ação, não cartão: precisa do fundo de destaque para
+                // ser lido, e `JwCard` não tem essa cor.
+                Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(10.dp)) {
+                    Row(Modifier.padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(msg, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                        IconButton({ statusMsg = null }) { Icon(Icons.Default.Close, null) }
+                        IconButton({ statusMsg = null }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Close, null, modifier = Modifier.size(16.dp)) }
                     }
                 }
             }

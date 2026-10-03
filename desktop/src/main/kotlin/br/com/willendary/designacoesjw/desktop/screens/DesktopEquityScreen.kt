@@ -1,6 +1,5 @@
 package br.com.willendary.designacoesjw.desktop.screens
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,6 +15,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import br.com.willendary.designacoesjw.desktop.StoreController
 import br.com.willendary.designacoesjw.stats.EquityStatisticsHelper
+import br.com.willendary.designacoesjw.ui.JwCard
+import br.com.willendary.designacoesjw.ui.JwCardTitle
+import br.com.willendary.designacoesjw.ui.JwTheme
+import br.com.willendary.designacoesjw.ui.corDeContorno
+import br.com.willendary.designacoesjw.desktop.components.contar
 import java.time.YearMonth
 import java.time.format.TextStyle
 import java.util.Locale
@@ -35,7 +39,7 @@ fun DesktopEquityScreen(c: StoreController) {
 
     val maxCount = report.ranking.maxOfOrNull { it.count }?.coerceAtLeast(1) ?: 1
 
-    Column(verticalArrangement = Arrangement.spacedBy(18.dp), modifier = Modifier.fillMaxSize()) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.fillMaxSize()) {
         // Barra Superior com Seletor de Mês
         Row(
             Modifier.fillMaxWidth(),
@@ -51,63 +55,53 @@ fun DesktopEquityScreen(c: StoreController) {
                 )
             }
 
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))) {
+            JwCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { selectedMonth = selectedMonth.minusMonths(1) }) {
-                        Icon(Icons.Default.ChevronLeft, "Mês anterior")
+                        Icon(Icons.Default.ChevronLeft, "Mês anterior", modifier = Modifier.size(22.dp))
                     }
                     Text(
                         "${selectedMonth.month.getDisplayName(TextStyle.FULL, Locale("pt", "BR")).replaceFirstChar { it.uppercase() }} de ${selectedMonth.year}",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 12.dp)
+                        modifier = Modifier.padding(horizontal = JwTheme.spacing.sm)
                     )
                     IconButton(onClick = { selectedMonth = selectedMonth.plusMonths(1) }) {
-                        Icon(Icons.Default.ChevronRight, "Próximo mês")
+                        Icon(Icons.Default.ChevronRight, "Próximo mês", modifier = Modifier.size(22.dp))
                     }
                 }
             }
         }
 
         // Cards de Indicadores
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth()) {
-            Card(modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                Column(Modifier.padding(18.dp)) {
-                    Text("Reuniões no Mês", style = MaterialTheme.typography.labelMedium)
-                    Text("${report.totalMeetings}", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-                    Text("Escalas computadas", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f))
-                }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            JwCard(modifier = Modifier.weight(1f)) {
+                Text("Reuniões no Mês", style = MaterialTheme.typography.labelMedium)
+                Text("${report.totalMeetings}", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+                Text("Escalas computadas", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Card(modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-                Column(Modifier.padding(18.dp)) {
-                    Text("Total de Designações", style = MaterialTheme.typography.labelMedium)
-                    Text("${report.totalAssignments}", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-                    Text("Partes atribuídas", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f))
-                }
+            JwCard(modifier = Modifier.weight(1f)) {
+                Text("Total de Designações", style = MaterialTheme.typography.labelMedium)
+                Text("${report.totalAssignments}", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+                Text("Partes atribuídas", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Card(modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
-                Column(Modifier.padding(18.dp)) {
-                    Text("Irmãos Ativos sem Parte", style = MaterialTheme.typography.labelMedium)
-                    Text("${report.unassignedActiveBrothers.size}", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-                    Text("Precisam de inclusão", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f))
-                }
+            JwCard(modifier = Modifier.weight(1f)) {
+                Text("Irmãos Ativos sem Parte", style = MaterialTheme.typography.labelMedium)
+                Text("${report.unassignedActiveBrothers.size}", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+                Text("Precisam de inclusão", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
 
         // Alerta de Irmãos Não Escalados
         if (report.unassignedActiveBrothers.isNotEmpty()) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f))
-            ) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            JwCard(destaque = true) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.md)) {
                     Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(24.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("Atenção à equidade: Irmãos ativos sem nenhuma designação neste mês", fontWeight = FontWeight.Bold)
+                        JwCardTitle("Atenção à equidade: irmãos ativos sem nenhuma designação neste mês")
                         Text(
                             report.unassignedActiveBrothers.joinToString(" • ") { it.name },
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onErrorContainer
+                            style = MaterialTheme.typography.bodyMedium
                         )
                     }
                 }
@@ -117,19 +111,19 @@ fun DesktopEquityScreen(c: StoreController) {
         // Ranking
         Text("Participação por Irmão", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
 
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxSize()) {
+        // Lista densa: aqui o cartão por linha só atrapalharia a varredura do
+        // olho e custaria uma borda por irmão. Divisória entre as linhas.
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.xs), modifier = Modifier.fillMaxSize()) {
             items(report.ranking, key = { it.brother.id }) { item ->
                 val fraction = item.count.toFloat() / maxCount.toFloat()
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (item.count == 0) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f) else MaterialTheme.colorScheme.surface
-                    )
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = JwTheme.spacing.sm),
+                    verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.xs)
                 ) {
                     Row(
-                        Modifier.padding(16.dp).fillMaxWidth(),
+                        Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.md)
                     ) {
                         Column(Modifier.weight(0.45f)) {
                             Text(item.brother.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -144,24 +138,23 @@ fun DesktopEquityScreen(c: StoreController) {
                             }
                         }
 
-                        Column(Modifier.weight(0.4f).padding(horizontal = 16.dp)) {
-                            LinearProgressIndicator(
-                                progress = { fraction },
-                                modifier = Modifier.fillMaxWidth().height(8.dp),
-                                color = when {
-                                    item.count == 0 -> Color.Gray
-                                    fraction > 0.8f -> MaterialTheme.colorScheme.tertiary
-                                    else -> MaterialTheme.colorScheme.primary
-                                }
-                            )
-                        }
+                        LinearProgressIndicator(
+                            progress = { fraction },
+                            modifier = Modifier.weight(0.35f).height(8.dp),
+                            color = when {
+                                item.count == 0 -> Color.Gray
+                                fraction > 0.8f -> MaterialTheme.colorScheme.tertiary
+                                else -> MaterialTheme.colorScheme.primary
+                            }
+                        )
 
                         Surface(
                             shape = RoundedCornerShape(8.dp),
-                            color = if (item.count > 0) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+                            color = if (item.count > 0) MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.surfaceVariant
                         ) {
                             Text(
-                                "${item.count} parte(s)",
+                                contar(item.count, "parte", "partes"),
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold
@@ -169,6 +162,7 @@ fun DesktopEquityScreen(c: StoreController) {
                         }
                     }
                 }
+                HorizontalDivider(color = corDeContorno())
             }
         }
     }
