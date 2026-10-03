@@ -8,6 +8,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
+import br.com.willendary.designacoesjw.sync.CloudGuard
 
 /**
  * Persistência híbrida:
@@ -168,6 +169,28 @@ class AppRepository(context: Context) {
             } else if (items.isNotEmpty()) {
                 cloudMigrationDone("brothers", true)
             }
+            // Nuvem vazia sobre cache cheio: mantém o que está no aparelho.
+            // Sem esta trava, uma permissão revogada apaga a lista da tela.
+            //
+            // O local é lido UMA vez e dentro do runCatching: chamar o
+            // load duas vezes transformava a trava em exceção quando o
+            // segundo parse falhava — que é justamente o caso que ela
+            // existe para proteger.
+            if (items.isEmpty()) {
+                val local = runCatching { loadBrothers() }
+                    .onFailure { erro ->
+                        onError("Falha ao ler irmãos deste aparelho: ${erro.message}")
+                    }
+                    .getOrNull()
+                // `local != null` e o `CloudGuard` sao checks diferentes: o
+                // primeiro serve ao compilador (a entrega exige lista), o
+                // segundo e a politica — e ela esta testada em `shared`.
+                if (local != null && CloudGuard.deveManterLocal(items, local)) {
+                    onBrothers(local)
+                    avisaNuvemVazia("irmãos", temLocal = true, onError = onError)
+                    return@ouvir
+                }
+            }
             saveBrothersLocal(items)
             onBrothers(items)
         }
@@ -189,6 +212,28 @@ class AppRepository(context: Context) {
             } else if (items.isNotEmpty()) {
                 cloudMigrationDone("privileges", true)
             }
+            // Nuvem vazia sobre cache cheio: mantém o que está no aparelho.
+            // Sem esta trava, uma permissão revogada apaga a lista da tela.
+            //
+            // O local é lido UMA vez e dentro do runCatching: chamar o
+            // load duas vezes transformava a trava em exceção quando o
+            // segundo parse falhava — que é justamente o caso que ela
+            // existe para proteger.
+            if (items.isEmpty()) {
+                val local = runCatching { loadPrivileges() }
+                    .onFailure { erro ->
+                        onError("Falha ao ler privilégios deste aparelho: ${erro.message}")
+                    }
+                    .getOrNull()
+                // `local != null` e o `CloudGuard` sao checks diferentes: o
+                // primeiro serve ao compilador (a entrega exige lista), o
+                // segundo e a politica — e ela esta testada em `shared`.
+                if (local != null && CloudGuard.deveManterLocal(items, local)) {
+                    onPrivileges(local)
+                    avisaNuvemVazia("privilégios", temLocal = true, onError = onError)
+                    return@ouvir
+                }
+            }
             savePrivilegesLocal(items)
             onPrivileges(items)
         }
@@ -209,6 +254,28 @@ class AppRepository(context: Context) {
                 }
             } else if (items.isNotEmpty()) {
                 cloudMigrationDone("meetings", true)
+            }
+            // Nuvem vazia sobre cache cheio: mantém o que está no aparelho.
+            // Sem esta trava, uma permissão revogada apaga a lista da tela.
+            //
+            // O local é lido UMA vez e dentro do runCatching: chamar o
+            // load duas vezes transformava a trava em exceção quando o
+            // segundo parse falhava — que é justamente o caso que ela
+            // existe para proteger.
+            if (items.isEmpty()) {
+                val local = runCatching { loadMeetings() }
+                    .onFailure { erro ->
+                        onError("Falha ao ler reuniões deste aparelho: ${erro.message}")
+                    }
+                    .getOrNull()
+                // `local != null` e o `CloudGuard` sao checks diferentes: o
+                // primeiro serve ao compilador (a entrega exige lista), o
+                // segundo e a politica — e ela esta testada em `shared`.
+                if (local != null && CloudGuard.deveManterLocal(items, local)) {
+                    onMeetings(local)
+                    avisaNuvemVazia("reuniões", temLocal = true, onError = onError)
+                    return@ouvir
+                }
             }
             saveMeetingsLocal(items)
             onMeetings(items)
@@ -240,7 +307,29 @@ class AppRepository(context: Context) {
             listeners += publicTalksCollection.ouvir("discursos públicos", onError) { snapshot, error ->
                 if (error == null && snapshot != null) {
                     val items = snapshot.documents.mapNotNull(::publicTalkFromDocument)
-                    savePublicTalksLocal(items)
+                    // Nuvem vazia sobre cache cheio: mantém o que está no aparelho.
+            // Sem esta trava, uma permissão revogada apaga a lista da tela.
+            //
+            // O local é lido UMA vez e dentro do runCatching: chamar o
+            // load duas vezes transformava a trava em exceção quando o
+            // segundo parse falhava — que é justamente o caso que ela
+            // existe para proteger.
+            if (items.isEmpty()) {
+                val local = runCatching { loadPublicTalks() }
+                    .onFailure { erro ->
+                        onError("Falha ao ler discursos públicos deste aparelho: ${erro.message}")
+                    }
+                    .getOrNull()
+                // `local != null` e o `CloudGuard` sao checks diferentes: o
+                // primeiro serve ao compilador (a entrega exige lista), o
+                // segundo e a politica — e ela esta testada em `shared`.
+                if (local != null && CloudGuard.deveManterLocal(items, local)) {
+                    onPublicTalks(local)
+                    avisaNuvemVazia("discursos públicos", temLocal = true, onError = onError)
+                    return@ouvir
+                }
+            }
+            savePublicTalksLocal(items)
                     onPublicTalks(items)
                 }
             }
@@ -250,7 +339,29 @@ class AppRepository(context: Context) {
             listeners += groupsCollection.ouvir("grupos de campo", onError) { snapshot, error ->
                 if (error == null && snapshot != null) {
                     val items = snapshot.documents.mapNotNull(::groupFromDocument)
-                    saveFieldServiceGroupsLocal(items)
+                    // Nuvem vazia sobre cache cheio: mantém o que está no aparelho.
+            // Sem esta trava, uma permissão revogada apaga a lista da tela.
+            //
+            // O local é lido UMA vez e dentro do runCatching: chamar o
+            // load duas vezes transformava a trava em exceção quando o
+            // segundo parse falhava — que é justamente o caso que ela
+            // existe para proteger.
+            if (items.isEmpty()) {
+                val local = runCatching { loadFieldServiceGroups() }
+                    .onFailure { erro ->
+                        onError("Falha ao ler grupos de campo deste aparelho: ${erro.message}")
+                    }
+                    .getOrNull()
+                // `local != null` e o `CloudGuard` sao checks diferentes: o
+                // primeiro serve ao compilador (a entrega exige lista), o
+                // segundo e a politica — e ela esta testada em `shared`.
+                if (local != null && CloudGuard.deveManterLocal(items, local)) {
+                    onGroups(local)
+                    avisaNuvemVazia("grupos de campo", temLocal = true, onError = onError)
+                    return@ouvir
+                }
+            }
+            saveFieldServiceGroupsLocal(items)
                     onGroups(items)
                 }
             }
@@ -260,7 +371,29 @@ class AppRepository(context: Context) {
             listeners += cleaningCollection.ouvir("limpeza", onError) { snapshot, error ->
                 if (error == null && snapshot != null) {
                     val items = snapshot.documents.mapNotNull(::cleaningFromDocument)
-                    saveCleaningSchedulesLocal(items)
+                    // Nuvem vazia sobre cache cheio: mantém o que está no aparelho.
+            // Sem esta trava, uma permissão revogada apaga a lista da tela.
+            //
+            // O local é lido UMA vez e dentro do runCatching: chamar o
+            // load duas vezes transformava a trava em exceção quando o
+            // segundo parse falhava — que é justamente o caso que ela
+            // existe para proteger.
+            if (items.isEmpty()) {
+                val local = runCatching { loadCleaningSchedules() }
+                    .onFailure { erro ->
+                        onError("Falha ao ler a limpeza deste aparelho: ${erro.message}")
+                    }
+                    .getOrNull()
+                // `local != null` e o `CloudGuard` sao checks diferentes: o
+                // primeiro serve ao compilador (a entrega exige lista), o
+                // segundo e a politica — e ela esta testada em `shared`.
+                if (local != null && CloudGuard.deveManterLocal(items, local)) {
+                    onCleaning(local)
+                    avisaNuvemVazia("limpeza", temLocal = true, onError = onError)
+                    return@ouvir
+                }
+            }
+            saveCleaningSchedulesLocal(items)
                     onCleaning(items)
                 }
             }
@@ -625,6 +758,36 @@ class AppRepository(context: Context) {
             })
         }
         prefs.edit().putString("cleaning_schedules", a.toString()).apply()
+    }
+
+    /**
+     * Nuvem vazia **não** apaga o que está no aparelho.
+     *
+     * O caminho de escrita já tinha trava: lista local vazia sobre coleção
+     * populada é tratada como cache incompleto. O de leitura não tinha, e é o
+     * que destrói — a nuvem devolvendo vazio (permissão revogada, token
+     * expirado, regra mudada, coleção recriada) fazia `save*Local(emptyList())`
+     * e a tela mostrava lista vazia, sem explicação. É o inverso da #22.
+     *
+     * Devolve `true` quando o aparelho deve **manter** o que tem.
+     *
+     * Não trava ninguém: quem quiser mesmo a lista vazia apaga no app, e a
+     * remoção vai para a nuvem. O que não pode é a nuvem decidir isso sozinha.
+     */
+    /**
+     * Nuvem vazia sobre cache cheio: mantém o que está no aparelho e diz por quê.
+     *
+     * A decisão em si é [CloudGuard.deveManterLocal], em `shared` — é domínio,
+     * vale igual no Android e no desktop, e é onde está o teste. Aqui só a
+     * mensagem.
+     */
+    private fun avisaNuvemVazia(rotulo: String, temLocal: Boolean, onError: (String) -> Unit) {
+        if (!temLocal) return
+        onError(
+            "A nuvem devolveu $rotulo vazio e eu mantive o que está neste aparelho. " +
+                "Normalmente é permissão ou sincronização — confira se sua conta tem acesso. " +
+                "Nada foi apagado."
+        )
     }
 
     private fun cloudMigrationDone(key: String): Boolean = prefs.getBoolean("cloud_migration_$key", false)
