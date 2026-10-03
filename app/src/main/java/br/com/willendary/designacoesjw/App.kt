@@ -43,6 +43,10 @@ import br.com.willendary.designacoesjw.screens.EditPrivilegeDialog
 import br.com.willendary.designacoesjw.stats.EquityStatisticsHelper
 import br.com.willendary.designacoesjw.ui.MeetingProgramList
 import br.com.willendary.designacoesjw.export.MonthBoardPrint
+import br.com.willendary.designacoesjw.ui.JwCard
+import br.com.willendary.designacoesjw.ui.JwSectionLabel
+import br.com.willendary.designacoesjw.ui.JwTheme
+import br.com.willendary.designacoesjw.ui.corDeContorno
 import br.com.willendary.designacoesjw.ui.MonthBoard
 import br.com.willendary.designacoesjw.util.WhatsAppHelper
 import kotlinx.coroutines.launch
@@ -370,19 +374,17 @@ fun App(
 /**
  * Rótulo de bloco dentro de um card.
  *
- * Existe para separar o que é privilege **mecânico** (fixo: Som, Anunciante,
+ * Existe para separar o que é privilégio **mecânico** (fixo: Som, Anunciante,
  * Orações) do que é **parte do programa** (muda toda semana). São listas
  * diferentes com origens diferentes, e juntas sem rótulo leem como uma só.
+ *
+ * Delegado a [JwSectionLabel]: a versão local só diferia no padding, e duas
+ * etiquetas de seção com nomes diferentes é exatamente a divergência que o
+ * redesenho vem para tirar.
  */
 @Composable
 private fun SectionLabel(texto: String) {
-    Text(
-        texto.uppercase(Locale("pt", "BR")),
-        style = MaterialTheme.typography.labelSmall,
-        fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
-    )
+    JwSectionLabel(texto, Modifier.padding(top = 8.dp, bottom = 2.dp))
 }
 
 @Composable
@@ -417,12 +419,10 @@ private fun HomeScreen(vm: AppViewModel) {
         // --- 0. BANNER INTELIGENTE: PRÓXIMA REUNIÃO DA CONGREGAÇÃO ---
         nextMeetingInfo?.let { (nextMeeting, daysUntil) ->
             item {
-                Card(
-                    Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f))
-                ) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Destaque: é a próxima reunião, a informação que se procura
+                // ao abrir o app.
+                JwCard(destaque = true) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(
                             Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1374,17 +1374,9 @@ private fun BrothersScreen(vm: AppViewModel) {
                 }
 
                 items(filtered, key = { it.id }) { brother ->
-                    Card(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable { selectedBrotherForProfile = brother },
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (brother.active) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
-                        )
-                    ) {
+                    JwCard(onClick = { selectedBrotherForProfile = brother }) {
                         Row(
-                            Modifier.padding(12.dp).fillMaxWidth(),
+                            Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
@@ -1410,7 +1402,12 @@ private fun BrothersScreen(vm: AppViewModel) {
                                 Text(
                                     text = brother.name,
                                     style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold
+                                    fontWeight = FontWeight.SemiBold,
+                                    // Esmaece o nome de quem saiu, e não o cartão
+                                    // inteiro: fundo com alpha ficava ilegível no
+                                    // modo escuro e sumia na impressão.
+                                    color = if (brother.active) MaterialTheme.colorScheme.onSurface
+                                    else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Row(
                                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1453,7 +1450,7 @@ private fun BrothersScreen(vm: AppViewModel) {
                                 }
                                 if (brother.phone.isNotBlank()) {
                                     Text(
-                                        text = "WhatsApp: ${brother.phone}",
+                                        text = brother.phone,
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -1463,13 +1460,34 @@ private fun BrothersScreen(vm: AppViewModel) {
                             // Ações do Irmão
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(onClick = { unavailBrother = brother }) {
-                                    Icon(Icons.Filled.Event, contentDescription = "Ausências", modifier = Modifier.size(18.dp))
+                                    Icon(
+                                        Icons.Filled.Event,
+                                        contentDescription = "Ausências",
+                                        modifier = Modifier.size(22.dp)
+                                    )
                                 }
                                 IconButton(onClick = { editing = brother }) {
-                                    Icon(Icons.Filled.Edit, contentDescription = "Editar", modifier = Modifier.size(18.dp))
+                                    Icon(
+                                        Icons.Filled.Edit,
+                                        contentDescription = "Editar",
+                                        modifier = Modifier.size(22.dp)
+                                    )
                                 }
+                                // Excluir fica **na cor de perigo** e separado por
+                                // um traço. A 48dp de distância do editar, um toque
+                                // errado apaga a pessoa — e o diálogo de confirmação existe,
+                                // mas ninguém lê um diálogo que não esperava.
+                                VerticalDivider(
+                                    modifier = Modifier.height(28.dp),
+                                    color = corDeContorno()
+                                )
                                 IconButton(onClick = { deleting = brother }) {
-                                    Icon(Icons.Filled.Delete, contentDescription = "Excluir", modifier = Modifier.size(18.dp))
+                                    Icon(
+                                        Icons.Filled.Delete,
+                                        contentDescription = "Excluir",
+                                        tint = JwTheme.colors.perigo,
+                                        modifier = Modifier.size(22.dp)
+                                    )
                                 }
                             }
                         }
@@ -1885,15 +1903,9 @@ private fun PrivilegesScreen(vm: AppViewModel) {
                     val isBook = privilege.readerGrant == ReaderGrant.BOOK
                     val isSentinel = privilege.readerGrant == ReaderGrant.SENTINEL
 
-                    Card(
-                        Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (privilege.active) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
-                        )
-                    ) {
-                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            // Linha Superior: Nome, Quantidade e Ações
+                    JwCard {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Linha superior: nome, quantidade e ações
                             Row(
                                 Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1903,21 +1915,42 @@ private fun PrivilegesScreen(vm: AppViewModel) {
                                     Text(
                                         text = privilege.name,
                                         style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (privilege.active) MaterialTheme.colorScheme.onSurface
+                                        else MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     Text(
-                                        text = "${privilege.quantity} irmão(s) por reunião • ${if (privilege.active) "Ativo" else "Inativo"}",
-                                        style = MaterialTheme.typography.bodySmall,
+                                        // "1 irmão(s)" era o texto. O número é o
+                                        // que importa e a concordância errava todo
+                                        // singular — "1 irmão(s)" lê como robô.
+                                        text = buildString {
+                                            append(
+                                                if (privilege.quantity == 1) "1 irmão por reunião"
+                                                else "${privilege.quantity} irmãos por reunião"
+                                            )
+                                            append(" • ")
+                                            append(if (privilege.active) "Ativo" else "Inativo")
+                                        },
+                                        style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
 
                                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                                     IconButton(onClick = { editing = privilege }) {
-                                        Icon(Icons.Filled.Edit, contentDescription = "Editar", modifier = Modifier.size(18.dp))
+                                        Icon(
+                                            Icons.Filled.Edit,
+                                            contentDescription = "Editar",
+                                            modifier = Modifier.size(22.dp)
+                                        )
                                     }
                                     IconButton(onClick = { deleting = privilege }) {
-                                        Icon(Icons.Filled.Delete, contentDescription = "Excluir", modifier = Modifier.size(18.dp))
+                                        Icon(
+                                            Icons.Filled.Delete,
+                                            contentDescription = "Excluir",
+                                            tint = JwTheme.colors.perigo,
+                                            modifier = Modifier.size(22.dp)
+                                        )
                                     }
                                 }
                             }
