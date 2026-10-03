@@ -23,17 +23,18 @@ import java.util.Locale
 import kotlin.random.Random
 
 /**
- * Texto gravado em [Meeting.type] na reunião criada pelo import do jw.org.
+ * Grafia gravada em [Meeting.type] pela reunião criada no import do jw.org.
  *
- * DIVERGENTE do gerador (`shared/.../generator/AssignmentGenerator.kt`, que grava
- * "Reunião do meio de semana"). As duas grafias já existem em produção — na nuvem
- * e no cache local — então trocar o valor é mudança de dado, não de código: exige
- * migrar as reuniões antigas. Por isso a comparação é sempre por
- * `type.contains("meio de semana", ignoreCase = true)`, que casa nas duas.
- * Padronizar exige: (1) gravar a nova grafia no import e no gerador,
- * (2) um script que reescreva o campo `type` das reuniões com a grafia antiga.
+ * **Não duplique esta string.** Ela mora em [MeetingType.label] porque foi
+ * duplicá-la — em dois lugares, com capitalização diferente — que nasceram as
+ * duas grafias que conviviam em produção, e o app distinguia os tipos de
+ * reunião por `type.contains(...)` espalhado por quatro arquivos, funcionando
+ * só porque a diferença era a caixa (#48).
+ *
+ * A leitura normaliza: `MeetingType.parse` devolve sempre [MeetingType.label],
+ * então registro antigo e novo não se misturam mais.
  */
-private const val TIPO_REUNIAO_MWB = "Reunião de Meio de Semana"
+private val TIPO_REUNIAO_MWB = MeetingType.MIDWEEK.label
 
 private const val TAG = "AppViewModel"
 
@@ -456,7 +457,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val current = meetings.value
         val dateText = date.format(AssignmentGenerator.DATE_FORMATTER)
         val targetId = meetingId ?: current.firstOrNull {
-            it.date == dateText && it.type.contains("meio de semana", ignoreCase = true)
+            it.date == dateText && it.isMidweek
         }?.id
         val updated = if (targetId != null) {
             current.map { if (it.id == targetId) it.copy(theme = theme, program = items) else it }

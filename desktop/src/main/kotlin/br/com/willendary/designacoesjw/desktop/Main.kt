@@ -3460,7 +3460,7 @@ private fun History(c: StoreController) {
                                 }
                             )
 
-                            if (m.type.contains("meio de semana", ignoreCase = true)) {
+                            if (m.isMidweek) {
                                 TextButton(
                                     onClick = {
                                         importingId = m.id

@@ -114,6 +114,19 @@ data class ProgramAssignment(
 data class Meeting(
     val id: Long,
     val date: String,
+    /**
+     * Tipo do encontro, em texto.
+     *
+     * Segue `String` por compatibilidade com os dados já gravados, mas **não se
+     * compara por igualdade**: use [isMidweek] ou [tipoReuniao]. Havia duas
+     * grafias em produção ("Reunião de Meio de Semana" do import do jw.org e
+     * "Reunião do meio de semana" do gerador), e o app distinguia os dois tipos
+     * por `contains("meio de semana", ignoreCase = true)` espalhado por quatro
+     * arquivos — funcionando por acaso, porque só a capitalização diferia.
+     *
+     * A leitura normaliza para a grafia de [MeetingType.label], então as duas
+     * nunca mais voltam a nascer.
+     */
     val type: String,
     /** Só para privilégio **mecânico**. */
     val assignments: List<Assignment> = emptyList(),
@@ -125,7 +138,43 @@ data class Meeting(
     /** Quem faz cada parte do programa. Lado a lado de [assignments], e
      *  deliberadamente separado: um é a parte que muda, o outro é o cargo. */
     val programAssignments: List<ProgramAssignment> = emptyList()
-)
+) {
+    /** O tipo do encontro, já normalizado. */
+    val tipoReuniao: MeetingType get() = MeetingType.parse(type)
+
+    /** Meeting de meio de semana. Use isto, não `type.contains(...)`. */
+    val isMidweek: Boolean get() = tipoReuniao == MeetingType.MIDWEEK
+
+    /** A grafia canônica — é o que deve ser gravado e exibido. */
+    val typeCanonical: String get() = tipoReuniao.label
+}
+
+/**
+ * Os dois tipos de reunião.
+ *
+ * Só existem dois, e o app trava a diferença em vários lugares — por isso
+ * virar enum foi tentado e é o caminho certo no modelo **novo**. Aqui o
+ * propósito é outro: dar **um** lugar onde a string vira tipo, para que
+ * ninguém mais espalhe `contains("meio de semana")` e dependa da
+ * capitalização (#48).
+ */
+enum class MeetingType(val label: String) {
+    MIDWEEK("Reunião de Meio de Semana"),
+    WEEKEND("Reunião de Fim de Semana");
+
+    companion object {
+        /**
+         * Reconhece as grafias antigas.
+         *
+         * Qualquer texto que **não** diga "fim de semana" é reunião de meio de
+         * semana. É o mesmo critério que o `contains` espalhado fazia, e é
+         * deliberado: um tipo desconhecido não pode virar "fim de semana" e
+         * sumir da geração.
+         */
+        fun parse(raw: String): MeetingType =
+            if (raw.contains("fim de semana", ignoreCase = true)) WEEKEND else MIDWEEK
+    }
+}
 
 @Serializable
 data class ProgramItem(

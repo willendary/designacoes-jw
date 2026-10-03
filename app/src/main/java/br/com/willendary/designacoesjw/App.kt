@@ -916,7 +916,7 @@ private fun MeetingCardView(
                 // Importar o programa oficial. Acao de manutencao: fica como
                 // icone ao lado das outras acoes, nao como botao de largura
                 // natural no meio do conteudo do card.
-                if (meeting.type.contains("meio de semana", ignoreCase = true)) {
+                if (meeting.isMidweek) {
                     IconButton(
                         onClick = {
                             importing = true
@@ -958,7 +958,7 @@ private fun MeetingCardView(
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
-            if (meeting.type.contains("meio de semana", ignoreCase = true) && importError != null) {
+            if (meeting.isMidweek && importError != null) {
                 // Erro em linha, sem AlertDialog: na maioria das vezes o bimestre
                 // ainda nao foi publicado no jw.org, o que e condicao normal e
                 // nao justifica interromper a tela.

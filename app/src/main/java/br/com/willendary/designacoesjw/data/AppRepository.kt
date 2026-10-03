@@ -503,7 +503,7 @@ class AppRepository(context: Context) {
                 )
             }
             Meeting(
-                o.getLong("id"), o.getString("date"), o.getString("type"), assignments, blocked,
+                o.getLong("id"), o.getString("date"), MeetingType.parse(o.getString("type")).label, assignments, blocked,
                 o.optString("theme"), program, programAssignments
             )
         }
@@ -681,7 +681,7 @@ class AppRepository(context: Context) {
             a.put(org.json.JSONObject().apply {
                 put("id", m.id)
                 put("date", m.date)
-                put("type", m.type)
+                put("type", m.typeCanonical)
                 put("assignments", aa)
                 put("blockedBrotherIds", org.json.JSONArray(m.blockedBrotherIds.toList()))
                 put("theme", m.theme)
@@ -988,7 +988,9 @@ class AppRepository(context: Context) {
         return Meeting(
             id = id,
             date = d["date"]?.toString() ?: return null,
-            type = d["type"]?.toString() ?: "Reunião",
+            // Normaliza na leitura: as duas grafias antigas viram uma só daqui
+            // para frente, e a próxima gravação já grava a certa (#48).
+            type = MeetingType.parse(d["type"]?.toString() ?: "").label,
             assignments = assignments,
             blockedBrotherIds = blocked,
             theme = theme,

@@ -137,7 +137,7 @@ object DesktopFirestoreClient {
             val fields = buildJsonObject {
                 put("id", buildJsonObject { put("integerValue", m.id.toString()) })
                 put("date", buildJsonObject { put("stringValue", m.date) })
-                put("type", buildJsonObject { put("stringValue", m.type) })
+                put("type", buildJsonObject { put("stringValue", m.typeCanonical) })
                 put("assignments", buildJsonObject {
                     put("arrayValue", buildJsonObject {
                         put("values", buildJsonArray {
