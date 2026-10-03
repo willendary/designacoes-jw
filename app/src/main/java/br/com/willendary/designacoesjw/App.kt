@@ -44,6 +44,7 @@ import br.com.willendary.designacoesjw.stats.EquityStatisticsHelper
 import br.com.willendary.designacoesjw.ui.MeetingProgramList
 import br.com.willendary.designacoesjw.export.MonthBoardPrint
 import br.com.willendary.designacoesjw.ui.JwCard
+import br.com.willendary.designacoesjw.ui.JwCardTitle
 import br.com.willendary.designacoesjw.ui.JwSectionLabel
 import br.com.willendary.designacoesjw.ui.JwTheme
 import br.com.willendary.designacoesjw.ui.corDeContorno
@@ -981,7 +982,7 @@ private fun MeetingCardView(
                         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text("Atenção: faltaram candidatos para:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onErrorContainer)
                             missing.forEach {
-                                Text("• ${it.name} (${it.quantity} necessário(s))", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
+                                Text("• ${it.name} — ${it.quantity} necessário${if (it.quantity == 1) "" else "s"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
                             }
                         }
                     }
@@ -2318,21 +2319,28 @@ private fun HistoryScreen(vm: AppViewModel) {
                 Icon(Icons.Filled.History, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Text("Histórico", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             }
-            Text("${vm.meetings.value.size} reunião(ões) registrada(s)", style = MaterialTheme.typography.bodySmall)
+            Text(
+                    buildString {
+                        val n = vm.meetings.value.size
+                        append(if (n == 1) "1 reunião registrada" else "$n reuniões registradas")
+                    },
+                    style = MaterialTheme.typography.bodySmall
+                )
         }
         items(vm.meetings.value.sortedByDescending { parseDateForSort(it.date) }, key = { it.id }) { meeting ->
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            JwCard {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(meeting.date, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(meeting.type, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                    Text("${meeting.assignments.size} designação(ões)")
+                    val quantas = meeting.assignments.size
+                    Text(if (quantas == 1) "1 designação" else "$quantas designações")
                     meeting.assignments.forEach { a ->
                         val brother = vm.brothers.value.find { it.id == a.brotherId }
                         val privilege = vm.privileges.value.find { it.id == a.privilegeId }
                         Text("• ${privilege?.name}: ${brother?.name ?: "Irmão removido"}", style = MaterialTheme.typography.bodyMedium)
                     }
                     TextButton(onClick = { confirmDelete = meeting }, modifier = Modifier.align(Alignment.End)) {
-                        Text("Excluir registro", color = MaterialTheme.colorScheme.error)
+                        Text("Excluir registro", color = JwTheme.colors.perigo, fontWeight = FontWeight.Medium)
                     }
                 }
             }
@@ -2381,11 +2389,11 @@ private fun SettingsScreen(
 
         // Backup e Exportação
         item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            JwCard {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Icon(Icons.Filled.Backup, null, tint = MaterialTheme.colorScheme.primary)
-                        Text("Backup e Exportação (CSV)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        JwCardTitle("Backup e Exportação (CSV)")
                     }
                     Text("Guarde cópias de segurança ou compartilhe cadastros.", style = MaterialTheme.typography.bodySmall)
 
@@ -2649,7 +2657,10 @@ private fun MeetingResult(vm: AppViewModel, meeting: Meeting, context: android.c
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp)) {
                     Text("Atenção: faltaram candidatos para:")
-                    missing.forEach { Text("• " + it.name + " (" + it.quantity + " necessário(s))") }
+                    missing.forEach {
+                        val n = it.quantity
+                        Text("• " + it.name + " — " + n + " necessário" + if (n == 1) "" else "s")
+                    }
                 }
             }
         }

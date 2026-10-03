@@ -10,11 +10,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import br.com.willendary.designacoesjw.AppViewModel
 import br.com.willendary.designacoesjw.stats.EquityStatisticsHelper
+import br.com.willendary.designacoesjw.ui.JwCard
+import br.com.willendary.designacoesjw.ui.JwCardRail
+import br.com.willendary.designacoesjw.ui.JwSectionLabel
+import br.com.willendary.designacoesjw.ui.JwTheme
 import java.time.YearMonth
 import java.time.format.TextStyle
 import java.util.Locale
@@ -42,9 +45,9 @@ fun EquityStatisticsScreen(vm: AppViewModel) {
     ) {
         // Seletor de Mês
         item {
-            Card(Modifier.fillMaxWidth()) {
+            JwCard {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -65,23 +68,23 @@ fun EquityStatisticsScreen(vm: AppViewModel) {
 
         // Cards de Indicadores
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                Card(modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                    Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            // Destaque: os três números são a resposta que a tela promete.
+            JwCard(destaque = true) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)
+                ) {
+                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("${report.totalMeetings}", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                        Text("Reuniões", style = MaterialTheme.typography.labelSmall)
+                        JwSectionLabel("Reuniões")
                     }
-                }
-                Card(modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-                    Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("${report.totalAssignments}", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                        Text("Designações", style = MaterialTheme.typography.labelSmall)
+                        JwSectionLabel("Designações")
                     }
-                }
-                Card(modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
-                    Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("${report.unassignedActiveBrothers.size}", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                        Text("Sem partes", style = MaterialTheme.typography.labelSmall)
+                        JwSectionLabel("Sem partes")
                     }
                 }
             }
@@ -90,83 +93,83 @@ fun EquityStatisticsScreen(vm: AppViewModel) {
         // Alerta de Irmãos Sem Partes
         if (report.unassignedActiveBrothers.isNotEmpty()) {
             item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f))
-                ) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
-                            Text("Irmãos ativos sem designação neste mês:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                        }
-                        Text(
-                            report.unassignedActiveBrothers.joinToString(" • ") { it.name },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onErrorContainer
-                        )
+                JwCard {
+                    // Trilho em vez de fundo em alpha: alpha não sobrevive à
+                    // impressão a laser e no modo escuro vira lama.
+                    JwCardRail(JwTheme.colors.perigo)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)
+                    ) {
+                        Icon(Icons.Default.Info, null, tint = JwTheme.colors.perigo, modifier = Modifier.size(18.dp))
+                        Text("Irmãos ativos sem designação neste mês:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
                     }
+                    Text(
+                        report.unassignedActiveBrothers.joinToString(" • ") { it.name },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }
 
         // Título do Ranking
         item {
-            Text("Distribuição de Designações por Irmão", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            JwSectionLabel("Distribuição de Designações por Irmão")
         }
 
         if (report.ranking.isEmpty()) {
             item {
-                Card(Modifier.fillMaxWidth()) {
-                    Text("Nenhum irmão cadastrado.", modifier = Modifier.padding(16.dp))
+                JwCard {
+                    Icon(Icons.Default.Person, null, modifier = Modifier.size(40.dp), tint = MaterialTheme.colorScheme.outline)
+                    Text("Nenhum irmão cadastrado.", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Cadastre os irmãos em 'Irmãos & Irmãs' para a distribuição do mês aparecer aqui.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
                 }
             }
         }
 
         items(report.ranking, key = { it.brother.id }) { item ->
             val fraction = item.count.toFloat() / maxCount.toFloat()
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (item.count == 0) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surface
-                )
-            ) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+            JwCard {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(item.brother.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (item.count > 0) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
                     ) {
-                        Text(item.brother.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (item.count > 0) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
-                        ) {
-                            Text(
-                                "${item.count} parte(s)",
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-
-                    LinearProgressIndicator(
-                        progress = { fraction },
-                        modifier = Modifier.fillMaxWidth().height(6.dp),
-                        color = when {
-                            item.count == 0 -> Color.Gray
-                            fraction > 0.8f -> MaterialTheme.colorScheme.tertiary
-                            else -> MaterialTheme.colorScheme.primary
-                        }
-                    )
-
-                    if (item.privilegesCount.isNotEmpty()) {
                         Text(
-                            item.privilegesCount.entries.joinToString(" • ") { "${it.key}: ${it.value}" },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            if (item.count == 1) "1 parte" else "${item.count} partes",
+                            modifier = Modifier.padding(horizontal = JwTheme.spacing.sm, vertical = 2.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold
                         )
                     }
+                }
+
+                LinearProgressIndicator(
+                    progress = { fraction },
+                    modifier = Modifier.fillMaxWidth().height(6.dp),
+                    color = when {
+                        item.count == 0 -> JwTheme.colors.grade
+                        fraction > 0.8f -> MaterialTheme.colorScheme.tertiary
+                        else -> MaterialTheme.colorScheme.primary
+                    }
+                )
+
+                if (item.privilegesCount.isNotEmpty()) {
+                    Text(
+                        item.privilegesCount.entries.joinToString(" • ") { "${it.key}: ${it.value}" },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }

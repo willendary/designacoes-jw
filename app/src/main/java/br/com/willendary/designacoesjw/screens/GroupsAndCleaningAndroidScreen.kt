@@ -12,7 +12,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -21,9 +20,16 @@ import br.com.willendary.designacoesjw.AppViewModel
 import br.com.willendary.designacoesjw.data.CleaningSchedule
 import br.com.willendary.designacoesjw.data.FieldServiceGroup
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
+import br.com.willendary.designacoesjw.ui.JwCard
+import br.com.willendary.designacoesjw.ui.JwCardRail
+import br.com.willendary.designacoesjw.ui.JwCardTitle
+import br.com.willendary.designacoesjw.ui.JwTheme
+import br.com.willendary.designacoesjw.ui.corDeContorno
 import br.com.willendary.designacoesjw.util.WhatsAppHelper
 import java.time.LocalDate
 import java.time.YearMonth
+import java.time.format.TextStyle
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -84,43 +90,30 @@ fun GroupsAndCleaningAndroidScreen(vm: AppViewModel) {
                     modifier = Modifier.fillMaxSize()
                 ) {
                     item {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("Rodízio Automático do Salão", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                                Text(
-                                    "Gera as semanas para os sábados do mês atual, alternando os grupos de serviço de campo de forma sequencial.",
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                                Button(
-                                    onClick = { vm.generateMonthCleaning(currentMonth) },
-                                    enabled = groups.isNotEmpty()
-                                ) {
-                                    Icon(Icons.Default.AutoMode, null, modifier = Modifier.size(18.dp))
-                                    Spacer(Modifier.width(6.dp))
-                                    Text("Gerar Escala de ${currentMonth.month.name.lowercase().replaceFirstChar { it.uppercase() }}")
-                                }
+                        // Destaque: é o atalho que gera o mês inteiro, não só uma semana.
+                        JwCard(destaque = true) {
+                            JwCardTitle("Rodízio Automático do Salão")
+                            Text(
+                                "Gera as semanas para os sábados do mês atual, alternando os grupos de serviço de campo de forma sequencial.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Button(
+                                onClick = { vm.generateMonthCleaning(currentMonth) },
+                                enabled = groups.isNotEmpty()
+                            ) {
+                                Icon(Icons.Default.AutoMode, null, modifier = Modifier.size(22.dp))
+                                Spacer(Modifier.width(JwTheme.spacing.sm))
+                                Text("Gerar Escala de ${currentMonth.month.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))}")
                             }
                         }
                     }
 
                     if (schedules.isEmpty()) {
                         item {
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                            ) {
-                                Column(
-                                    Modifier.padding(24.dp).fillMaxWidth(),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Icon(Icons.Default.CleaningServices, null, modifier = Modifier.size(40.dp), tint = MaterialTheme.colorScheme.outline)
-                                    Text("Nenhuma escala de limpeza cadastrada", fontWeight = FontWeight.SemiBold)
-                                    Text("Use o botão acima para gerar o rodízio do mês.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-                                }
+                            JwCard {
+                                Icon(Icons.Default.CleaningServices, null, modifier = Modifier.size(40.dp), tint = MaterialTheme.colorScheme.outline)
+                                Text("Nenhuma escala de limpeza cadastrada", fontWeight = FontWeight.SemiBold)
+                                Text("Use o botão acima para gerar o rodízio do mês.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
                             }
                         }
                     }
@@ -129,55 +122,8 @@ fun GroupsAndCleaningAndroidScreen(vm: AppViewModel) {
                         val group = groups.firstOrNull { it.id == item.groupId }
                         val overseer = vm.brothers.value.firstOrNull { it.id == group?.overseerBrotherId }
 
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (item.completed) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surface
-                            ),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                        ) {
-                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Row(
-                                    Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        "Semana de ${item.weekDate}",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                    IconButton(onClick = {
-                                        vm.addOrUpdateCleaningSchedule(item.copy(completed = !item.completed))
-                                    }) {
-                                        Icon(
-                                            if (item.completed) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
-                                            contentDescription = "Concluído",
-                                            tint = if (item.completed) Color(0xFF2E7D32) else MaterialTheme.colorScheme.outline
-                                        )
-                                    }
-                                }
-
-                                Text(
-                                    text = if (group != null) "Grupo ${group.number} — ${group.name}" else "Nenhum grupo atribuído",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-
-                                if (overseer != null) {
-                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        Icon(Icons.Default.Person, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.outline)
-                                        Text("Superintendente: ${overseer.name}", style = MaterialTheme.typography.bodySmall)
-                                    }
-                                }
-
-                                if (item.details.isNotBlank()) {
-                                    Text(item.details, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-
-                                Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
+                        JwCard(
+                            actions = {
                                 Row(
                                     Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -189,23 +135,70 @@ fun GroupsAndCleaningAndroidScreen(vm: AppViewModel) {
                                             val url = WhatsAppHelper.buildUniversalLink(overseer.phone, msg)
                                             runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
                                         }) {
-                                            Icon(Icons.Default.Share, null, modifier = Modifier.size(16.dp), tint = Color(0xFF25D366))
-                                            Spacer(Modifier.width(6.dp))
-                                            Text("Avisar Dirigente", color = Color(0xFF25D366), fontWeight = FontWeight.SemiBold)
+                                            Icon(Icons.Default.Share, null, modifier = Modifier.size(22.dp), tint = JwTheme.colors.whatsapp)
+                                            Spacer(Modifier.width(JwTheme.spacing.sm))
+                                            Text("Avisar Dirigente", color = JwTheme.colors.whatsapp, fontWeight = FontWeight.SemiBold)
                                         }
                                     } else {
                                         Spacer(Modifier.width(1.dp))
                                     }
 
-                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
                                         IconButton(onClick = { editingCleaning = item; showCleaningDialog = true }) {
-                                            Icon(Icons.Default.Edit, "Editar", tint = MaterialTheme.colorScheme.primary)
+                                            Icon(Icons.Default.Edit, "Editar", modifier = Modifier.size(22.dp), tint = MaterialTheme.colorScheme.primary)
                                         }
+                                        // Separar o destrutivo do editar: a 48dp
+                                        // de distância um toque errado apaga a semana.
+                                        VerticalDivider(Modifier.height(28.dp), thickness = 1.dp, color = corDeContorno())
                                         IconButton(onClick = { deletingCleaning = item }) {
-                                            Icon(Icons.Default.Delete, "Excluir", tint = MaterialTheme.colorScheme.error)
+                                            Icon(Icons.Default.Delete, "Excluir", modifier = Modifier.size(22.dp), tint = JwTheme.colors.perigo)
                                         }
                                     }
                                 }
+                            }
+                        ) {
+                            // Semana concluída: trilho verde. Antes era fundo em
+                            // alpha, que some na impressão.
+                            if (item.completed) JwCardRail(JwTheme.colors.sucesso)
+
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "Semana de ${item.weekDate}",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                IconButton(onClick = {
+                                    vm.addOrUpdateCleaningSchedule(item.copy(completed = !item.completed))
+                                }) {
+                                    Icon(
+                                        if (item.completed) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                        contentDescription = "Concluído",
+                                        modifier = Modifier.size(22.dp),
+                                        tint = if (item.completed) JwTheme.colors.sucesso else MaterialTheme.colorScheme.outline
+                                    )
+                                }
+                            }
+
+                            Text(
+                                text = if (group != null) "Grupo ${group.number} — ${group.name}" else "Nenhum grupo atribuído",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.SemiBold
+                            )
+
+                            if (overseer != null) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)) {
+                                    Icon(Icons.Default.Person, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.outline)
+                                    Text("Superintendente: ${overseer.name}", style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+
+                            if (item.details.isNotBlank()) {
+                                Text(item.details, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
@@ -219,19 +212,10 @@ fun GroupsAndCleaningAndroidScreen(vm: AppViewModel) {
                 ) {
                     if (groups.isEmpty()) {
                         item {
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                            ) {
-                                Column(
-                                    Modifier.padding(24.dp).fillMaxWidth(),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Icon(Icons.Default.Groups, null, modifier = Modifier.size(40.dp), tint = MaterialTheme.colorScheme.outline)
-                                    Text("Nenhum grupo de campo cadastrado", fontWeight = FontWeight.SemiBold)
-                                    Text("Toque em 'Novo Grupo' para cadastrar os grupos da congregação.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-                                }
+                            JwCard {
+                                Icon(Icons.Default.Groups, null, modifier = Modifier.size(40.dp), tint = MaterialTheme.colorScheme.outline)
+                                Text("Nenhum grupo de campo cadastrado", fontWeight = FontWeight.SemiBold)
+                                Text("Toque em 'Novo Grupo' para cadastrar os grupos da congregação.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
                             }
                         }
                     }
@@ -241,44 +225,45 @@ fun GroupsAndCleaningAndroidScreen(vm: AppViewModel) {
                         val assistant = vm.brothers.value.firstOrNull { it.id == group.assistantBrotherId }
                         val membersCount = vm.brothers.value.count { it.groupId == group.id }
 
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                        ) {
-                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Row(
-                                    Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("Grupo ${group.number}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                                    Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primaryContainer) {
-                                        Text("$membersCount membros", modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall)
-                                    }
-                                }
-                                Text(group.name.ifBlank { "Sem nome específico" }, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-
-                                overseer?.let {
-                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        Icon(Icons.Default.Person, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.outline)
-                                        Text("Superintendente: ${it.name}", style = MaterialTheme.typography.bodySmall)
-                                    }
-                                }
-                                assistant?.let {
-                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        Icon(Icons.Default.PersonOutline, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.outline)
-                                        Text("Ajudante: ${it.name}", style = MaterialTheme.typography.bodySmall)
-                                    }
-                                }
-
-                                Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        JwCard(
+                            actions = {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                                     IconButton(onClick = { editingGroup = group; showGroupDialog = true }) {
-                                        Icon(Icons.Default.Edit, "Editar", tint = MaterialTheme.colorScheme.primary)
+                                        Icon(Icons.Default.Edit, "Editar", modifier = Modifier.size(22.dp), tint = MaterialTheme.colorScheme.primary)
                                     }
+                                    VerticalDivider(Modifier.height(28.dp), thickness = 1.dp, color = corDeContorno())
                                     IconButton(onClick = { deletingGroup = group }) {
-                                        Icon(Icons.Default.Delete, "Excluir", tint = MaterialTheme.colorScheme.error)
+                                        Icon(Icons.Default.Delete, "Excluir", modifier = Modifier.size(22.dp), tint = JwTheme.colors.perigo)
                                     }
+                                }
+                            }
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Grupo ${group.number}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                                    Text(
+                                        if (membersCount == 1) "1 membro" else "$membersCount membros",
+                                        modifier = Modifier.padding(horizontal = JwTheme.spacing.sm, vertical = 4.dp),
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                }
+                            }
+                            Text(group.name.ifBlank { "Sem nome específico" }, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+
+                            overseer?.let {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)) {
+                                    Icon(Icons.Default.Person, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.outline)
+                                    Text("Superintendente: ${it.name}", style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                            assistant?.let {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)) {
+                                    Icon(Icons.Default.PersonOutline, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.outline)
+                                    Text("Ajudante: ${it.name}", style = MaterialTheme.typography.bodySmall)
                                 }
                             }
                         }
@@ -311,7 +296,7 @@ fun GroupsAndCleaningAndroidScreen(vm: AppViewModel) {
                 TextButton(onClick = {
                     vm.deleteCleaningSchedule(item.id)
                     deletingCleaning = null
-                }) { Text("Excluir", color = MaterialTheme.colorScheme.error) }
+                }) { Text("Excluir", color = JwTheme.colors.perigo) }
             },
             dismissButton = {
                 TextButton(onClick = { deletingCleaning = null }) { Text("Cancelar") }
@@ -342,7 +327,7 @@ fun GroupsAndCleaningAndroidScreen(vm: AppViewModel) {
                 TextButton(onClick = {
                     vm.deleteGroup(grp.id)
                     deletingGroup = null
-                }) { Text("Excluir", color = MaterialTheme.colorScheme.error) }
+                }) { Text("Excluir", color = JwTheme.colors.perigo) }
             },
             dismissButton = {
                 TextButton(onClick = { deletingGroup = null }) { Text("Cancelar") }

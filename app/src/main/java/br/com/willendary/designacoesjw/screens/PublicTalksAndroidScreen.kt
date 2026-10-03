@@ -13,7 +13,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -21,6 +20,10 @@ import androidx.compose.ui.unit.sp
 import br.com.willendary.designacoesjw.AppViewModel
 import br.com.willendary.designacoesjw.data.PublicTalk
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
+import br.com.willendary.designacoesjw.ui.JwCard
+import br.com.willendary.designacoesjw.ui.JwCardRail
+import br.com.willendary.designacoesjw.ui.JwTheme
+import br.com.willendary.designacoesjw.ui.corDeContorno
 import br.com.willendary.designacoesjw.util.WhatsAppHelper
 import java.time.LocalDate
 
@@ -78,7 +81,7 @@ fun PublicTalksAndroidScreen(vm: AppViewModel) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        "${talks.size} discurso(s) agendado(s)",
+                        "${talks.size} ${if (talks.size == 1) "discurso agendado" else "discursos agendados"}",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -95,99 +98,18 @@ fun PublicTalksAndroidScreen(vm: AppViewModel) {
 
             if (talks.isEmpty()) {
                 item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                    ) {
-                        Column(
-                            Modifier.padding(24.dp).fillMaxWidth(),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(Icons.Default.RecordVoiceOver, null, modifier = Modifier.size(40.dp), tint = MaterialTheme.colorScheme.outline)
-                            Text("Nenhum discurso público encontrado", fontWeight = FontWeight.SemiBold)
-                            Text("Toque no botão '+' abaixo para agendar um orador visitante.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-                        }
+                    JwCard {
+                        Icon(Icons.Default.RecordVoiceOver, null, modifier = Modifier.size(40.dp), tint = MaterialTheme.colorScheme.outline)
+                        Text("Nenhum discurso público encontrado", fontWeight = FontWeight.SemiBold)
+                        Text("Toque no botão '+' abaixo para agendar um orador visitante.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
                     }
                 }
             }
 
             items(talks, key = { it.id }) { talk ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (talk.confirmed) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-                    ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                ) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                talk.date.ifBlank { "Data a definir" },
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = if (talk.confirmed) Color(0xFFE8F5E9) else Color(0xFFFFF3E0)
-                            ) {
-                                Text(
-                                    text = if (talk.confirmed) "Confirmado" else "Pendente",
-                                    color = if (talk.confirmed) Color(0xFF2E7D32) else Color(0xFFE65100),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-
-                        // Tema
-                        Column {
-                            val themeNumber = talk.themeNumber
-                            val themeTitle = if (themeNumber != null && themeNumber > 0) {
-                                "Nº $themeNumber — ${talk.themeTitle.ifBlank { "Sem tema informado" }}"
-                            } else {
-                                talk.themeTitle.ifBlank { "Tema não cadastrado" }
-                            }
-                            Text(
-                                themeTitle,
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-
-                        // Orador e Congregação
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Icon(Icons.Default.Person, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.outline)
-                            Text(
-                                talk.speakerName.ifBlank { "Orador não informado" },
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium
-                            )
-                            if (talk.speakerCongregation.isNotBlank()) {
-                                Text("•", color = MaterialTheme.colorScheme.outline)
-                                Text(talk.speakerCongregation, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-                            }
-                        }
-
-                        // Hospitalidade
-                        if (talk.hospitalityBrotherId != null) {
-                            val host = vm.brothers.value.firstOrNull { it.id == talk.hospitalityBrotherId }
-                            if (host != null) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Icon(Icons.Default.Restaurant, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
-                                    Text("Hospitalidade / Almoço: ${host.name}", style = MaterialTheme.typography.bodySmall)
-                                }
-                            }
-                        }
-
+                JwCard(
+                    actions = {
                         // Botões de Ação
-                        Divider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                         Row(
                             Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -204,21 +126,93 @@ fun PublicTalksAndroidScreen(vm: AppViewModel) {
                                         }
                                     }
                                 ) {
-                                    Icon(Icons.Default.Share, null, modifier = Modifier.size(16.dp), tint = Color(0xFF25D366))
-                                    Spacer(Modifier.width(6.dp))
-                                    Text("Avisar WhatsApp", color = Color(0xFF25D366), fontWeight = FontWeight.SemiBold)
+                                    Icon(Icons.Default.Share, null, modifier = Modifier.size(22.dp), tint = JwTheme.colors.whatsapp)
+                                    Spacer(Modifier.width(JwTheme.spacing.sm))
+                                    Text("Avisar WhatsApp", color = JwTheme.colors.whatsapp, fontWeight = FontWeight.SemiBold)
                                 }
                             } else {
                                 Spacer(Modifier.width(1.dp))
                             }
 
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(onClick = { editingTalk = talk; showDialog = true }) {
-                                    Icon(Icons.Default.Edit, "Editar", tint = MaterialTheme.colorScheme.primary)
+                                    Icon(Icons.Default.Edit, "Editar", modifier = Modifier.size(22.dp), tint = MaterialTheme.colorScheme.primary)
                                 }
+                                // Separar o destrutivo do editar: um toque errado
+                                // apaga o discurso de uma pessoa.
+                                VerticalDivider(Modifier.height(28.dp), thickness = 1.dp, color = corDeContorno())
                                 IconButton(onClick = { deletingTalk = talk }) {
-                                    Icon(Icons.Default.Delete, "Excluir", tint = MaterialTheme.colorScheme.error)
+                                    Icon(Icons.Default.Delete, "Excluir", modifier = Modifier.size(22.dp), tint = JwTheme.colors.perigo)
                                 }
+                            }
+                        }
+                    }
+                ) {
+                    // Confirmado ou pendente: trilho no topo. Antes era a cor do
+                    // cartão inteiro, que não sobrevive à impressão.
+                    JwCardRail(if (talk.confirmed) JwTheme.colors.sucesso else JwTheme.colors.alerta)
+
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            talk.date.ifBlank { "Data a definir" },
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (talk.confirmed) JwTheme.colors.sucessoContainer else MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Text(
+                                text = if (talk.confirmed) "Confirmado" else "Pendente",
+                                color = if (talk.confirmed) JwTheme.colors.sucesso else MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = JwTheme.spacing.sm, vertical = 4.dp)
+                            )
+                        }
+                    }
+
+                    // Tema
+                    Column {
+                        val themeNumber = talk.themeNumber
+                        val themeTitle = if (themeNumber != null && themeNumber > 0) {
+                            "Nº $themeNumber — ${talk.themeTitle.ifBlank { "Sem tema informado" }}"
+                        } else {
+                            talk.themeTitle.ifBlank { "Tema não cadastrado" }
+                        }
+                        Text(
+                            themeTitle,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    // Orador e Congregação
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)) {
+                        Icon(Icons.Default.Person, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.outline)
+                        Text(
+                            talk.speakerName.ifBlank { "Orador não informado" },
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                        if (talk.speakerCongregation.isNotBlank()) {
+                            Text("•", color = MaterialTheme.colorScheme.outline)
+                            Text(talk.speakerCongregation, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                        }
+                    }
+
+                    // Hospitalidade
+                    if (talk.hospitalityBrotherId != null) {
+                        val host = vm.brothers.value.firstOrNull { it.id == talk.hospitalityBrotherId }
+                        if (host != null) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)) {
+                                Icon(Icons.Default.Restaurant, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                                Text("Hospitalidade / Almoço: ${host.name}", style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     }
@@ -249,7 +243,7 @@ fun PublicTalksAndroidScreen(vm: AppViewModel) {
                 TextButton(onClick = {
                     vm.deletePublicTalk(talk.id)
                     deletingTalk = null
-                }) { Text("Excluir", color = MaterialTheme.colorScheme.error) }
+                }) { Text("Excluir", color = JwTheme.colors.perigo) }
             },
             dismissButton = {
                 TextButton(onClick = { deletingTalk = null }) { Text("Cancelar") }

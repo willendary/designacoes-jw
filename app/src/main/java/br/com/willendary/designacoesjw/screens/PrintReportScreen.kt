@@ -23,6 +23,9 @@ import androidx.compose.ui.unit.sp
 import br.com.willendary.designacoesjw.AppViewModel
 import br.com.willendary.designacoesjw.export.HtmlReportGenerator
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
+import br.com.willendary.designacoesjw.ui.JwCard
+import br.com.willendary.designacoesjw.ui.JwTheme
+import br.com.willendary.designacoesjw.ui.corDeContorno
 import java.time.YearMonth
 import java.time.format.TextStyle
 import java.util.Locale
@@ -43,6 +46,9 @@ fun PrintReportScreen(
     val monthPrefix = remember(selectedMonth) {
         selectedMonth.format(java.time.format.DateTimeFormatter.ofPattern("MM/yyyy"))
     }
+    val rotuloMes = remember(selectedMonth) {
+        "${selectedMonth.month.getDisplayName(TextStyle.FULL, Locale("pt", "BR")).replaceFirstChar { it.uppercase() }} de ${selectedMonth.year}"
+    }
     val monthMeetings = vm.meetings.value.filter { it.date.endsWith("/$monthPrefix") }
         .sortedBy { AssignmentGenerator.parseDate(it.date) }
 
@@ -57,9 +63,9 @@ fun PrintReportScreen(
     ) {
         // Seletor de Mês e Ações
         item {
-            Card(Modifier.fillMaxWidth()) {
+            JwCard {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -67,7 +73,7 @@ fun PrintReportScreen(
                         Icon(Icons.Default.ChevronLeft, "Mês anterior")
                     }
                     Text(
-                        "${selectedMonth.month.getDisplayName(TextStyle.FULL, Locale("pt", "BR")).replaceFirstChar { it.uppercase() }} de ${selectedMonth.year}",
+                        rotuloMes,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -86,7 +92,7 @@ fun PrintReportScreen(
                 Button(
                     onClick = {
                         val textReport = buildString {
-                            appendLine("📋 PROGRAMA DE DESIGNAÇÕES — ${selectedMonth.month.name} ${selectedMonth.year}")
+                            appendLine("📋 PROGRAMA DE DESIGNAÇÕES — ${selectedMonth.month.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))} ${selectedMonth.year}")
                             appendLine("==========================================")
                             monthMeetings.forEach { m ->
                                 appendLine("\n📅 ${m.date} (${m.type})")
@@ -106,8 +112,8 @@ fun PrintReportScreen(
                     },
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.Share, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
+                    Icon(Icons.Default.Share, null, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(JwTheme.spacing.sm))
                     Text("Compartilhar Texto")
                 }
             }
@@ -115,85 +121,86 @@ fun PrintReportScreen(
 
         // Simulação da Folha A4
         item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    // Cabeçalho da Folha
-                    Column(
-                        Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            "PROGRAMA DE DESIGNAÇÕES DA CONGREGAÇÃO",
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            textAlign = TextAlign.Center
-                        )
-                        Text(
-                            "${selectedMonth.month.getDisplayName(TextStyle.FULL, Locale("pt", "BR")).replaceFirstChar { it.uppercase() }} de ${selectedMonth.year}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
+            // Destaque: a folha é o que vai sair na impressora.
+            JwCard(destaque = true) {
+                // Cabeçalho da Folha
+                Column(
+                    Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        "PROGRAMA DE DESIGNAÇÕES DA CONGREGAÇÃO",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        textAlign = TextAlign.Center
+                    )
+                    Text(
+                        rotuloMes,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
 
-                    if (monthMeetings.isEmpty()) {
-                        Text(
-                            "Nenhuma reunião gerada para este mês.",
-                            modifier = Modifier.fillMaxWidth().padding(24.dp),
-                            textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                    } else {
-                        // Tabela rolável horizontalmente
-                        val scrollState = rememberScrollState()
-                        Column(Modifier.horizontalScroll(scrollState)) {
-                            // Cabeçalho da Tabela
+                if (monthMeetings.isEmpty()) {
+                    Text(
+                        "Nenhuma reunião gerada para este mês.",
+                        modifier = Modifier.fillMaxWidth().padding(vertical = JwTheme.spacing.xl),
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                    Text(
+                        "Gere o quadro do mês em 'Quadro do Mês' e volte aqui para imprimir ou compartilhar.",
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                } else {
+                    // Tabela rolável horizontalmente
+                    val scrollState = rememberScrollState()
+                    Column(Modifier.horizontalScroll(scrollState)) {
+                        // Cabeçalho da Tabela
+                        Row(
+                            modifier = Modifier
+                                .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(4.dp))
+                                .padding(vertical = JwTheme.spacing.sm, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Data", fontWeight = FontWeight.Bold, modifier = Modifier.width(90.dp), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelMedium)
+                            Text("Reunião", fontWeight = FontWeight.Bold, modifier = Modifier.width(130.dp), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelMedium)
+                            activePrivileges.forEach { priv ->
+                                Text(priv.name, fontWeight = FontWeight.Bold, modifier = Modifier.width(120.dp), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+
+                        HorizontalDivider(color = corDeContorno())
+
+                        // Linhas das Reuniões
+                        monthMeetings.forEachIndexed { idx, meeting ->
+                            val rowBg = if (idx % 2 == 0) Color.Transparent else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
                             Row(
                                 modifier = Modifier
-                                    .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(4.dp))
-                                    .padding(vertical = 8.dp, horizontal = 4.dp),
+                                    .background(rowBg)
+                                    .padding(vertical = JwTheme.spacing.sm, horizontal = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Data", fontWeight = FontWeight.Bold, modifier = Modifier.width(90.dp), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelMedium)
-                                Text("Reunião", fontWeight = FontWeight.Bold, modifier = Modifier.width(130.dp), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelMedium)
+                                Text(meeting.date, modifier = Modifier.width(90.dp), textAlign = TextAlign.Center, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
+                                Text(meeting.type, modifier = Modifier.width(130.dp), textAlign = TextAlign.Center, style = MaterialTheme.typography.bodySmall)
                                 activePrivileges.forEach { priv ->
-                                    Text(priv.name, fontWeight = FontWeight.Bold, modifier = Modifier.width(120.dp), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelMedium)
+                                    val assigned = meeting.assignments
+                                        .filter { it.privilegeId == priv.id }
+                                        .mapNotNull { brothersMap[it.brotherId]?.name }
+                                    Text(
+                                        assigned.joinToString("\n").ifBlank { "—" },
+                                        modifier = Modifier.width(120.dp),
+                                        textAlign = TextAlign.Center,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = if (assigned.isNotEmpty()) FontWeight.Medium else FontWeight.Normal
+                                    )
                                 }
                             }
-
-                            Divider(color = MaterialTheme.colorScheme.outlineVariant)
-
-                            // Linhas das Reuniões
-                            monthMeetings.forEachIndexed { idx, meeting ->
-                                val rowBg = if (idx % 2 == 0) Color.Transparent else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-                                Row(
-                                    modifier = Modifier
-                                        .background(rowBg)
-                                        .padding(vertical = 8.dp, horizontal = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(meeting.date, modifier = Modifier.width(90.dp), textAlign = TextAlign.Center, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
-                                    Text(meeting.type, modifier = Modifier.width(130.dp), textAlign = TextAlign.Center, style = MaterialTheme.typography.bodySmall)
-                                    activePrivileges.forEach { priv ->
-                                        val assigned = meeting.assignments
-                                            .filter { it.privilegeId == priv.id }
-                                            .mapNotNull { brothersMap[it.brotherId]?.name }
-                                        Text(
-                                            assigned.joinToString("\n").ifBlank { "—" },
-                                            modifier = Modifier.width(120.dp),
-                                            textAlign = TextAlign.Center,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            fontWeight = if (assigned.isNotEmpty()) FontWeight.Medium else FontWeight.Normal
-                                        )
-                                    }
-                                }
-                                Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-                            }
+                            HorizontalDivider(color = corDeContorno())
                         }
                     }
                 }
