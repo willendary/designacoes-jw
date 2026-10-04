@@ -47,6 +47,10 @@ import br.com.willendary.designacoesjw.ui.MeetingProgramList
 import br.com.willendary.designacoesjw.export.MonthBoardPrint
 import br.com.willendary.designacoesjw.sync.Changelog
 import br.com.willendary.designacoesjw.ui.JwCard
+import br.com.willendary.designacoesjw.screens.ReplaceDialog
+import br.com.willendary.designacoesjw.screens.SeletorMes
+import br.com.willendary.designacoesjw.screens.rotuloMes
+import br.com.willendary.designacoesjw.screens.reunioesDoMes
 import br.com.willendary.designacoesjw.sync.EstadoSincronizacao
 import br.com.willendary.designacoesjw.ui.mostrarDesfazivel
 import br.com.willendary.designacoesjw.ui.JwCardTitle
@@ -3057,25 +3061,6 @@ private fun EquityStatisticsDialog(
 }
 
 @Composable
-private fun ReplaceDialog(candidates: List<Brother>, onSelect: (Long) -> Unit, onDismiss: () -> Unit) {
-    var search by remember { mutableStateOf("") }
-    val filtered = candidates.filter { it.name.contains(search.trim(), ignoreCase = true) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("stringResource(R.string.trocar_designacao)") },
-        text = {
-            Column {
-                OutlinedTextField(search, { search = it }, label = { Text("stringResource(R.string.buscar_irmao)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Spacer(Modifier.height(8.dp))
-                if (filtered.isEmpty()) Text("stringResource(R.string.nao_ha_outro_irmao_autorizado_e_disponiv)")
-                filtered.forEach { brother -> TextButton({ onSelect(brother.id) }, Modifier.fillMaxWidth()) { Text(brother.name) } }
-            }
-        },
-        confirmButton = { TextButton(onDismiss) { Text("stringResource(R.string.cancelar)") } }
-    )
-}
-
-@Composable
 private fun BrotherUnavailabilityDialog(
     brother: Brother,
     onAdd: (String, String, String) -> String?,
@@ -3346,47 +3331,6 @@ private fun ImagensDoMesDialog(vm: AppViewModel, mes: YearMonth, onDismiss: () -
     )
 }
 
-/** Mesma conta de mês do `PrintReportScreen`: a data é `dd/MM/yyyy`. */
-private fun reunioesDoMes(meetings: List<Meeting>, mes: YearMonth): List<Meeting> {
-    val prefixo = mes.format(DateTimeFormatter.ofPattern("MM/yyyy"))
-    return meetings.filter { it.date.endsWith("/$prefixo") }
-        .sortedBy { AssignmentGenerator.parseDate(it.date) }
-}
-
-/** Um seletor só, para os dois diálogos: os dois precisam do mesmo mês. */
-@Composable
-private fun SeletorMes(mes: YearMonth, onChange: (YearMonth) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = { onChange(mes.minusMonths(1)) }) {
-            Icon(Icons.Filled.ChevronLeft, "Mês anterior")
-        }
-        Text(rotuloMes(mes), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-        IconButton(onClick = { onChange(mes.plusMonths(1)) }) {
-            Icon(Icons.Filled.ChevronRight, "Próximo mês")
-        }
-    }
-}
-
-private fun rotuloMes(mes: YearMonth): String = Datas.mesEAno(mes)
-
-/**
- * Indicador de sincronizacao (#61).
- *
- * O que ele responde: **o que estou vendo esta na nuvem, ou e cache velho?**
- *
- * ## Por que um texto e nao um icone
- *
- * Um icone de "nuvem com bolinha" exige que a pessoa decodifique o simbolo.
- * "1 alteracao nao enviada" nao exige. E o item que mais importa — a alteracao
- * que **nao subiu** — e justamente o que o icone esconde, porque ele parece
- * igual ao de "tudo certo" enquanto a fila nao esvazia.
- *
- * ## Por que some quando esta tudo bem
- *
- * A issue e explicita: "Sincronizado - nada, ou um check so na tela de
- * configuracoes". Indicador que fica sempre aceso deixa de ser informacao e vira
- * trilha, e a pessoa aprende a nao olhar.
- */
 @Composable
 private fun IndicadorSincronizacao(
     estado: EstadoSincronizacao,

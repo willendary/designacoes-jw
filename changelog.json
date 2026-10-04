@@ -1,4 +1,9 @@
 {
+  "0.10.1": {
+    "android": [
+      "Interno: as telas foram reorganizadas em arquivos separados, sem mudar nada do que o app faz. Nenhuma mudança visível nesta versão"
+    ]
+  },
   "0.10.0": {
     "android": [
       "Primeiro uso: uma tela mostra o caminho em três passos — Privilégios, Irmãos e Reuniões — e cada um tem um botão que leva direto para a tela certa. O número da etapa vira um check quando ela já tem o mínimo",
