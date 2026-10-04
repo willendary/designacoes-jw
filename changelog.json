@@ -1,4 +1,14 @@
 {
+  "0.10.0": {
+    "android": [
+      "Primeiro uso: uma tela mostra o caminho em três passos — Privilégios, Irmãos e Reuniões — e cada um tem um botão que leva direto para a tela certa. O número da etapa vira um check quando ela já tem o mínimo",
+      "A tela de primeiro uso só aparece para quem nunca entrou e ainda não tem irmão cadastrado. Quem já tem a lista não vê, porque não está começando",
+      "Corrigido: sem a tela de primeiro uso, quem nunca usou o app cadastrava um irmão, via as reuniões vazias e concluía que o app estava quebrado",
+      "As telas passaram a ter nome em vez de número. Antes eram 0 a 16 e trocar um dígito trocava a tela sem dar erro nenhum",
+      "Corrigido: adicionar uma tela nova sem ligar no lugar certo agora quebra o build, em vez de simplesmente sumir com o conteúdo",
+      "97 textos de interface foram para strings.xml — o primeiro recurso de string do projeto. Ganho agora não é tradução: é o build falhar quando o nome do recurso some"
+    ]
+  },
   "0.9.0": {
     "android": [
       "Estatísticas ganhou Tempo sem fazer parte: a lista põe em cima quem está há mais tempo sem fazer parte do programa, com a data da última vez",

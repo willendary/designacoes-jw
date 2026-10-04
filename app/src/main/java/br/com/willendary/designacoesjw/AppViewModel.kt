@@ -134,7 +134,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun clearActionError() { lastActionError.value = null }
 
     /**
-     * Estado da sincronizacao, exposto para a tela (#61).
+     * Se a tela de primeiro uso deve aparecer (#62).
+     *
+     * `null` enquanto nao decidiu, para o `App` nao piscar a tela de boas-vindas
+     * antes de os irmãos chegarem. Comeca em `false` e so vira `true` quando o
+     * repositorio confirma que nunca foi vista e a lista esta vazia.
+     */
+    var mostrarPrimeiroUso by mutableStateOf<Boolean?>(null)
+        private set
+
+    /** Fecha a tela de primeiro uso. */
+    fun dispensarPrimeiroUso() {
+        mostrarPrimeiroUso = false
+        repo.marcarPrimeiroUsoVisto()
+    }
+
+    /** Aplica a regra do gatilho assim que a lista de irmãos chega. */
+    private fun avaliaPrimeiroUso() {
+        if (mostrarPrimeiroUso != null) return
+        mostrarPrimeiroUso = repo.precisaPrimeiroUso(brothers.value.isEmpty())
+    }
+
+    /** Estado da sincronizacao, exposto para a tela (#61).
      *
      * Espelho do repositorio: [repo] nao e estado observavel, e a tela so
      * precisa recompor quando o valor muda.
@@ -209,7 +230,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         repo.aoMudarEstado = { estadoSincronizacao = it }
         estadoSincronizacao = repo.estadoSincronizacao
         repo.startCloudSync(
-            onBrothers = { brothers.value = it },
+            // A decisão do primeiro uso mora aqui, e não no `init`: é aqui que a
+            // lista chega de verdade. Chamar no `init` mostraria a tela de
+            // boas-vindas para quem já tem 40 irmãos, só porque eles ainda não
+            // tinham carregado.
+            onBrothers = { brothers.value = it; avaliaPrimeiroUso() },
             onPrivileges = { privileges.value = it },
             onMeetings = { meetings.value = it },
             onSchedule = { schedule.value = it },

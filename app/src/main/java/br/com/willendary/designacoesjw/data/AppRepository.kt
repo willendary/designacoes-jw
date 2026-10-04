@@ -73,6 +73,21 @@ class AppRepository(context: Context) {
         aoMudarEstado?.invoke(estadoSincronizacao)
     }
 
+    /**
+     * Se a tela de primeiro uso ainda precisa aparecer (#62).
+     *
+     * E `nunca viu **e** nao ha irmao`. Quem ja tem 40 irmao vindo do desktop
+     * nao esta comecando, e mostrar a tela para essa pessoa e ruido que faz o
+     * app parecer perdido.
+     */
+    fun precisaPrimeiroUso(temIrmao: Boolean): Boolean =
+        !prefs.getBoolean("primeiro_uso_visto", false) && !temIrmao
+
+    /** Marca como vista. Grava de verdade, nao `apply`: e uma vez na vida. */
+    fun marcarPrimeiroUsoVisto() {
+        prefs.edit().putBoolean("primeiro_uso_visto", true).commit()
+    }
+
     private fun reportError(message: String) {
         Log.w(TAG, message)
         onSyncError?.invoke(message)

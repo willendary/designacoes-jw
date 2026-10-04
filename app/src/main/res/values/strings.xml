@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Textos de interface (#28).
+
+        Só `values/`, sem `values-pt/`: o app tem um idioma só, e um
+        idioma só não precisa de pasta de variante — é a mesma string
+        duplicada. `values-pt/` só ganha sentido quando existir outro
+        idioma de verdade.
+
+        O ganho agora não é tradução: é o build falhar quando o nome do
+        recurso some. Com texto solto no Kotlin, renomear um rótulo era
+        caça ao texto em três mil linhas.
+    -->
+    <string name="abrir_conversa_no_whatsapp">Abrir conversa no WhatsApp</string>
+    <string name="abrir_no_navegador">Abrir no navegador</string>
+    <string name="adicionar_ausencia">Adicionar ausência</string>
+    <string name="adicionar_irmao">Adicionar irmão</string>
+    <string name="adicionar_privilegio">Adicionar privilégio</string>
+    <string name="agora_nao">Agora não</string>
+    <string name="alternar_modo_de_exibicao">Alternar modo de exibição</string>
+    <string name="aprendiz">Aprendiz</string>
+    <string name="atencao_faltaram_candidatos_para">Atenção: faltaram candidatos para:</string>
+    <string name="ativo">Ativo</string>
+    <string name="atualizacao_disponivel">Atualização disponível</string>
+    <string name="ausencias">Ausências</string>
+    <string name="avisar_via_whatsapp">Avisar via WhatsApp</string>
+    <string name="aviso">Aviso</string>
+    <string name="buscar_irmao">Buscar irmão</string>
+    <string name="buscar_por_irmao_privilegio_tema_ou_data">Buscar por irmão, privilégio, tema ou data</string>
+    <string name="buscar_por_nome_ou_telefone">Buscar por nome ou telefone</string>
+    <string name="buscar_privilegio">Buscar privilégio</string>
+    <string name="cancelar">Cancelar</string>
+    <string name="compartilhar_no_whatsapp">Compartilhar no WhatsApp</string>
+    <string name="compartilhar_pdf">Compartilhar PDF</string>
+    <string name="compartilhar_word_docx">Compartilhar Word (.docx)</string>
+    <string name="concluir">Concluir</string>
+    <string name="editar">Editar</string>
+    <string name="excluir">Excluir</string>
+    <string name="expandir_detalhes">Expandir detalhes</string>
+    <string name="exportar_escala">Exportar Escala</string>
+    <string name="exportar_ical_ics">Exportar iCal (.ics)</string>
+    <string name="exportar_imagem_da_reuniao">Exportar imagem da reunião</string>
+    <string name="exportar_irmaos">Exportar Irmãos</string>
+    <string name="fechar">Fechar</string>
+    <string name="fim_dd_mm_yyyy">Fim (dd/MM/yyyy)</string>
+    <string name="imagens_de_todas_as_reunioes">Imagens de todas as reuniões</string>
+    <string name="importar">Importar</string>
+    <string name="importar_irmaos">Importar irmãos</string>
+    <string name="inativo">Inativo</string>
+    <string name="inicio_dd_mm_yyyy">Início (dd/MM/yyyy)</string>
+    <string name="ja_ausente">Já ausente</string>
+    <string name="leitor">Leitor</string>
+    <string name="leitor_da_sentinela_atua_nas_reunioes_de">• Leitor da Sentinela: Atua nas reuniões de fim de semana (sábado/domingo). Irmãos que apenas leem o livro nunca leem a Sentinela.</string>
+    <string name="leitor_de_a_sentinela">Leitor de A Sentinela</string>
+    <string name="leitor_do_livro_ebc_atua_nas_reunioes_de">• Leitor do Livro (EBC): Atua nas reuniões de meio de semana (quarta-feira). Irmãos qualificados como Leitor da Sentinela são elegíveis automaticamente.</string>
+    <string name="lembrete_na_barra_de_notificacoes">Lembrete na barra de notificações</string>
+    <string name="limpar">Limpar</string>
+    <string name="limpar_busca">Limpar busca</string>
+    <string name="log_de_erros">Log de erros</string>
+    <string name="logo">Logo</string>
+    <string name="menu_lateral">Menu lateral</string>
+    <string name="mes_anterior">Mês anterior</string>
+    <string name="modo_telao">Modo Telão</string>
+    <string name="motivo_ex_viagem_ferias">Motivo (ex: Viagem, Férias)</string>
+    <string name="nao_batizado">Não batizado</string>
+    <string name="nao_foi_possivel_importar_o_programa">Não foi possível importar o programa</string>
+    <string name="nao_ha_outro_irmao_autorizado_e_disponiv">Não há outro irmão autorizado e disponível.</string>
+    <string name="nenhuma_ausencia_registrada_para_este_ir">Nenhuma ausência registrada para este irmão.</string>
+    <string name="nome_completo">Nome completo</string>
+    <string name="nome_ex_leitor_do_livro_indicador">Nome (ex: Leitor do Livro, Indicador)</string>
+    <string name="nomes">Nomes</string>
+    <string name="ok">OK</string>
+    <string name="proximo_mes">Próximo mês</string>
+    <string name="qualquer_dia">Qualquer dia</string>
+    <string name="quantidade_necessaria_por_reuniao">Quantidade necessária por reunião</string>
+    <string name="regenerar">Regenerar</string>
+    <string name="regenerar_escala_do_mes">Regenerar escala do mês?</string>
+    <string name="remover">Remover</string>
+    <string name="sair_da_conta">Sair da conta</string>
+    <string name="salvar">Salvar</string>
+    <string name="trocar">Trocar</string>
+    <string name="trocar_designacao">Trocar designação</string>
+    <string name="ver_log_de_erros">Ver log de erros</string>
+    <string name="whatsapp">WhatsApp</string>
+    <string name="whatsapp_com_ddd">WhatsApp (com DDD)</string>
+</resources>
