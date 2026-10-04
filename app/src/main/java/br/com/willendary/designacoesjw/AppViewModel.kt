@@ -9,6 +9,7 @@ import androidx.lifecycle.AndroidViewModel
 import br.com.willendary.designacoesjw.data.*
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
 import br.com.willendary.designacoesjw.export.CsvDataHandler
+import br.com.willendary.designacoesjw.export.ListaDeNomes
 import br.com.willendary.designacoesjw.export.MwbProgramImporter
 import br.com.willendary.designacoesjw.util.WhatsAppHelper
 import com.google.firebase.auth.FirebaseAuth
@@ -717,6 +718,77 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         return count
     }
+
+    /**
+     * Cadastra irmãos a partir de texto colado (#64).
+     *
+     * Aceita lista de nomes (`Carlos, Daniel` ou um por linha) e CSV — o
+     * `ListaDeNomes` decide qual é pelos dígitos, e **diz qual entendeu**.
+     *
+     * ## Por que não `importBrothersCsv`
+     *
+     * O CSV trata `,` como separador de coluna, então `Carlos, Daniel, Marcos`
+     * cadastrava **só Carlos** e perdia os outros dois em silêncio. Quem cola
+     * uma lista de 40 nomes e importa 15 não descobre — e o pior de um
+     * importador é a falha silenciosa.
+     *
+     * ## O relatório é o produto
+     *
+     * Três números, sempre: quantos entraram, quantos **já existiam** e quantos
+     * vieram repetidos da própria lista. Uma importação que não pode ser
+     * conferida não é importação, é palpite.
+     */
+    fun importarListaDeNomes(texto: String): Importacao {
+        if (!can(AppPermissions.MANAGE_BROTHERS)) {
+            lastActionError.value = denied(AppPermissions.MANAGE_BROTHERS, "importar irmãos")
+            return Importacao(0, 0, 0, emptyList())
+        }
+
+        val lido = ListaDeNomes.ler(texto, AssignmentGenerator::normalizeName)
+        if (lido.novos.isEmpty()) {
+            return Importacao(0, 0, lido.repetidosNaMesmaLista.size, emptyList())
+        }
+
+        val existentes = brothers.value
+            .map { AssignmentGenerator.normalizeName(it.name) }
+            .toMutableSet()
+
+        var novos = 0
+        var jaExistiam = 0
+        val adicionados = mutableListOf<Brother>()
+
+        // Constrói tudo **antes** de tocar em `brothers.value`: se algo lançar no
+        // meio, a lista fica inteira em vez de pela metade.
+        lido.novos.forEach { nome ->
+            val chave = AssignmentGenerator.normalizeName(nome)
+            when {
+                // Acento não cria irmão: `José` e `Jose` são a mesma pessoa.
+                chave.isBlank() -> Unit
+                chave in existentes -> jaExistiam++
+                else -> {
+                    existentes += chave
+                    adicionados += Brother(id = AssignmentGenerator.nextId(), name = nome)
+                    novos++
+                }
+            }
+        }
+
+        if (novos > 0) {
+            brothers.value = (brothers.value + adicionados)
+                .sortedBy { AssignmentGenerator.normalizeName(it.name) }
+            repo.saveBrothers(brothers.value)
+        }
+
+        return Importacao(novos, jaExistiam, lido.repetidosNaMesmaLista.size, adicionados)
+    }
+
+    /** O que uma importação de nomes deu. Os três números são o produto. */
+    data class Importacao(
+        val novos: Int,
+        val jaExistiam: Int,
+        val repetidos: Int,
+        val cadastrados: List<Brother>
+    )
 
     fun setBrotherGender(id: Long, gender: Gender) {
         if (!can(AppPermissions.MANAGE_BROTHERS)) { lastActionError.value = denied(AppPermissions.MANAGE_BROTHERS, "alterar um irmão"); return }

@@ -2434,7 +2434,7 @@ private fun SettingsScreen(
                     ) {
                         Icon(Icons.Filled.FileDownload, null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Importar Irmãos via CSV")
+                        Text("Importar irmãos")
                     }
                 }
             }
@@ -2546,16 +2546,27 @@ private fun SettingsScreen(
     if (showImportDialog) {
         AlertDialog(
             onDismissRequest = { showImportDialog = false },
-            title = { Text("Importar Irmãos (CSV)") },
+            title = { Text("Importar irmãos") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Cole o conteúdo do arquivo CSV abaixo:", style = MaterialTheme.typography.bodySmall)
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "Cole os nomes. Pode ser um por linha ou separados por " +
+                            "vírgula ou ponto e vírgula. Se algum campo parecer " +
+                            "telefone, o app entende como CSV.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
                     OutlinedTextField(
                         value = importCsvText,
                         onValueChange = { importCsvText = it },
-                        label = { Text("Conteúdo CSV") },
+                        label = { Text("Nomes") },
+                        placeholder = { Text("Carlos, Daniel\nMarcos") },
                         modifier = Modifier.fillMaxWidth().height(160.dp),
                         maxLines = 8
+                    )
+                    Text(
+                        "Quem já existir não entra de novo.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             },
@@ -2563,12 +2574,27 @@ private fun SettingsScreen(
                 Button(
                     enabled = importCsvText.isNotBlank(),
                     onClick = {
-                        val count = vm.importBrothersCsv(importCsvText)
+                        // Os três números **são** o produto: quem cola 40 nomes
+                        // não abre o app 40 vezes para conferir. Antes, o
+                        // relatório era só "quantos entraram" — e a falha do
+                        // parser (lista virada em uma linha só) era invisível.
+                        val r = vm.importarListaDeNomes(importCsvText)
                         showImportDialog = false
                         importCsvText = ""
-                        message = if (count > 0) {
-                            "${contar(count, "irmão importado", "irmãos importados")} com sucesso!"
-                        } else "Nenhum irmão novo encontrado no CSV."
+                        message = buildString {
+                            append(contar(r.novos, "irmão cadastrado", "irmãos cadastrados"))
+                            if (r.jaExistiam > 0) {
+                                append(" • ")
+                                append(contar(r.jaExistiam, "já existia", "já existiam"))
+                            }
+                            if (r.repetidos > 0) {
+                                append(" • ")
+                                append(contar(r.repetidos, "repetido", "repetidos"))
+                            }
+                            if (r.novos == 0 && r.jaExistiam == 0) {
+                                append(" — nada reconhecido")
+                            }
+                        }
                     }
                 ) { Text("Importar") }
             },

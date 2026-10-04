@@ -132,5 +132,14 @@
       "Corrigido: excluir um privilégio tirava a habilitação de todo mundo, e desfazer devolvia o privilégio sem as habilitações — o irmão voltava sem nada que pudesse fazer"
     ],
     "desktop": []
+  },
+  "0.8.1": {
+    "android": [
+      "Importar irmãos agora aceita lista de nomes colada: um por linha, ou separados por vírgula ou ponto e vírgula",
+      "Corrigido: colar \"Carlos, Daniel, Marcos\" cadastrava só Carlos — a vírgula era lida como separador de coluna, e Daniel e Marcos eram perdidos sem aviso nenhum",
+      "Depois de importar o app diz quantos entraram, quantos já existiam e quantos vieram repetidos",
+      "Aspas protegem nome com vírgula: \"Silva, João\" entra como uma pessoa, não duas"
+    ],
+    "desktop": []
   }
 }
