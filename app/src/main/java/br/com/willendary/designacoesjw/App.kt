@@ -45,6 +45,7 @@ import br.com.willendary.designacoesjw.ui.MeetingProgramList
 import br.com.willendary.designacoesjw.export.MonthBoardPrint
 import br.com.willendary.designacoesjw.sync.Changelog
 import br.com.willendary.designacoesjw.ui.JwCard
+import br.com.willendary.designacoesjw.ui.mostrarDesfazivel
 import br.com.willendary.designacoesjw.ui.JwCardTitle
 import br.com.willendary.designacoesjw.ui.JwSectionLabel
 import br.com.willendary.designacoesjw.ui.JwTheme
@@ -298,6 +299,22 @@ fun App(
                 snackbarHostState.showSnackbar(it, withDismissAction = true, duration = SnackbarDuration.Long)
                 vm.clearActionError()
             }
+        }
+
+        // Desfazer. O diálogo de confirmação saiu de propósito: para ação
+        // reversível, confirmar **e** oferecer desfazer é pedir a mesma coisa
+        // duas vezes. Quem apaga por engano toca em "Desfazer"; quem apaga de
+        // propósito não precisou confirmar.
+        LaunchedEffect(vm.undoPendente.value) {
+            val undo = vm.undoPendente.value ?: return@LaunchedEffect
+            val rotulo = when (undo) {
+                is AppViewModel.Undo.Irmao -> "Irmão excluído"
+                is AppViewModel.Undo.Privilegio -> "Privilégio excluído"
+                is AppViewModel.Undo.Reuniao -> "Reunião excluída"
+            }
+            val desfez = snackbarHostState.mostrarDesfazivel(rotulo) { vm.desfazer() }
+            // O snackbar fechou sozinho: passou a janela, é definitiva.
+            if (!desfez) vm.descartarUndo()
         }
         Scaffold(
             snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -1302,7 +1319,6 @@ private fun BrothersScreen(vm: AppViewModel) {
     var selectedBrotherForProfile by remember { mutableStateOf<Brother?>(null) }
     var editing by remember { mutableStateOf<Brother?>(null) }
     var unavailBrother by remember { mutableStateOf<Brother?>(null) }
-    var deleting by remember { mutableStateOf<Brother?>(null) }
     var showAddDialog by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
@@ -1503,7 +1519,7 @@ private fun BrothersScreen(vm: AppViewModel) {
                                     modifier = Modifier.height(28.dp),
                                     color = corDeContorno()
                                 )
-                                IconButton(onClick = { deleting = brother }) {
+                                IconButton(onClick = { vm.deleteBrother(brother.id) }) {
                                     Icon(
                                         Icons.Filled.Delete,
                                         contentDescription = "Excluir",
@@ -1586,15 +1602,6 @@ private fun BrothersScreen(vm: AppViewModel) {
         )
     }
 
-    deleting?.let { brother ->
-        AlertDialog(
-            onDismissRequest = { deleting = null },
-            title = { Text("Excluir irmão?") },
-            text = { Text("O irmão ${brother.name} será removido do cadastro. As designações já registradas no histórico serão mantidas.") },
-            confirmButton = { TextButton({ vm.deleteBrother(brother.id); deleting = null }) { Text("Excluir") } },
-            dismissButton = { TextButton({ deleting = null }) { Text("Cancelar") } }
-        )
-    }
 }
 
 @Composable
@@ -1848,7 +1855,6 @@ private fun AddBrotherDialog(
 private fun PrivilegesScreen(vm: AppViewModel) {
     var searchPrivilege by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<Privilege?>(null) }
-    var deleting by remember { mutableStateOf<Privilege?>(null) }
     var manageBrothersPrivilege by remember { mutableStateOf<Privilege?>(null) }
     var showAddDialog by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -1966,7 +1972,7 @@ private fun PrivilegesScreen(vm: AppViewModel) {
                                             modifier = Modifier.size(22.dp)
                                         )
                                     }
-                                    IconButton(onClick = { deleting = privilege }) {
+                                    IconButton(onClick = { vm.deletePrivilege(privilege.id) }) {
                                         Icon(
                                             Icons.Filled.Delete,
                                             contentDescription = "Excluir",
@@ -2173,15 +2179,6 @@ private fun PrivilegesScreen(vm: AppViewModel) {
         )
     }
 
-    deleting?.let { privilege ->
-        AlertDialog(
-            onDismissRequest = { deleting = null },
-            title = { Text("Excluir privilégio?") },
-            text = { Text("O privilégio ${privilege.name} será removido do cadastro e deixará de estar autorizado para os irmãos.") },
-            confirmButton = { TextButton({ vm.deletePrivilege(privilege.id); deleting = null }) { Text("Excluir") } },
-            dismissButton = { TextButton({ deleting = null }) { Text("Cancelar") } }
-        )
-    }
 }
 
 @Composable
@@ -2333,7 +2330,6 @@ private fun ManagePrivilegeBrothersDialog(
 
 @Composable
 private fun HistoryScreen(vm: AppViewModel) {
-    var confirmDelete by remember { mutableStateOf<Meeting?>(null) }
     LazyColumn(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2360,21 +2356,12 @@ private fun HistoryScreen(vm: AppViewModel) {
                         val privilege = vm.privileges.value.find { it.id == a.privilegeId }
                         Text("• ${privilege?.name}: ${brother?.name ?: "Irmão removido"}", style = MaterialTheme.typography.bodyMedium)
                     }
-                    TextButton(onClick = { confirmDelete = meeting }, modifier = Modifier.align(Alignment.End)) {
+                    TextButton(onClick = { vm.deleteMeeting(meeting.id) }, modifier = Modifier.align(Alignment.End)) {
                         Text("Excluir registro", color = JwTheme.colors.perigo, fontWeight = FontWeight.Medium)
                     }
                 }
             }
         }
-    }
-    confirmDelete?.let { meeting ->
-        AlertDialog(
-            onDismissRequest = { confirmDelete = null },
-            title = { Text("Excluir histórico?") },
-            text = { Text("A reunião ${meeting.type} de ${meeting.date} será removida do histórico.") },
-            confirmButton = { TextButton({ vm.deleteMeeting(meeting.id); confirmDelete = null }) { Text("Excluir") } },
-            dismissButton = { TextButton({ confirmDelete = null }) { Text("Cancelar") } }
-        )
     }
 }
 

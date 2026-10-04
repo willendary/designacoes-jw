@@ -124,5 +124,13 @@
       "O relatório impresso voltou a trazer \"Quarta-feira\" por extenso — é documento, não conversa",
       "O relatório exportado pelo Android e pelo desktop passaram a sair idênticos"
     ]
+  },
+  "0.8.0": {
+    "android": [
+      "Excluir irmão, privilégio ou reunião agora tem Desfazer — o botão some quando o snackbar sai, e antes disso volta tudo, inclusive a nuvem",
+      "O diálogo de confirmação saiu: para ação reversível, confirmar e depois oferecer desfazer é pedir a mesma coisa duas vezes",
+      "Corrigido: excluir um privilégio tirava a habilitação de todo mundo, e desfazer devolvia o privilégio sem as habilitações — o irmão voltava sem nada que pudesse fazer"
+    ],
+    "desktop": []
   }
 }

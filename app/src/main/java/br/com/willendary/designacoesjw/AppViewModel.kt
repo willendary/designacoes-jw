@@ -131,6 +131,42 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Mensagem de validação vinda da UI (regra de negócio no formulário). */
     fun reportError(message: String) { lastActionError.value = message }
 
+    /**
+     * O que a última exclusão deixou para trás, enquanto o snackbar estiver na
+     * tela.
+     *
+     * Vive aqui porque o `Scaffold` que mostra o snackbar está no topo do `App`
+     * e a exclusão acontece na lista, três mil linhas mais abaixo. Guardar na
+     * tela obrigaria a subir o estado por parâmetro ou a descer o snackbar até
+     * ela — e as duas saem caras.
+     *
+     * **Um slot só.** Duas exclusões seguidas não se acumulam: desfazer o
+     * segundo desfarça o último, e o primeiro some. Isso é o que "desfazer"
+     * quer dizer.
+     */
+    var undoPendente = mutableStateOf<Undo?>(null); private set
+
+    /** Registro devolvido por uma exclusão, mais o que é preciso para desfazê-la. */
+    sealed interface Undo {
+        data class Irmao(val dados: Brother) : Undo
+        data class Privilegio(val dados: Privilege, val afetados: List<Brother>) : Undo
+        data class Reuniao(val dados: Meeting) : Undo
+    }
+
+    /** Aplica o desfazer pendente. Sem efeito se não houver nada pendente. */
+    fun desfazer() {
+        when (val u = undoPendente.value) {
+            is Undo.Irmao -> restaurarBrother(u.dados)
+            is Undo.Reuniao -> restaurarMeeting(u.dados)
+            is Undo.Privilegio -> restaurarPrivilegio(u.dados, u.afetados)
+            null -> Unit
+        }
+        undoPendente.value = null
+    }
+
+    /** someone saiu da tela. Usado quando o snackbar fecha sozinho. */
+    fun descartarUndo() { undoPendente.value = null }
+
     init {
         if (falhasDeCarga.isNotEmpty()) {
             lastActionError.value = falhasDeCarga.joinToString(" ")
@@ -237,9 +273,33 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return null
     }
 
-    fun deleteBrother(id: Long) {
-        if (!can(AppPermissions.MANAGE_BROTHERS)) { lastActionError.value = denied(AppPermissions.MANAGE_BROTHERS, "excluir irmãos"); return }
+    /**
+     * Exclui e devolve o que saiu, para o "Desfazer" ter o que devolver.
+     *
+     * `null` = não excluiu (sem permissão). Chamar só para o valor de retorno é
+     * o motivo de existir: devolver o `Brother` inteiro evita que a tela tenha
+     * de guardar uma cópia e as duas Lists divergirem.
+     */
+    fun deleteBrother(id: Long): Brother? {
+        if (!can(AppPermissions.MANAGE_BROTHERS)) { lastActionError.value = denied(AppPermissions.MANAGE_BROTHERS, "excluir irmãos"); return null }
+        val removido = brothers.value.firstOrNull { it.id == id } ?: return null
         brothers.value = brothers.value.filterNot { it.id == id }
+        repo.saveBrothers(brothers.value)
+        undoPendente.value = Undo.Irmao(removido)
+        return removido
+    }
+
+    /**
+     * Devolve o irmão à lista e propaga para a nuvem.
+     *
+     * Usa [saveBrothers] e não um "insere" novo: o `pushAndPrune` já sabe
+     * reenviar para o Firestore, e um caminho de escrita separado seria o
+     * segundo lugar onde a nuvem pode recusar sem ninguém ver.
+     */
+    fun restaurarBrother(irmao: Brother) {
+        if (!can(AppPermissions.MANAGE_BROTHERS)) { lastActionError.value = denied(AppPermissions.MANAGE_BROTHERS, "restaurar irmão"); return }
+        if (brothers.value.any { it.id == irmao.id }) return
+        brothers.value = brothers.value + irmao
         repo.saveBrothers(brothers.value)
     }
 
@@ -269,12 +329,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return null
     }
 
-    fun deletePrivilege(id: Long) {
-        if (!can(AppPermissions.MANAGE_PRIVILEGES)) { lastActionError.value = denied(AppPermissions.MANAGE_PRIVILEGES, "excluir privilégios"); return }
+    /**
+     * Devolve o privilégio **e** quem tinha a habilitação, porque excluir tira
+     * a habilitação de todos. Desfazer que devolvesse só o privilégio deixaria
+     * os irmãos sem nada que pudessem fazer, e a lista de habilitados é a
+     * parte que ninguém reconstitui de memória.
+     */
+    fun deletePrivilege(id: Long): Pair<Privilege, List<Brother>>? {
+        if (!can(AppPermissions.MANAGE_PRIVILEGES)) { lastActionError.value = denied(AppPermissions.MANAGE_PRIVILEGES, "excluir privilégios"); return null }
+        val removido = privileges.value.firstOrNull { it.id == id } ?: return null
+        val afetados = brothers.value.filter { id in it.privileges }
         privileges.value = privileges.value.filterNot { it.id == id }
         repo.savePrivileges(privileges.value)
+        // Quem tinha o privilégio perde a habilitação junto. Desfazer tem de
+        // trazer de volta, senão o irmão volta sem nada que possa fazer.
         brothers.value = brothers.value.map { it.copy(privileges = it.privileges - id) }
         repo.saveBrothers(brothers.value)
+        undoPendente.value = Undo.Privilegio(removido, afetados)
+        return removido to afetados
     }
 
     fun setPrivilegeActive(id: Long, active: Boolean) {
@@ -376,9 +448,38 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return AssignmentGenerator.unqualifiedWarning(item, ids, brothers.value)
     }
 
-    fun deleteMeeting(meetingId: Long) {
-        if (!can(AppPermissions.GENERATE_ASSIGNMENTS)) { lastActionError.value = denied(AppPermissions.GENERATE_ASSIGNMENTS, "excluir reuniões"); return }
+    fun deleteMeeting(meetingId: Long): Meeting? {
+        if (!can(AppPermissions.GENERATE_ASSIGNMENTS)) { lastActionError.value = denied(AppPermissions.GENERATE_ASSIGNMENTS, "excluir reuniões"); return null }
+        val removido = meetings.value.firstOrNull { it.id == meetingId } ?: return null
         meetings.value = meetings.value.filterNot { it.id == meetingId }
+        repo.saveMeetings(meetings.value)
+        undoPendente.value = Undo.Reuniao(removido)
+        return removido
+    }
+
+    /**
+     * Devolve o privilégio **e** as habilitações que a exclusão tirou.
+     *
+     * Sem as habilitações o irmão volta existindo e sem nada que possa fazer,
+     * que é pior que não voltar: parece dado correto e designa errado.
+     */
+    fun restaurarPrivilegio(privilegio: Privilege, afetados: List<Brother>) {
+        if (!can(AppPermissions.MANAGE_PRIVILEGES)) { lastActionError.value = denied(AppPermissions.MANAGE_PRIVILEGES, "restaurar privilégio"); return }
+        if (privileges.value.none { it.id == privilegio.id }) privileges.value = privileges.value + privilegio
+        val ids = afetados.map { it.id }.toSet()
+        if (ids.isNotEmpty()) {
+            brothers.value = brothers.value.map { b ->
+                if (b.id in ids) b.copy(privileges = b.privileges + privilegio.id) else b
+            }
+        }
+        repo.savePrivileges(privileges.value)
+        repo.saveBrothers(brothers.value)
+    }
+
+    fun restaurarMeeting(reuniao: Meeting) {
+        if (!can(AppPermissions.GENERATE_ASSIGNMENTS)) { lastActionError.value = denied(AppPermissions.GENERATE_ASSIGNMENTS, "restaurar reunião"); return }
+        if (meetings.value.any { it.id == reuniao.id }) return
+        meetings.value = meetings.value + reuniao
         repo.saveMeetings(meetings.value)
     }
 
