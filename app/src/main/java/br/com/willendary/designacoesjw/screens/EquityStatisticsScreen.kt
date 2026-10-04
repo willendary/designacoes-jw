@@ -14,8 +14,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import br.com.willendary.designacoesjw.AppViewModel
 import br.com.willendary.designacoesjw.stats.EquityStatisticsHelper
+import br.com.willendary.designacoesjw.stats.TempoSemParte
 import br.com.willendary.designacoesjw.ui.JwCard
 import br.com.willendary.designacoesjw.ui.JwCardRail
+import br.com.willendary.designacoesjw.ui.JwCardTitle
 import br.com.willendary.designacoesjw.ui.JwSectionLabel
 import br.com.willendary.designacoesjw.ui.JwTheme
 import br.com.willendary.designacoesjw.util.Datas
@@ -36,6 +38,19 @@ fun EquityStatisticsScreen(vm: AppViewModel) {
     }
 
     val maxCount = report.ranking.maxOfOrNull { it.count }?.coerceAtLeast(1) ?: 1
+
+    // "Quanto tempo" nao cabe num mes, entao olha **todas** as reunioes. E o
+    // recorte do mes acima e de privilegio mecanico -- este e de parte do
+    // programa, que e outra coisa (ver `TempoSemParte`).
+    val semParte = remember(vm.meetings.value, vm.brothers.value) {
+        val entrouEm = vm.brothers.value
+            .mapNotNull { b -> Datas.dataEstrita(b.entrouEm)?.let { b.id to it } }
+            .toMap()
+        TempoSemParte.ordenarPorTempoSemParte(
+            TempoSemParte.calcular(vm.meetings.value, vm.brothers.value, entrouEm)
+        )
+    }
+    var mostrarSemParte by remember { mutableStateOf(false) }
 
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
@@ -112,6 +127,93 @@ fun EquityStatisticsScreen(vm: AppViewModel) {
             }
         }
 
+        // Tempo sem fazer parte do programa.
+        //
+        // Antes do ranking, e nao junto dele: o de cima conta privilegio
+        // mecanico ("Quantas vezes fez Leitor no mes"), este responde "ha
+        // quanto tempo o Carlos nao faz parte". Sao perguntas diferentes, e
+        // misturar as duas e o que fez o relatorio parecer que acusava.
+        item {
+            JwCard(destaque = mostrarSemParte) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        JwCardTitle("Tempo sem fazer parte")
+                        Text(
+                            "Partes do programa, nao privilegios. Quem mais precisa " +
+                                "de atencao fica no topo.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    TextButton(onClick = { mostrarSemParte = !mostrarSemParte }) {
+                        Text(if (mostrarSemParte) "Esconder" else "Ver")
+                    }
+                }
+
+                if (mostrarSemParte) {
+                    if (semParte.isEmpty()) {
+                        Text(
+                            "Nenhum irmao ativo cadastrado.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        semParte.forEach { sit ->
+                            JwCard(
+                                leading = {
+                                    JwCardRail(
+                                        if (sit.ultimaParte == null) JwTheme.colors.perigo
+                                        else JwTheme.colors.grade
+                                    )
+                                }
+                            ) {
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            sit.irmao.name,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Text(
+                                            detalhe(sit),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (sit.ultimaParte == null) {
+                                            MaterialTheme.colorScheme.errorContainer
+                                        } else {
+                                            MaterialTheme.colorScheme.surfaceVariant
+                                        }
+                                    ) {
+                                        Text(
+                                            sit.rotulo(),
+                                            modifier = Modifier.padding(
+                                                horizontal = JwTheme.spacing.sm,
+                                                vertical = 3.dp
+                                            ),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Título do Ranking
         item {
             JwSectionLabel("Distribuição de Designações por Irmão")
@@ -173,4 +275,18 @@ fun EquityStatisticsScreen(vm: AppViewModel) {
             }
         }
     }
+}
+
+/**
+ * A segunda linha de cada irmao: **onde** ele parou, nao so ha quanto tempo.
+ *
+ * "3 meses" sozinho e um número. "última parte em 21/09/2026" diz se ele foi
+ *esquecido ou se está fora. Já "sem histórico de reunião" é outro problema
+ * — não é ausência, é falta de registro — e dizer "nunca" nele seria
+ * accusation sem causa.
+ */
+private fun detalhe(sit: TempoSemParte.Situacao): String = when {
+    sit.ultimaParte != null -> "última parte em ${Datas.ddMma(sit.ultimaParte!!)}"
+    sit.diasSemParte != null -> "ainda não fez parte desde que entrou"
+    else -> "sem histórico de reunião"
 }

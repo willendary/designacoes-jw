@@ -40,6 +40,7 @@ import br.com.willendary.designacoesjw.data.ReaderGrant
 import br.com.willendary.designacoesjw.dayLabel
 import br.com.willendary.designacoesjw.kindLabel
 import br.com.willendary.designacoesjw.readerGrantLabel
+import br.com.willendary.designacoesjw.util.Datas
 import java.util.Locale
 
 /**
@@ -83,6 +84,7 @@ fun EditBrotherDialog(
     var leitor by remember(brother.id) { mutableStateOf(brother.isReader) }
     var leitorSentinela by remember(brother.id) { mutableStateOf(brother.isSentinelReader) }
     var privilegios by remember(brother.id) { mutableStateOf(brother.privileges) }
+    var entrouEm by remember(brother.id) { mutableStateOf(brother.entrouEm) }
 
     // "Leitor de A Sentinela" é leitor: é o que o ViewModel grava
     // (setBrotherIsSentinelReader liga o isReader junto, setBrotherIsReader
@@ -115,6 +117,25 @@ fun EditBrotherDialog(
                     onValueChange = { telefone = it },
                     label = { Text("WhatsApp (com DDD)") },
                     singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = entrouEm,
+                    onValueChange = { entrouEm = it.take(10) },
+                    label = { Text("Entrada na congregação (dd/mm/aaaa)") },
+                    placeholder = { Text("dd/mm/aaaa") },
+                    singleLine = true,
+                    isError = entrouEm.isNotBlank() && Datas.dataEstrita(entrouEm) == null,
+                    supportingText = {
+                        if (entrouEm.isNotBlank() && Datas.dataEstrita(entrouEm) == null) {
+                            Text("Data inválida")
+                        } else {
+                            // Diz para que serve. Campo opcional que ninguém
+                            // preenche é campo que ninguém preenche.
+                            Text("Opcional. Serve para não contar como ausência quem acabou de entrar.")
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -178,6 +199,7 @@ fun EditBrotherDialog(
                         trainee = aprendiz,
                         isReader = leitor,
                         isSentinelReader = leitorSentinela,
+                        entrouEm = entrouEm,
                         privileges = privilegios
                     ),
                     onErro = onErro,
@@ -208,6 +230,7 @@ private fun salvaIrmao(vm: AppViewModel, antes: Brother, depois: Brother, onErro
     if (antes.trainee != depois.trainee) vm.setBrotherTrainee(antes.id, depois.trainee)
     if (antes.isReader != depois.isReader) vm.setBrotherIsReader(antes.id, depois.isReader)
     if (antes.isSentinelReader != depois.isSentinelReader) vm.setBrotherIsSentinelReader(antes.id, depois.isSentinelReader)
+    if (antes.entrouEm != depois.entrouEm) vm.setBrotherEntrouEm(antes.id, depois.entrouEm)
     alternaPrivilegios(vm, antes.id, antes.privileges, depois.privileges)
     onFechar()
 }

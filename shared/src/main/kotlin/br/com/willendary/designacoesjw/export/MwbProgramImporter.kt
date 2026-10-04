@@ -106,6 +106,17 @@ object MwbProgramImporter {
      * iniciada em dezembro do ano anterior (ex.: 02/01/2027 cai na semana de
      * 28/12/2026 → novembro-dezembro-2026-mwb). O ano do slug é o do período.
      */
+    /**
+     * Endereco publico do programa de [date] no jw.org (#50).
+     *
+     * Publico porque a tela mostra o link **quando a leitura falha**: se o app
+     * nao conseguiu baixar o programa, o caminho que resolve e abrir a pagina
+     * no navegador e copiar na mao. Esconder o endereco que o proprio app usa
+     * seria esconder a saida.
+     */
+    fun urlPublica(date: LocalDate): String =
+        "https://www.jw.org" + BIB + bimestreSlug(date) + "/"
+
     internal fun bimestreSlug(date: LocalDate): String {
         val monday = date.minusDays((date.dayOfWeek.value - DayOfWeek.MONDAY.value).toLong())
         val ym = YearMonth.from(monday)

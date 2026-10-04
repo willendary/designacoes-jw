@@ -5,6 +5,7 @@ import br.com.willendary.designacoesjw.data.Meeting
 import br.com.willendary.designacoesjw.data.Privilege
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
 import br.com.willendary.designacoesjw.util.Datas
+import br.com.willendary.designacoesjw.util.TextoLimpo
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -169,8 +170,22 @@ object HtmlReportGenerator {
         append("</table>\n</div>\n")
     }
 
+    /**
+     * Escapa para HTML **e** limpa antes (#49).
+     *
+     * A limpeza vem primeiro de propósito: caractere de controle não tem glifo,
+     * então escapar não resolve — ele sobrevive escapado e o PDF sai com caixa
+     * vazia no meio do nome. `&amp;` em caractere de controle não quer dizer
+     * nada para quem lê.
+     *
+     * Isto cobre **conteúdo** de elemento. Atributo tem regra própria e não
+     * existe hoje — se um `title="..."` aparecer, tem de passar por
+     * [TextoLimpo.limparAtributo] antes, porque escapar o texto não impede que
+     * aspas quebrem o atributo.
+     */
     private fun xmlEscape(value: String): String =
-        value.replace("&", "&amp;")
+        TextoLimpo.limpar(value)
+            .replace("&", "&amp;")
             .replace("<", "&lt;")
             .replace(">", "&gt;")
             .replace("\"", "&quot;")

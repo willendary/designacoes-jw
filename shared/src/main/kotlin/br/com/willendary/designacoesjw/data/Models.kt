@@ -64,7 +64,19 @@ data class Brother(
     /** Aprendiz: ainda não designado sozinho. */
     val trainee: Boolean = false,
     val isReader: Boolean = false,          // leitor no salão
-    val isSentinelReader: Boolean = false   // leitor de A Sentinela
+    val isSentinelReader: Boolean = false,  // leitor de A Sentinela
+    /**
+     * Entrada na congregação, em `dd/MM/yyyy`. Vazio = desconhecido.
+     *
+     * **Opcional de propósito.** Sem ele, "tempo sem fazer parte" acusa um
+     * irmão que entrou há duas semanas de nunca participar — e o relatório
+     * deixa de ser útil justamente para quem mais precisa dele.
+     *
+     * Continua opcional porque dado já gravado não tem o campo, e exigir
+     * preenchimento seria obrigar a congregation a redigitar a lista inteira
+     * por causa de um relatório.
+     */
+    val entrouEm: String = ""
 )
 
 @Serializable
@@ -189,7 +201,15 @@ data class ProgramItem(
      */
     val kind: PartKind = PartKind.INDIVIDUAL
 ) {
-    val label: String get() = if (minutes > 0) "$title ($minutes min)" else title
+    /**
+     * `Titulo (M min)`, ou so o titulo quando nao ha duracao.
+     *
+     * Montado por concatenacao, o sufixo fica ambiguo quando o **titulo** ja
+     * traz parenteses: "Encenacao (parte 1) (10 min)" tem dois parenteses
+     * fechados e nao se sabe onde o titulo acaba. O separador ` - ` no lugar do
+     * espaco resolve sem mudar o caso comum de quem so tem titulo simples.
+     */
+    val label: String get() = if (minutes > 0) "$title - $minutes min" else title
 
     /** A posição 1-based deste item, dentro da lista do programa da semana. */
     fun positionIn(program: List<ProgramItem>): Int = program.indexOf(this) + 1

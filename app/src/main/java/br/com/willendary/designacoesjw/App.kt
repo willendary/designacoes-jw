@@ -33,6 +33,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import br.com.willendary.designacoesjw.data.*
+import br.com.willendary.designacoesjw.data.BuscaHistorico
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
 import br.com.willendary.designacoesjw.export.ImageExport
 import kotlinx.coroutines.Dispatchers
@@ -45,6 +46,7 @@ import br.com.willendary.designacoesjw.ui.MeetingProgramList
 import br.com.willendary.designacoesjw.export.MonthBoardPrint
 import br.com.willendary.designacoesjw.sync.Changelog
 import br.com.willendary.designacoesjw.ui.JwCard
+import br.com.willendary.designacoesjw.sync.EstadoSincronizacao
 import br.com.willendary.designacoesjw.ui.mostrarDesfazivel
 import br.com.willendary.designacoesjw.ui.JwCardTitle
 import br.com.willendary.designacoesjw.ui.JwSectionLabel
@@ -332,6 +334,16 @@ fun App(
                         }
                     },
                     actions = {
+                        // Estado da sincronizacao (#61).
+                        //
+                        // **Silencio quando esta tudo bem.** A issue pede
+                        // "discreto e honesto, nao um banner gritando": quem
+                        // abriu o app e so quer designar nao precisa de nada
+                        // escrito. O rotulo so aparece quando ha algo a dizer.
+                        IndicadorSincronizacao(
+                            estado = vm.estadoSincronizacao,
+                            modifier = Modifier.padding(end = 4.dp)
+                        )
                         IconButton(onClick = { tab = 10 }) {
                             Icon(Icons.Filled.Tv, contentDescription = "Modo Telão")
                         }
@@ -1158,11 +1170,37 @@ private fun MeetingCardView(
         )
     }
 
+    // O link do jw.org no **erro** de import (#50): e aqui que ele resolve
+    // alguma coisa. Se o app conseguiu baixar, ninguem precisa da pagina.
     importError?.let { msg ->
         AlertDialog(
             onDismissRequest = { importError = null },
             title = { Text("Não foi possível importar o programa") },
-            text = { Text(msg) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(msg)
+                    vm.urlProgramaMwb?.let { url ->
+                        Text(
+                            "Você pode copiar o programa da página oficial:",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        val contexto = LocalContext.current
+                        OutlinedButton(onClick = {
+                            contexto.startActivity(
+                                android.content.Intent(
+                                    android.content.Intent.ACTION_VIEW,
+                                    android.net.Uri.parse(url)
+                                )
+                            )
+                        }, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Default.OpenInNew, null, Modifier.size(18.dp))
+                            Spacer(Modifier.size(JwTheme.spacing.xs))
+                            Text("Abrir no navegador")
+                        }
+                    }
+                }
+            },
             confirmButton = {
                 TextButton(onClick = { importError = null }) { Text("Fechar") }
             }
@@ -2330,32 +2368,116 @@ private fun ManagePrivilegeBrothersDialog(
 
 @Composable
 private fun HistoryScreen(vm: AppViewModel) {
+    var busca by remember { mutableStateOf("") }
+
+    // A regra da busca mora em `BuscaHistorico`, no shared: o desktop tem outra
+    // tela de histórico e um `filter` escrito duas vezes já divergiu uma vez.
+    val filtradas = remember(busca, vm.meetings.value, vm.brothers.value, vm.privileges.value) {
+        BuscaHistorico.filtrar(
+            termo = busca,
+            meetings = vm.meetings.value,
+            brothers = vm.brothers.value,
+            privileges = vm.privileges.value
+        ).sortedByDescending { parseDateForSort(it.date) }
+    }
+
     LazyColumn(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.Filled.History, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Text("Histórico", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             }
+            OutlinedTextField(
+                value = busca,
+                onValueChange = { busca = it },
+                label = { Text("Buscar por irmão, privilégio, tema ou data") },
+                leadingIcon = { Icon(Icons.Default.Search, null) },
+                trailingIcon = {
+                    if (busca.isNotEmpty()) {
+                        TextButton(onClick = { busca = "" }) { Text("Limpar") }
+                    }
+                },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
             Text(
+                // Só conta o que a busca devolveu quando ela está filtrando:
+                // "2 reuniões registradas" embaixo de uma busca que achou 1 é
+                // a contagem que faz a pessoa achar que a busca falhou.
+                if (busca.isBlank()) {
                     buildString {
                         val n = vm.meetings.value.size
                         append(if (n == 1) "1 reunião registrada" else "$n reuniões registradas")
-                    },
-                    style = MaterialTheme.typography.bodySmall
-                )
+                    }
+                } else {
+                    buildString {
+                        val n = filtradas.size
+                        append(if (n == 1) "1 reunião encontrada" else "$n reuniões encontradas")
+                    }
+                },
+                style = MaterialTheme.typography.bodySmall
+            )
         }
-        items(vm.meetings.value.sortedByDescending { parseDateForSort(it.date) }, key = { it.id }) { meeting ->
+
+        if (busca.isNotBlank() && filtradas.isEmpty()) {
+            item {
+                JwCard {
+                    Text("Nada encontrado para \"$busca\"", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "A busca olha também as partes do programa, não só os privilégios.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        items(filtradas, key = { it.id }) { meeting ->
             JwCard {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(meeting.date, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(meeting.type, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                    val quantas = meeting.assignments.size
-                    Text(if (quantas == 1) "1 designação" else "$quantas designações")
-                    meeting.assignments.forEach { a ->
-                        val brother = vm.brothers.value.find { it.id == a.brotherId }
-                        val privilege = vm.privileges.value.find { it.id == a.privilegeId }
-                        Text("• ${privilege?.name}: ${brother?.name ?: "Irmão removido"}", style = MaterialTheme.typography.bodyMedium)
+                    if (meeting.theme.isNotBlank()) {
+                        Text(meeting.theme, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                     }
+
+                    // Privilegios mecanicos.
+                    if (meeting.assignments.isNotEmpty()) {
+                        Text(
+                            if (meeting.assignments.size == 1) "1 privilégio" else "${meeting.assignments.size} privilégios",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        meeting.assignments.forEach { a ->
+                            val brother = vm.brothers.value.find { it.id == a.brotherId }
+                            val privilege = vm.privileges.value.find { it.id == a.privilegeId }
+                            Text("• ${privilege?.name}: ${brother?.name ?: "Irmão removido"}", style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+
+                    // Partes do programa. O histórico mostrava so `assignments`
+                    // e por isso a maior parte do que a congregacao fez estava
+                    // invisivel aqui -- a mesma confusao que o #51 corrigiu na
+                    // tela de reunioes.
+                    if (meeting.programAssignments.isNotEmpty()) {
+                        Text(
+                            if (meeting.programAssignments.size == 1) "1 parte" else "${meeting.programAssignments.size} partes",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        meeting.programAssignments.forEach { parte ->
+                            val nomes = parte.brotherIds.map { id ->
+                                vm.brothers.value.find { it.id == id }?.name ?: "Irmão removido"
+                            }
+                            Text(
+                                "• Item ${parte.item}: ${nomes.joinToString(", ")}",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+
                     TextButton(onClick = { vm.deleteMeeting(meeting.id) }, modifier = Modifier.align(Alignment.End)) {
                         Text("Excluir registro", color = JwTheme.colors.perigo, fontWeight = FontWeight.Medium)
                     }
@@ -3227,3 +3349,64 @@ private fun SeletorMes(mes: YearMonth, onChange: (YearMonth) -> Unit) {
 }
 
 private fun rotuloMes(mes: YearMonth): String = Datas.mesEAno(mes)
+
+/**
+ * Indicador de sincronizacao (#61).
+ *
+ * O que ele responde: **o que estou vendo esta na nuvem, ou e cache velho?**
+ *
+ * ## Por que um texto e nao um icone
+ *
+ * Um icone de "nuvem com bolinha" exige que a pessoa decodifique o simbolo.
+ * "1 alteracao nao enviada" nao exige. E o item que mais importa — a alteracao
+ * que **nao subiu** — e justamente o que o icone esconde, porque ele parece
+ * igual ao de "tudo certo" enquanto a fila nao esvazia.
+ *
+ * ## Por que some quando esta tudo bem
+ *
+ * A issue e explicita: "Sincronizado - nada, ou um check so na tela de
+ * configuracoes". Indicador que fica sempre aceso deixa de ser informacao e vira
+ * trilha, e a pessoa aprende a nao olhar.
+ */
+@Composable
+private fun IndicadorSincronizacao(
+    estado: EstadoSincronizacao,
+    modifier: Modifier = Modifier
+) {
+    if (!estado.mereceAviso) return
+
+    val cor = when {
+        estado.ultimaFalha != null -> JwTheme.colors.perigo
+        estado.somenteCache -> JwTheme.colors.grade
+        else -> MaterialTheme.colorScheme.primary
+    }
+
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(8.dp),
+        color = cor.copy(alpha = 0.12f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, cor.copy(alpha = 0.4f))
+    ) {
+        Row(
+            Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            // Um ponto, nao um spinner: `rotulo` e o que informa, e um
+            // spinner animado na top bar suga atencao de quem so quer abrir a
+            // lista de Privilegios.
+            Box(
+                Modifier
+                    .size(7.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(cor)
+            )
+            Text(
+                estado.rotulo,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = cor
+            )
+        }
+    }
+}

@@ -8,7 +8,12 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import br.com.willendary.designacoesjw.sync.CloudGuard
+import br.com.willendary.designacoesjw.sync.ContadorSincronizacao
+import br.com.willendary.designacoesjw.sync.EstadoSincronizacao
 
 /**
  * Persistência híbrida:
@@ -37,6 +42,36 @@ class AppRepository(context: Context) {
      * insuficiente e o app continuava mostrando "salvo".
      */
     var onSyncError: ((String) -> Unit)? = null
+
+    /**
+     * Estado da sincronizacao, para a tela (#61).
+     *
+     * A logica esta em `shared`, e nao aqui: a ordem de prioridade entre
+     * "falhou", "sincronizando", "nao enviada" e "cache local" e regra de
+     * negocio, e regra de negocio nao se escreve duas vezes.
+     *
+     * Vive no repositorio porque e ele quem tem os `Task` do Firestore -- e o
+     * `Task` resolve quando a escrita entra no armazenamento **local**, o que
+     * sem rede e antes de subir. So o contador diz que aquilo continua na fila.
+     */
+    private val sync = ContadorSincronizacao()
+    var estadoSincronizacao by mutableStateOf(EstadoSincronizacao())
+        private set
+
+    /**
+     * Mudanca de estado para a UI.
+     *
+     * Um canal so. Ligar `ConnectivityManager` aqui seria redundante: o
+     * `isFromCache` do proprio Firestore ja diz que a leitura saiu do cache,
+     * e ele erra menos -- o aparelho pode estar "no ar" e sem rota para o
+     * Firestore.
+     */
+    var aoMudarEstado: ((EstadoSincronizacao) -> Unit)? = null
+
+    private fun atualizaSync() {
+        estadoSincronizacao = sync.atual
+        aoMudarEstado?.invoke(estadoSincronizacao)
+    }
 
     private fun reportError(message: String) {
         Log.w(TAG, message)
@@ -81,9 +116,20 @@ class AppRepository(context: Context) {
         if (writes.isEmpty()) {
             prune()
         } else {
+            sync.emGravacao()
+            atualizaSync()
             Tasks.whenAllSuccess<Void>(writes)
-                .addOnSuccessListener { prune() }
+                .addOnSuccessListener {
+                    sync.confirmada()
+                    atualizaSync()
+                    prune()
+                }
                 .addOnFailureListener { e ->
+                    // A escrita continua **nao enviada**: e por isso que o
+                    // contador nao volta a zero aqui. Zerar deixaria a tela
+                    // dizendo "Sincronizado" com a alteracao presa no aparelho.
+                    sync.falhou(e.message ?: "falha ao gravar")
+                    atualizaSync()
                     reportError(
                         "Não consegui gravar $label no servidor (${e.message}). " +
                             "A alteração ficou só neste aparelho — provavelmente sua conta não tem permissão de escrita."
@@ -112,6 +158,13 @@ class AppRepository(context: Context) {
         corpo: (com.google.firebase.firestore.QuerySnapshot?, Exception?) -> Unit
     ): ListenerRegistration = addSnapshotListener { snapshot, error ->
         try {
+            // `isFromCache` e a resposta honesta para "o que estou vendo esta na
+            // nuvem ou e cache velho": quem sabe e o proprio Firestore, nao o
+            // relogio. Deduzir por tempo decorrido erra nos dois sentidos.
+            if (snapshot != null) {
+                if (snapshot.metadata.isFromCache) sync.lidaDoCache() else sync.lidaDoServidor()
+                atualizaSync()
+            }
             corpo(snapshot, error)
         } catch (e: Exception) {
             val mensagem = "Falha ao sincronizar $rotulo: ${e.message}"
@@ -430,7 +483,8 @@ class AppRepository(context: Context) {
                 baptized = o.optBoolean("baptized", true),
                 trainee = o.optBoolean("trainee", false),
                 isReader = o.optBoolean("isReader", false),
-                isSentinelReader = o.optBoolean("isSentinelReader", false)
+                isSentinelReader = o.optBoolean("isSentinelReader", false),
+                entrouEm = o.optString("entrouEm", "")
             )
         }
     }
@@ -632,6 +686,7 @@ class AppRepository(context: Context) {
                 put("trainee", b.trainee)
                 put("isReader", b.isReader)
                 put("isSentinelReader", b.isSentinelReader)
+                put("entrouEm", b.entrouEm)
                 b.groupId?.let { put("groupId", it) }
                 put("privileges", org.json.JSONArray(b.privileges.toList()))
                 val ua = org.json.JSONArray()
@@ -828,6 +883,7 @@ class AppRepository(context: Context) {
         // volta ao default depois de recarregar.
         "baptized" to baptized, "trainee" to trainee,
         "isReader" to isReader, "isSentinelReader" to isSentinelReader,
+        "entrouEm" to entrouEm,
         "unavailabilities" to unavailabilities.map {
             mapOf("id" to it.id, "startDate" to it.startDate, "endDate" to it.endDate, "reason" to it.reason)
         }
@@ -919,7 +975,10 @@ class AppRepository(context: Context) {
             baptized = d["baptized"] as? Boolean ?: true,
             trainee = d["trainee"] as? Boolean ?: false,
             isReader = d["isReader"] as? Boolean ?: false,
-            isSentinelReader = d["isSentinelReader"] as? Boolean ?: false
+            isSentinelReader = d["isSentinelReader"] as? Boolean ?: false,
+            // Vazio = desconhecido. Dado antigo não tem o campo, e exigir
+            // preenchimento obrigaria a congregação a redigitar a lista.
+            entrouEm = d["entrouEm"]?.toString() ?: ""
         )
     }
 

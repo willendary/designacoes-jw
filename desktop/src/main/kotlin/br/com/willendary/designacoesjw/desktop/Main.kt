@@ -13,6 +13,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -25,6 +27,8 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import br.com.willendary.designacoesjw.data.*
+import br.com.willendary.designacoesjw.data.BuscaHistorico
+import br.com.willendary.designacoesjw.ui.mostrarDesfazivel
 import br.com.willendary.designacoesjw.desktop.components.CloudSyncBar
 import br.com.willendary.designacoesjw.desktop.components.contar
 import br.com.willendary.designacoesjw.desktop.export.ImageExportHelper
@@ -459,7 +463,61 @@ class StoreController {
         return null
     }
 
-    fun deleteBrother(id: Long) = save(data.copy(brothers = data.brothers.filterNot { it.id == id }))
+    /**
+     * O que a última exclusão deixou para trás, enquanto o snackbar estiver na
+     * tela. Mesmo contrato do `AppViewModel` do Android, e pelo mesmo motivo:
+     * o snackbar fica no topo da janela e a exclusão acontece na lista.
+     *
+     * **Um slot só.** Duas exclusões seguidas não se acumulam — desfazer a
+     * segunda desfaz a última e a primeira some. É o que "desfazer" quer dizer.
+     */
+    var undoPendente by mutableStateOf<Undo?>(null)
+        private set
+
+    sealed interface Undo {
+        data class Irmao(val dados: Brother) : Undo
+        data class Privilegio(val dados: Privilege, val afetados: List<Brother>) : Undo
+        data class Reuniao(val dados: Meeting) : Undo
+    }
+
+    /** Aplica o desfazer pendente. Sem efeito se não houver nada pendente. */
+    fun desfazer() {
+        when (val u = undoPendente) {
+            is Undo.Irmao ->
+                if (data.brothers.none { it.id == u.dados.id }) {
+                    save(data.copy(brothers = data.brothers + u.dados))
+                }
+            is Undo.Reuniao ->
+                if (data.meetings.none { it.id == u.dados.id }) {
+                    save(data.copy(meetings = data.meetings + u.dados))
+                }
+            is Undo.Privilegio -> {
+                // O privilégio **e** as habilitações que a exclusão tirou. Sem
+                // as habilitações o irmão volta sem nada que possa fazer, que
+                // é pior que não voltar: parece dado correto e designa errado.
+                val devolvidos = data.brothers.map { b ->
+                    if (u.afetados.any { it.id == b.id } && u.dados.id !in b.privileges) {
+                        b.copy(privileges = b.privileges + u.dados.id)
+                    } else b
+                }
+                save(data.copy(
+                    privileges = data.privileges + u.dados,
+                    brothers = devolvidos
+                ))
+            }
+            null -> Unit
+        }
+        undoPendente = null
+    }
+
+    /** O snackbar fechou sozinho: passou a janela, é definitiva. */
+    fun descartarUndo() { undoPendente = null }
+
+    fun deleteBrother(id: Long) {
+        val removido = data.brothers.firstOrNull { it.id == id } ?: return
+        save(data.copy(brothers = data.brothers.filterNot { it.id == id }))
+        undoPendente = Undo.Irmao(removido)
+    }
 
     fun toggleBrotherActive(id: Long) = save(data.copy(brothers = data.brothers.map {
         if (it.id == id) it.copy(active = !it.active) else it
@@ -543,10 +601,13 @@ class StoreController {
     }
 
     fun deletePrivilege(id: Long) {
+        val removido = data.privileges.firstOrNull { it.id == id } ?: return
+        val afetados = data.brothers.filter { id in it.privileges }
         save(data.copy(
             privileges = data.privileges.filterNot { it.id == id },
             brothers = data.brothers.map { it.copy(privileges = it.privileges - id) }
         ))
+        undoPendente = Undo.Privilegio(removido, afetados)
     }
 
     fun togglePrivilegeActive(id: Long) = save(data.copy(privileges = data.privileges.map {
@@ -681,7 +742,11 @@ class StoreController {
         return others + if (next.isEmpty()) emptyList() else listOf(ProgramAssignment(position, next))
     }
 
-    fun deleteMeeting(meetingId: Long) = save(data.copy(meetings = data.meetings.filterNot { it.id == meetingId }))
+    fun deleteMeeting(meetingId: Long) {
+        val removido = data.meetings.firstOrNull { it.id == meetingId } ?: return
+        save(data.copy(meetings = data.meetings.filterNot { it.id == meetingId }))
+        undoPendente = Undo.Reuniao(removido)
+    }
 
     fun candidatesFor(meeting: Meeting, privilegeId: Long, currentBrotherId: Long) =
         AssignmentGenerator.candidatesFor(meeting, privilegeId, currentBrotherId, data.brothers, data.privileges)
@@ -858,6 +923,21 @@ fun main() = application {
             // nada lia o estado — a mensagem sumia. Sem isto, "não consegui
             // gerar a imagem" e os erros de permissão eram engolidos.
             val snackbarHostState = remember { SnackbarHostState() }
+
+            // Desfazer. Sem diálogo de confirmação, pelo mesmo motivo do
+            // Android: para ação reversível, confirmar **e** oferecer desfazer
+            // é pedir a mesma coisa duas vezes.
+            LaunchedEffect(c.undoPendente) {
+                val undo = c.undoPendente ?: return@LaunchedEffect
+                val rotulo = when (undo) {
+                    is StoreController.Undo.Irmao -> "Irmão excluído"
+                    is StoreController.Undo.Privilegio -> "Privilégio excluído"
+                    is StoreController.Undo.Reuniao -> "Reunião excluída"
+                }
+                val desfez = snackbarHostState.mostrarDesfazivel(rotulo) { c.desfazer() }
+                if (!desfez) c.descartarUndo()
+            }
+
             LaunchedEffect(c.actionError) {
                 c.actionError?.let {
                     snackbarHostState.showSnackbar(it, withDismissAction = true, duration = SnackbarDuration.Long)
@@ -3402,13 +3482,53 @@ private fun History(c: StoreController) {
     var confirmDelete by remember { mutableStateOf<Meeting?>(null) }
     var importingId by remember { mutableStateOf<Long?>(null) }
     var importError by remember { mutableStateOf<String?>(null) }
-    val groups = c.data.meetings.sortedByDescending { AssignmentGenerator.parseDate(it.date) }.groupBy {
+    var busca by remember { mutableStateOf("") }
+
+    // Mesma função do Android: uma regra de busca, dois lugares que a usam.
+    val filtradas = remember(busca, c.data.meetings, c.data.brothers, c.data.privileges) {
+        BuscaHistorico.filtrar(
+            termo = busca,
+            meetings = c.data.meetings,
+            brothers = c.data.brothers,
+            privileges = c.data.privileges
+        )
+    }
+    val groups = filtradas.sortedByDescending { AssignmentGenerator.parseDate(it.date) }.groupBy {
         it.date.substringAfterLast("/")
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.md)) {
         Text("Histórico de Reuniões", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text(contar(c.data.meetings.size, "reunião registrada", "reuniões registradas"))
+        OutlinedTextField(
+            value = busca,
+            onValueChange = { busca = it },
+            label = { Text("Buscar por irmão, privilégio, tema ou data") },
+            leadingIcon = { Icon(Icons.Default.Search, null) },
+            trailingIcon = {
+                if (busca.isNotEmpty()) {
+                    TextButton(onClick = { busca = "" }) { Text("Limpar") }
+                }
+            },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        // Só conta o que a busca devolveu quando ela filtra: "12 reuniões"
+        // embaixo de uma busca que achou 1 é o que faz a pessoa concluir que a
+        // busca não funciona.
+        Text(
+            if (busca.isBlank()) {
+                contar(c.data.meetings.size, "reunião registrada", "reuniões registradas")
+            } else {
+                contar(filtradas.size, "reunião encontrada", "reuniões encontradas")
+            }
+        )
+        if (busca.isNotBlank() && groups.isEmpty()) {
+            Text(
+                "Nada encontrado para \"$busca\"",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
 
         LazyColumn(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)) {
             groups.forEach { (year, meetings) ->

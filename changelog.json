@@ -1,4 +1,26 @@
 {
+  "0.9.0": {
+    "android": [
+      "Estatísticas ganhou Tempo sem fazer parte: a lista põe em cima quem está há mais tempo sem fazer parte do programa, com a data da última vez",
+      "A conta é de partes do programa, não de privilégios. Quem só lê nunca entra na conta, porque ler não é parte",
+      "O tempo é medido em dias, e não na virada do mês: quem fez parte há 13 dias é \"semana passada\", não \"1 mês\"",
+      "Irmãos & Irmãs ganhou o campo Entrada na congregação. É opcional: sem ele, quem acabou de entrar seria dado como quem nunca fez parte",
+      "Histórico agora tem busca por irmão, privilégio, tema ou data",
+      "Corrigido: o Histórico mostrava só os privilégios e escondia as partes do programa, que são a maior parte das designações",
+      "A barra de cima passou a dizer o estado da sincronização: Sincronizando, 1 alteração não enviada, Falha ao enviar ou Cache local. Quando está tudo certo, não mostra nada",
+      "Corrigido: se a nuvem recusasse a gravação, a tela continuava dizendo \"salvo\". Agora diz que a alteração ficou só neste aparelho",
+      "Corrigido: um irmão removido do cadastro fazia a busca casar com qualquer palavra e devolver o histórico inteiro",
+      "Quando a importação do programa falha, o erro oferece o link do jw.org para copiar na mão",
+      "Corrigido: nome com caractere de controle saía com caixa vazia no meio no PDF, e sem erro nenhum",
+      "Corrigido: espaço não separável tirado da lista e do programa virava item duplicado",
+      "Corrigido: título com parênteses virava \"Encenação (parte 1) (10 min)\", e não se sabia onde o título acabava"
+    ],
+    "desktop": [
+      "Excluir irmão, privilégio ou reunião agora tem Desfazer, igual ao Android. O diálogo de confirmação saiu de propósito",
+      "O desfazer do privilégio traz de volta também as habilitações que a exclusão tirou: sem elas o irmão voltava sem nada que pudesse fazer",
+      "O Histórico de Reuniões também tem busca, com a mesma regra do Android"
+    ]
+  },
   "0.6.2": {
     "android": [
       "Estatísticas, Grupos e Limpeza, Relatório, Discursos, Férias, Configurações, Usuários e Histórico migraram para o cartão único",

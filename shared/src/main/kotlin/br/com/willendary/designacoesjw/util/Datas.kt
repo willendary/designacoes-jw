@@ -4,6 +4,7 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.Month
 import java.time.YearMonth
+import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
 
@@ -112,8 +113,21 @@ object Datas {
      * `null` é resposta honesta para data que não é data; a tela decide o que
      * mostrar, e não esta função.
      */
-    fun diaDaSemanaDe(valor: String): String? =
-        runCatching { diaDaSemana(LocalDate.parse(valor, FORMATO_ESTrito)) }.getOrNull()
+    /**
+     * Le `dd/MM/yyyy` **estrito**: data impossivel devolve `null`.
+     *
+     * Fica aqui e nao repetido em cada calculo porque o padrao do
+     * `LocalDate.parse` e **leniente**: `31/02/2026` vira `28/02/2026` e produz
+     * um dia da semana plausivel. Duas chamadas com regras diferentes e como a
+     * formatacao de data divergiu (#46).
+     */
+    /** `dd/MM/yyyy` — a forma como o app grava e mostra data de reunião. */
+    fun ddMma(data: LocalDate): String = data.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+
+    fun dataEstrita(valor: String): LocalDate? =
+        runCatching { LocalDate.parse(valor.trim(), FORMATO_ESTrito) }.getOrNull()
+
+    fun diaDaSemanaDe(valor: String): String? = dataEstrita(valor)?.let { diaDaSemana(it) }
 
     /**
      * `dd/MM/uuuu` com resolver **estrito**.

@@ -251,7 +251,7 @@ object AssignmentGenerator {
      *
      * O tipo vem do programa da semana (`ProgramItem.kind`), não de um
      * privilégio cadastrado. `PAIR` são as partes de duas pessoas — a
-     * designação, o，研究 de campo. `GROUP` e `DEMONSTRATION` são livres.
+     * designação, o estudo de campo. `GROUP` e `DEMONSTRATION` são livres.
      */
     fun expectedCountFor(item: ProgramItem): Int = when (item.kind) {
         PartKind.INDIVIDUAL -> 1

@@ -4,13 +4,17 @@ import android.app.Application
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import br.com.willendary.designacoesjw.data.*
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
 import br.com.willendary.designacoesjw.export.CsvDataHandler
 import br.com.willendary.designacoesjw.export.ListaDeNomes
 import br.com.willendary.designacoesjw.export.MwbProgramImporter
+import br.com.willendary.designacoesjw.sync.EstadoSincronizacao
+import br.com.willendary.designacoesjw.util.Datas
 import br.com.willendary.designacoesjw.util.WhatsAppHelper
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.ListenerRegistration
@@ -129,6 +133,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var lastActionError = mutableStateOf<String?>(null)
     fun clearActionError() { lastActionError.value = null }
 
+    /**
+     * Estado da sincronizacao, exposto para a tela (#61).
+     *
+     * Espelho do repositorio: [repo] nao e estado observavel, e a tela so
+     * precisa recompor quando o valor muda.
+     */
+    var estadoSincronizacao by mutableStateOf(EstadoSincronizacao())
+        private set
+
     /** Mensagem de validação vinda da UI (regra de negócio no formulário). */
     fun reportError(message: String) { lastActionError.value = message }
 
@@ -193,6 +206,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             )
         }
         repo.onSyncError = { lastActionError.value = it }
+        repo.aoMudarEstado = { estadoSincronizacao = it }
+        estadoSincronizacao = repo.estadoSincronizacao
         repo.startCloudSync(
             onBrothers = { brothers.value = it },
             onPrivileges = { privileges.value = it },
@@ -518,6 +533,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * @param meetingId reunião a atualizar. Nulo faz o import achar a reunião de
      *   meio de semana da data e criá-la quando ela ainda não existir.
      */
+    /**
+     * Endereco do programa no jw.org, para o link de ajuda (#50).
+     *
+     * `sourceUrl` era preenchido pelo importador e nunca lido. A utilidade dele
+     * aparece justamente quando a leitura **falha** -- e nesse caso nao ha
+     * `Program` nenhum, entao a URL e montada pela data.
+     */
+    var urlProgramaMwb by mutableStateOf<String?>(null)
+        private set
+
     private fun importMwb(date: LocalDate, meetingId: Long?, onResult: (String?) -> Unit) {
         if (!can(AppPermissions.GENERATE_ASSIGNMENTS)) {
             onResult(denied(AppPermissions.GENERATE_ASSIGNMENTS, "importar o programa"))
@@ -535,9 +560,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     onSuccess = { (program, items) ->
                         meetings.value = applyMwbProgram(date, meetingId, program.theme, items)
                         repo.saveMeetings(meetings.value)
+                        urlProgramaMwb = program.sourceUrl
                         onResult(null)
                     },
-                    onFailure = { onResult(it.message ?: "Não foi possível ler o programa no jw.org.") }
+                    onFailure = {
+                        // Sem `Program` na falha, entao a URL sai da data. E e
+                        // exatamente aqui que ela serve.
+                        urlProgramaMwb = MwbProgramImporter.urlPublica(date)
+                        onResult(it.message ?: "Não foi possível ler o programa no jw.org.")
+                    }
                 )
             }
         }.start()
@@ -628,6 +659,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         brothers.value = brothers.value.map { b ->
             if (b.id != id) b else b.copy(isSentinelReader = value, isReader = if (value) true else b.isReader)
         }
+        repo.saveBrothers(brothers.value)
+    }
+
+    /**
+     * Data de entrada na congregacao, em `dd/MM/yyyy`.
+     *
+     * Vazio = desconhecido, e o app funciona sem ela: o relatorio de "tempo
+     * sem fazer parte" so diz "nunca" quem nunca fez parte. E o que importa e
+     * que o **ViewModel** recusa data boba em vez de gravar `32/13/2026` e
+     * deixar o relatorio mentir depois.
+     */
+    fun setBrotherEntrouEm(id: Long, valor: String) {
+        if (!can(AppPermissions.MANAGE_BROTHERS)) { lastActionError.value = denied(AppPermissions.MANAGE_BROTHERS, "alterar um irmão"); return }
+        val limpo = valor.trim()
+        if (limpo.isNotEmpty() && Datas.dataEstrita(limpo) == null) {
+            lastActionError.value = "Data de entrada inválida. Use dd/mm/aaaa."
+            return
+        }
+        brothers.value = brothers.value.map { b -> if (b.id == id) b.copy(entrouEm = limpo) else b }
         repo.saveBrothers(brothers.value)
     }
 

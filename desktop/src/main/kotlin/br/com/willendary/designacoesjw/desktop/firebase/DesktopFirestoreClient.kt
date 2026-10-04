@@ -61,6 +61,9 @@ object DesktopFirestoreClient {
                 put("trainee", buildJsonObject { put("booleanValue", brother.trainee) })
                 put("isReader", buildJsonObject { put("booleanValue", brother.isReader) })
                 put("isSentinelReader", buildJsonObject { put("booleanValue", brother.isSentinelReader) })
+                // String vazia = desconhecido. Nao gravar e o mesmo que omitir,
+                // e omite tambem: dado antigo simplesmente nao tem o campo.
+                put("entrouEm", buildJsonObject { put("stringValue", brother.entrouEm) })
                 brother.groupId?.let {
                     put("groupId", buildJsonObject { put("integerValue", it.toString()) })
                 }
@@ -377,7 +380,8 @@ object DesktopFirestoreClient {
             baptized = baptized,
             trainee = trainee,
             isReader = isReader,
-            isSentinelReader = isSentinelReader
+            isSentinelReader = isSentinelReader,
+            entrouEm = fields["entrouEm"]?.jsonObject?.get("stringValue")?.jsonPrimitive?.content ?: ""
         )
     }
 
