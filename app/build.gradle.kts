@@ -17,8 +17,8 @@ android {
         applicationId = "br.com.willendary.designacoesjw"
         minSdk = 26
         targetSdk = 35
-        versionCode = 43
-        versionName = "0.7.0"
+        versionCode = 44
+        versionName = "0.7.1"
     }
 
     // ── Assinatura ──────────────────────────────────────────────────────────

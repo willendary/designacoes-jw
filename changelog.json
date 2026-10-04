@@ -112,5 +112,17 @@
       "As partes do programa deixaram de ser um privilégio",
       "A parte do programa é designada direto no card"
     ]
+  },
+  "0.7.1": {
+    "android": [
+      "Configurações ganhou a escolha de Claro ou Escuro — antes o celular só seguia o modo do sistema",
+      "Datas e nomes de mês passaram a ser escritos por um único lugar: o mesmo mês saía como \"JANEIRO 2026\", \"Janeiro de 2026\" ou \"janeiro\" em telas diferentes",
+      "Corrigido: data impossível como 31/02/2026 devolvia um dia da semana plausível em vez de nada"
+    ],
+    "desktop": [
+      "Datas e nomes de mês passaram a ser escritos por um único lugar: o mesmo mês saía de formas diferentes entre telas",
+      "O relatório impresso voltou a trazer \"Quarta-feira\" por extenso — é documento, não conversa",
+      "O relatório exportado pelo Android e pelo desktop passaram a sair idênticos"
+    ]
   }
 }

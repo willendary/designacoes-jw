@@ -50,13 +50,13 @@ import br.com.willendary.designacoesjw.ui.JwSectionLabel
 import br.com.willendary.designacoesjw.ui.JwTheme
 import br.com.willendary.designacoesjw.ui.corDeContorno
 import br.com.willendary.designacoesjw.ui.MonthBoard
+import br.com.willendary.designacoesjw.util.Datas
 import br.com.willendary.designacoesjw.util.WhatsAppHelper
 import kotlinx.coroutines.launch
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
-import java.time.format.TextStyle
 import java.time.temporal.ChronoUnit
 import java.util.Locale
 
@@ -146,6 +146,8 @@ fun App(
     vm: AppViewModel = viewModel(),
     themeIndex: Int = 0,
     onThemeChange: (Int) -> Unit = {},
+    themeMode: ThemeMode = ThemeMode.SYSTEM,
+    onThemeModeChange: (ThemeMode) -> Unit = {},
     onSignOut: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -322,7 +324,7 @@ fun App(
         ) { padding ->
                 Box(Modifier.padding(padding).fillMaxSize()) {
                     when (tab) {
-                        0 -> SettingsScreen(vm, themeIndex, onThemeChange, onSignOut)
+                        0 -> SettingsScreen(vm, themeIndex, onThemeChange, themeMode, onThemeModeChange, onSignOut)
                         1 -> HistoryScreen(vm)
                         16 -> MeetingsScreen(vm)
                         2 -> BrothersScreen(vm)
@@ -429,8 +431,7 @@ private fun HomeScreen(vm: AppViewModel) {
 
     val nextMeetingInfo = remember(allMeetings) { getNextMeetingInfo(allMeetings) }
 
-    val monthName = month.month.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))
-        .replaceFirstChar { it.uppercase() }
+    val monthName = Datas.nomeDoMes(month.month)
 
     LazyColumn(
         Modifier.fillMaxSize().padding(horizontal = 16.dp),
@@ -531,7 +532,7 @@ private fun HomeScreen(vm: AppViewModel) {
                         }
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                text = "$monthName ${month.year}",
+                                text = Datas.mesEAno(month),
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
@@ -800,7 +801,7 @@ private fun MeetingCardView(
     val parsedDate = runCatching {
         LocalDate.of(dateParts[2].toInt(), dateParts[1].toInt(), dateParts[0].toInt())
     }.getOrNull()
-    val dayOfWeekShort = parsedDate?.dayOfWeek?.getDisplayName(TextStyle.SHORT, Locale("pt", "BR"))?.uppercase() ?: "REU"
+    val dayOfWeekShort = parsedDate?.let { Datas.diaDaSemanaCurto(it) } ?: "REU"
 
     Card(
         Modifier.fillMaxWidth(),
@@ -2382,6 +2383,8 @@ private fun SettingsScreen(
     vm: AppViewModel,
     themeIndex: Int,
     onThemeChange: (Int) -> Unit,
+    themeMode: ThemeMode,
+    onThemeModeChange: (ThemeMode) -> Unit,
     onSignOut: () -> Unit
 ) {
     val context = LocalContext.current
@@ -2452,9 +2455,37 @@ private fun SettingsScreen(
 
         // Aparência
         item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Cor do aplicativo", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            JwCard {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    JwCardTitle("Claro ou escuro")
+                    Text(
+                        "Padrão do sistema segue o modo do aparelho.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    ThemeMode.entries.forEach { modo ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { onThemeModeChange(modo) },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = themeMode == modo,
+                                onClick = { onThemeModeChange(modo) }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(modo.label, style = MaterialTheme.typography.bodyLarge)
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            JwCard {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    JwCardTitle("Cor do aplicativo")
                     themes.forEachIndexed { index, item ->
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -2741,8 +2772,7 @@ private fun EquityStatisticsDialog(
     val report = remember(month, meetings, brothers, privileges) {
         EquityStatisticsHelper.calculateMonthStats(month, meetings, brothers, privileges)
     }
-    val monthName = month.month.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))
-        .replaceFirstChar { it.uppercase() }
+    val monthName = Datas.mesEAno(month)
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -2758,7 +2788,7 @@ private fun EquityStatisticsDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 item {
-                    Text("$monthName ${month.year}", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                    Text(monthName, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
                 }
                 item {
                     Card(
@@ -3183,6 +3213,4 @@ private fun SeletorMes(mes: YearMonth, onChange: (YearMonth) -> Unit) {
     }
 }
 
-private fun rotuloMes(mes: YearMonth): String =
-    mes.month.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))
-        .replaceFirstChar { it.uppercase() } + " de ${mes.year}"
+private fun rotuloMes(mes: YearMonth): String = Datas.mesEAno(mes)

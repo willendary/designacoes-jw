@@ -57,6 +57,7 @@ import br.com.willendary.designacoesjw.ui.JwThemeProvider
 import br.com.willendary.designacoesjw.ui.MonthBoard
 import br.com.willendary.designacoesjw.ui.corDeContorno
 import br.com.willendary.designacoesjw.ui.superficieDeCartao
+import br.com.willendary.designacoesjw.util.Datas
 import br.com.willendary.designacoesjw.util.WhatsAppHelper
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -69,7 +70,6 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
-import java.time.format.TextStyle
 import java.time.temporal.ChronoUnit
 import java.util.Locale
 
@@ -1149,8 +1149,7 @@ private fun RelatorioComAcoesExtras(c: StoreController) {
     val reunioesDoMes = c.data.meetings
         .filter { it.date.endsWith("/$prefixo") }
         .sortedBy { AssignmentGenerator.parseDate(it.date) }
-    val rotuloMes = mes.month.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))
-        .replaceFirstChar { it.uppercase() } + " de " + mes.year
+    val rotuloMes = Datas.mesEAno(mes)
 
     Column(Modifier.fillMaxSize()) {
         Row(
@@ -1677,7 +1676,7 @@ private fun Home(c: StoreController) {
     val allMeetings = c.data.meetings
     val prefix = month.format(DateTimeFormatter.ofPattern("MM/yyyy"))
     val meetings = allMeetings.filter { it.date.endsWith("/$prefix") }.sortedBy { AssignmentGenerator.parseDate(it.date) }
-    val monthName = month.month.getDisplayName(TextStyle.FULL, Locale("pt", "BR")).replaceFirstChar { it.uppercase() } + " " + month.year
+    val monthName = Datas.mesEAno(month)
 
     val nextMeetingInfo = remember(allMeetings) { getNextMeetingInfo(allMeetings) }
 
@@ -2013,7 +2012,7 @@ private fun MeetingCardItem(
     val parsedDate = runCatching {
         LocalDate.of(dateParts[2].toInt(), dateParts[1].toInt(), dateParts[0].toInt())
     }.getOrNull()
-    val dayOfWeekShort = parsedDate?.dayOfWeek?.getDisplayName(TextStyle.SHORT, Locale("pt", "BR"))?.uppercase() ?: "REU"
+    val dayOfWeekShort = parsedDate?.let { Datas.diaDaSemanaCurto(it) } ?: "REU"
 
     // Uma reunião é uma unidade, e é o que se lê primeiro: cartão. Selecionada
     // vira `destaque` — o realce é o que o usuário abriu, não um alfa no fundo.
@@ -2388,14 +2387,14 @@ private fun DesktopEquityDialog(
     val report = remember(month, meetings, brothers, privileges) {
         EquityStatisticsHelper.calculateMonthStats(month, meetings, brothers, privileges)
     }
-    val monthName = month.month.getDisplayName(TextStyle.FULL, Locale("pt", "BR")).replaceFirstChar { it.uppercase() }
+    val monthName = Datas.mesEAno(month)
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.Default.BarChart, null, tint = MaterialTheme.colorScheme.primary)
-                Text("Equidade e Estatísticas ($monthName ${month.year})", style = MaterialTheme.typography.titleLarge)
+                Text("Equidade e Estatísticas ($monthName)", style = MaterialTheme.typography.titleLarge)
             }
         },
         text = {

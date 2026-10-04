@@ -2,6 +2,7 @@ package br.com.willendary.designacoesjw.desktop.export
 
 import br.com.willendary.designacoesjw.data.*
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
+import br.com.willendary.designacoesjw.util.Datas
 import java.awt.*
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.Transferable
@@ -9,8 +10,6 @@ import java.awt.datatransfer.UnsupportedFlavorException
 import java.awt.image.BufferedImage
 import java.io.File
 import java.time.LocalDate
-import java.time.format.TextStyle
-import java.util.Locale
 import javax.imageio.ImageIO
 
 object ImageExportHelper {
@@ -67,9 +66,7 @@ object ImageExportHelper {
 
         val dateObj = AssignmentGenerator.parseDate(meeting.date)
         val weekday = if (dateObj != LocalDate.MIN) {
-            dateObj.dayOfWeek.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))
-                .removeSuffix("-feira")
-                .replaceFirstChar { it.uppercase(Locale("pt", "BR")) }
+            Datas.diaDaSemana(dateObj)
         } else ""
 
         g2.font = Font("Segoe UI", Font.PLAIN, 18)

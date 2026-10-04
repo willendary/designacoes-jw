@@ -8,6 +8,7 @@ import androidx.core.content.FileProvider
 import br.com.willendary.designacoesjw.data.Brother
 import br.com.willendary.designacoesjw.data.Meeting
 import br.com.willendary.designacoesjw.data.Privilege
+import br.com.willendary.designacoesjw.util.Datas
 import java.io.File
 import java.io.FileOutputStream
 import java.time.YearMonth
@@ -147,9 +148,7 @@ object ReportGenerator {
     private fun dateWithWeekday(value: String): String {
         val date = parseDate(value)
         if (date == java.time.LocalDate.MIN) return value
-        val weekday = date.dayOfWeek.getDisplayName(java.time.format.TextStyle.FULL, Locale("pt", "BR"))
-            .removeSuffix("-feira")
-            .replaceFirstChar { it.uppercase(Locale("pt", "BR")) }
+        val weekday = Datas.diaDaSemana(date)
         return value + "\n" + weekday
     }
 
@@ -157,8 +156,7 @@ object ReportGenerator {
         java.time.LocalDate.parse(value, DateTimeFormatter.ofPattern("dd/MM/yyyy"))
     }.getOrNull() ?: java.time.LocalDate.MIN
 
-    private fun monthLabel(month: YearMonth): String =
-        month.month.getDisplayName(java.time.format.TextStyle.FULL, Locale("pt", "BR")).uppercase(Locale("pt", "BR")) + " ${month.year}"
+    private fun monthLabel(month: YearMonth): String = Datas.mesEAnoEmCaixaAlta(month)
 
     private fun xmlEscape(value: String): String =
         value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&apos;")

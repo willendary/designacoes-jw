@@ -19,6 +19,7 @@ import br.com.willendary.designacoesjw.data.Brother
 import br.com.willendary.designacoesjw.data.PublicTalk
 import br.com.willendary.designacoesjw.desktop.StoreController
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
+import br.com.willendary.designacoesjw.util.Datas
 import br.com.willendary.designacoesjw.util.WhatsAppHelper
 import br.com.willendary.designacoesjw.ui.JwCard
 import br.com.willendary.designacoesjw.ui.JwCardRail
@@ -27,8 +28,6 @@ import br.com.willendary.designacoesjw.ui.corDeContorno
 import java.awt.Desktop
 import java.net.URI
 import java.time.LocalDate
-import java.time.format.TextStyle
-import java.util.Locale
 
 @Composable
 fun PublicTalksScreen(c: StoreController) {
@@ -147,9 +146,7 @@ private fun PublicTalkCardItem(
     val hospBrother = brothers.firstOrNull { it.id == talk.hospitalityBrotherId }
     val dateObj = AssignmentGenerator.parseDate(talk.date)
     val weekday = if (dateObj != LocalDate.MIN) {
-        dateObj.dayOfWeek.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))
-            .removeSuffix("-feira")
-            .replaceFirstChar { it.uppercase(Locale("pt", "BR")) }
+        Datas.diaDaSemana(dateObj)
     } else ""
 
     JwCard {

@@ -25,10 +25,9 @@ import br.com.willendary.designacoesjw.data.Brother
 import br.com.willendary.designacoesjw.data.Meeting
 import br.com.willendary.designacoesjw.data.Privilege
 import br.com.willendary.designacoesjw.ui.MonthBoard
+import br.com.willendary.designacoesjw.util.Datas
 import java.io.FileOutputStream
 import java.time.YearMonth
-import java.time.format.TextStyle
-import java.util.Locale
 
 /**
  * Imprime o quadro do mês no Android.
@@ -149,11 +148,8 @@ object MonthBoardPrint {
         null
     }
 
-    private fun jobName(context: Context, month: YearMonth): String {
-        val mes = month.month.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))
-            .replaceFirstChar { it.uppercase(Locale("pt", "BR")) }
-        return "$mes ${month.year} — Designações"
-    }
+    private fun jobName(context: Context, month: YearMonth): String =
+        "${Datas.mesEAnoEmCaixaAlta(month)} — Designações"
 
     /** Uma folha só, com o bitmap desenhado inteiro na página. */
     private class QuadroAdapter(private val bitmap: Bitmap) : PrintDocumentAdapter() {

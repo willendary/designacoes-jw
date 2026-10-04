@@ -31,9 +31,8 @@ import br.com.willendary.designacoesjw.data.Privilege
 import br.com.willendary.designacoesjw.data.PublicTalk
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
 import br.com.willendary.designacoesjw.ui.MeetingProgramList
+import br.com.willendary.designacoesjw.util.Datas
 import java.time.LocalDate
-import java.time.format.TextStyle
-import java.util.Locale
 
 /**
  * Card da reunião desenhado em Compose, para gerar a imagem de compartilhamento.
@@ -58,9 +57,7 @@ fun MeetingCardImage(
 ) {
     val date = AssignmentGenerator.parseDate(meeting.date)
     val weekday = if (date != LocalDate.MIN) {
-        date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))
-            .removeSuffix("-feira")
-            .replaceFirstChar { it.uppercase(Locale("pt", "BR")) }
+        Datas.diaDaSemana(date)
     } else ""
 
     Surface(

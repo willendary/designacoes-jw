@@ -32,9 +32,9 @@ import br.com.willendary.designacoesjw.data.Brother
 import br.com.willendary.designacoesjw.data.Meeting
 import br.com.willendary.designacoesjw.data.Privilege
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
+import br.com.willendary.designacoesjw.util.Datas
 import java.time.LocalDate
 import java.time.YearMonth
-import java.time.format.TextStyle
 import java.util.Locale
 
 /**
@@ -70,8 +70,7 @@ fun MonthBoard(
 
     val reunioes = meetings.sortedBy { AssignmentGenerator.parseDate(it.date) }
 
-    val rotuloMes = month.month.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))
-        .uppercase(Locale("pt", "BR")) + " ${month.year}"
+    val rotuloMes = Datas.mesEAnoEmCaixaAlta(month)
 
     // Piso de altura para todas as linhas, calculado pela reunião com mais
     // nomes. É `heightIn(min)`, não `height`: um nome longo que quebra dentro
@@ -168,9 +167,7 @@ private fun BoardRow(
 ) {
     val data = AssignmentGenerator.parseDate(meeting.date)
     val diaSemana = if (data != LocalDate.MIN) {
-        data.dayOfWeek.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))
-            .removeSuffix("-feira")
-            .replaceFirstChar { it.uppercase(Locale("pt", "BR")) }
+        Datas.diaDaSemana(data)
     } else ""
 
     Row(Modifier.fillMaxWidth().heightIn(min = altura)) {

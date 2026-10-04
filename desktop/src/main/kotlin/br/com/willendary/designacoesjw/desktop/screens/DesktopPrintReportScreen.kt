@@ -24,13 +24,12 @@ import br.com.willendary.designacoesjw.ui.JwCard
 import br.com.willendary.designacoesjw.ui.JwTheme
 import br.com.willendary.designacoesjw.ui.corDeContorno
 import br.com.willendary.designacoesjw.ui.superficieDeCartao
+import br.com.willendary.designacoesjw.util.Datas
 import java.awt.Desktop
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
-import java.time.format.TextStyle
-import java.util.Locale
 
 @Composable
 fun DesktopPrintReportScreen(c: StoreController) {
@@ -47,8 +46,7 @@ fun DesktopPrintReportScreen(c: StoreController) {
     val privilegesMap = c.data.privileges.associateBy { it.id }
     val activePrivileges = c.data.privileges.filter { it.active }.sortedBy { it.name }
 
-    val monthFormatted = selectedMonth.month.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))
-        .replaceFirstChar { it.uppercase() } + " de " + selectedMonth.year
+    val monthFormatted = Datas.mesEAno(selectedMonth)
 
     Column(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.md), modifier = Modifier.fillMaxSize()) {
         // Cabeçalho da Tela

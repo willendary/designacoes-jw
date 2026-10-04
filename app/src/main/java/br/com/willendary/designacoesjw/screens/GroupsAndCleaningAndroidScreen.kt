@@ -25,11 +25,10 @@ import br.com.willendary.designacoesjw.ui.JwCardRail
 import br.com.willendary.designacoesjw.ui.JwCardTitle
 import br.com.willendary.designacoesjw.ui.JwTheme
 import br.com.willendary.designacoesjw.ui.corDeContorno
+import br.com.willendary.designacoesjw.util.Datas
 import br.com.willendary.designacoesjw.util.WhatsAppHelper
 import java.time.LocalDate
 import java.time.YearMonth
-import java.time.format.TextStyle
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -103,7 +102,7 @@ fun GroupsAndCleaningAndroidScreen(vm: AppViewModel) {
                             ) {
                                 Icon(Icons.Default.AutoMode, null, modifier = Modifier.size(22.dp))
                                 Spacer(Modifier.width(JwTheme.spacing.sm))
-                                Text("Gerar Escala de ${currentMonth.month.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))}")
+                                Text("Gerar Escala de ${Datas.nomeDoMes(currentMonth.month)}")
                             }
                         }
                     }

@@ -20,9 +20,8 @@ import br.com.willendary.designacoesjw.ui.JwCardTitle
 import br.com.willendary.designacoesjw.ui.JwTheme
 import br.com.willendary.designacoesjw.ui.corDeContorno
 import br.com.willendary.designacoesjw.desktop.components.contar
+import br.com.willendary.designacoesjw.util.Datas
 import java.time.YearMonth
-import java.time.format.TextStyle
-import java.util.Locale
 
 @Composable
 fun DesktopEquityScreen(c: StoreController) {
@@ -61,7 +60,7 @@ fun DesktopEquityScreen(c: StoreController) {
                         Icon(Icons.Default.ChevronLeft, "Mês anterior", modifier = Modifier.size(22.dp))
                     }
                     Text(
-                        "${selectedMonth.month.getDisplayName(TextStyle.FULL, Locale("pt", "BR")).replaceFirstChar { it.uppercase() }} de ${selectedMonth.year}",
+                        Datas.mesEAno(selectedMonth),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = JwTheme.spacing.sm)

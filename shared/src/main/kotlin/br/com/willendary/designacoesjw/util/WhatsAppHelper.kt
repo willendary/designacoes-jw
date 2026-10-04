@@ -7,8 +7,6 @@ import br.com.willendary.designacoesjw.generator.AssignmentGenerator
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.time.LocalDate
-import java.time.format.TextStyle
-import java.util.Locale
 
 object WhatsAppHelper {
 
@@ -27,9 +25,7 @@ object WhatsAppHelper {
         val tmpl = if (template.isNullOrBlank()) DEFAULT_SINGLE_TEMPLATE else template
         val date = AssignmentGenerator.parseDate(meeting.date)
         val weekday = if (date != LocalDate.MIN) {
-            date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))
-                .removeSuffix("-feira")
-                .replaceFirstChar { it.uppercase(Locale("pt", "BR")) }
+            Datas.diaDaSemana(date)
         } else ""
 
         return tmpl
@@ -50,9 +46,7 @@ object WhatsAppHelper {
         val tmpl = if (template.isNullOrBlank()) DEFAULT_MEETING_TEMPLATE else template
         val date = AssignmentGenerator.parseDate(meeting.date)
         val weekday = if (date != LocalDate.MIN) {
-            date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))
-                .removeSuffix("-feira")
-                .replaceFirstChar { it.uppercase(Locale("pt", "BR")) }
+            Datas.diaDaSemana(date)
         } else ""
 
         val assignmentsText = meeting.assignments.joinToString("\n") { a ->
@@ -80,9 +74,7 @@ object WhatsAppHelper {
     ): String {
         val date = AssignmentGenerator.parseDate(talk.date)
         val weekday = if (date != LocalDate.MIN) {
-            date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))
-                .removeSuffix("-feira")
-                .replaceFirstChar { it.uppercase(Locale("pt", "BR")) }
+            Datas.diaDaSemana(date)
         } else ""
 
         val congPart = if (congregationName.isNotBlank()) " da Congregação *$congregationName*" else ""

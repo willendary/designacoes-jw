@@ -4,10 +4,9 @@ import br.com.willendary.designacoesjw.data.Brother
 import br.com.willendary.designacoesjw.data.Meeting
 import br.com.willendary.designacoesjw.data.Privilege
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
+import br.com.willendary.designacoesjw.util.Datas
 import java.time.LocalDate
 import java.time.YearMonth
-import java.time.format.TextStyle
-import java.util.Locale
 
 /**
  * Relatório A4 de designações.
@@ -28,8 +27,7 @@ object HtmlReportGenerator {
         hoje: LocalDate = LocalDate.now()
     ): String {
         val sortedMeetings = meetings.sortedBy { AssignmentGenerator.parseDate(it.date) }
-        val monthLabel = month.month.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))
-            .uppercase(Locale("pt", "BR")) + " ${month.year}"
+        val monthLabel = Datas.mesEAnoEmCaixaAlta(month)
 
         return buildString {
             append("<!DOCTYPE html>\n<html lang=\"pt-BR\">\n<head>\n<meta charset=\"UTF-8\">\n")
@@ -82,8 +80,7 @@ object HtmlReportGenerator {
     ) {
         val date = AssignmentGenerator.parseDate(meeting.date)
         val weekday = if (date != LocalDate.MIN) {
-            date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))
-                .replaceFirstChar { it.uppercase(Locale("pt", "BR")) }
+            Datas.diaDaSemanaCompleto(date)
         } else ""
 
         append("<div class=\"reuniao\">\n")

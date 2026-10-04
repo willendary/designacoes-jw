@@ -18,9 +18,8 @@ import br.com.willendary.designacoesjw.ui.JwCard
 import br.com.willendary.designacoesjw.ui.JwCardRail
 import br.com.willendary.designacoesjw.ui.JwSectionLabel
 import br.com.willendary.designacoesjw.ui.JwTheme
+import br.com.willendary.designacoesjw.util.Datas
 import java.time.YearMonth
-import java.time.format.TextStyle
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,7 +54,7 @@ fun EquityStatisticsScreen(vm: AppViewModel) {
                         Icon(Icons.Default.ChevronLeft, "Mês anterior")
                     }
                     Text(
-                        "${selectedMonth.month.getDisplayName(TextStyle.FULL, Locale("pt", "BR")).replaceFirstChar { it.uppercase() }} de ${selectedMonth.year}",
+                        Datas.mesEAno(selectedMonth),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )

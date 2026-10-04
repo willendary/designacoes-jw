@@ -26,9 +26,8 @@ import br.com.willendary.designacoesjw.generator.AssignmentGenerator
 import br.com.willendary.designacoesjw.ui.JwCard
 import br.com.willendary.designacoesjw.ui.JwTheme
 import br.com.willendary.designacoesjw.ui.corDeContorno
+import br.com.willendary.designacoesjw.util.Datas
 import java.time.YearMonth
-import java.time.format.TextStyle
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,7 +46,7 @@ fun PrintReportScreen(
         selectedMonth.format(java.time.format.DateTimeFormatter.ofPattern("MM/yyyy"))
     }
     val rotuloMes = remember(selectedMonth) {
-        "${selectedMonth.month.getDisplayName(TextStyle.FULL, Locale("pt", "BR")).replaceFirstChar { it.uppercase() }} de ${selectedMonth.year}"
+        Datas.mesEAno(selectedMonth)
     }
     val monthMeetings = vm.meetings.value.filter { it.date.endsWith("/$monthPrefix") }
         .sortedBy { AssignmentGenerator.parseDate(it.date) }
@@ -92,7 +91,7 @@ fun PrintReportScreen(
                 Button(
                     onClick = {
                         val textReport = buildString {
-                            appendLine("📋 PROGRAMA DE DESIGNAÇÕES — ${selectedMonth.month.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))} ${selectedMonth.year}")
+                            appendLine("📋 PROGRAMA DE DESIGNAÇÕES — ${Datas.mesEAnoEmCaixaAlta(selectedMonth)}")
                             appendLine("==========================================")
                             monthMeetings.forEach { m ->
                                 appendLine("\n📅 ${m.date} (${m.type})")

@@ -18,6 +18,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.*
 import androidx.core.content.ContextCompat
+import br.com.willendary.designacoesjw.data.ThemeMode
 import br.com.willendary.designacoesjw.notification.MeetingReminderHelper
 import br.com.willendary.designacoesjw.ui.JwPalette
 import br.com.willendary.designacoesjw.ui.JwThemeProvider
@@ -37,14 +38,40 @@ class MainActivity : ComponentActivity() {
         setContent {
             val themeIndexState = remember { mutableIntStateOf(prefs.getInt("theme_index", 0)) }
             val themeIndex = themeIndexState.intValue
-            // Paleta e modo escuro saem de shared, iguais aos do desktop.
-            JwThemeProvider(paleta = JwPalette.porIndice(themeIndex)) {
+
+            // Claro/escuro escolhido pela pessoa. Antes o Android so aceitava
+            // o que o sistema decidisse, e nao havia onde escolher (#45). O
+            // desktop tinha a escolha desde antes; aqui faltava.
+            //
+            // `theme_index` e `theme_mode` sao **por aparelho**, em
+            // SharedPreferences: tema e preferencia de tela, e nao dado da
+            // congregacao. Uma tela escura forcada por outra pessoa no mesmo
+            // tablet e o contrario de Preference.
+            val themeModeState = remember {
+                mutableStateOf(
+                    runCatching { ThemeMode.valueOf(prefs.getString("theme_mode", null) ?: "SYSTEM") }
+                        .getOrDefault(ThemeMode.SYSTEM)
+                )
+            }
+            val themeMode = themeModeState.value
+            val isDark = when (themeMode) {
+                ThemeMode.DARK -> true
+                ThemeMode.LIGHT -> false
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+            }
+
+            JwThemeProvider(paleta = JwPalette.porIndice(themeIndex), isDark = isDark) {
                 Surface {
                     FirebaseAuthGate(
                         themeIndex = themeIndex,
                         onThemeChange = { novoIndice ->
                             themeIndexState.intValue = JwPalette.porIndice(novoIndice).ordinal
                             prefs.edit().putInt("theme_index", themeIndexState.intValue).apply()
+                        },
+                        themeMode = themeMode,
+                        onThemeModeChange = { novo ->
+                            themeModeState.value = novo
+                            prefs.edit().putString("theme_mode", novo.name).apply()
                         }
                     )
                 }
@@ -72,7 +99,9 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun FirebaseAuthGate(
     themeIndex: Int,
-    onThemeChange: (Int) -> Unit
+    onThemeChange: (Int) -> Unit,
+    themeMode: ThemeMode,
+    onThemeModeChange: (ThemeMode) -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val auth = remember { FirebaseAuth.getInstance() }
@@ -110,6 +139,8 @@ private fun FirebaseAuthGate(
         App(
             themeIndex = themeIndex,
             onThemeChange = onThemeChange,
+            themeMode = themeMode,
+            onThemeModeChange = onThemeModeChange,
             onSignOut = {
                 auth.signOut()
                 user = null
