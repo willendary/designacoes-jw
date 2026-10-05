@@ -288,29 +288,62 @@ class StoreController {
     private fun save(s: Store) {
         data = s
         lastStore = s
-        saveLocal(s)
-        authSession?.let { session -> schedulePush(session.idToken) }
-    }
+        val gravou = saveLocal(s)
 
-    private fun saveLocal(s: Store) {
-        file.parentFile?.mkdirs()
-        val tmp = File(file.parentFile, "dados.json.tmp")
-        synchronized(writeLock) {
-            tmp.writeText(json.encodeToString(s))
-            try {
-                // Escrita atômica: grava em temporário e faz rename por cima,
-                // evitando deixar o dados.json pela metade se o app fechar no
-                // meio da escrita.
-                Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-            } catch (e: java.nio.file.AtomicMoveNotSupportedException) {
-                Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        // O push acontece mesmo sem gravação local, e por um motivo que vale
+        // registrar: o push usa o `Store` em memória, não o arquivo, então não
+        // corre o risco de subir meio arquivo. E se o disco falhou, a nuvem é a
+        // **única** cópia que vai sobreviver a um fechamento do programa.
+        // Não publicar seria jogar fora a chance de não perder o dado.
+        val sessao = authSession
+        if (sessao != null) schedulePush(sessao.idToken)
+
+        if (!gravou) {
+            Edt.publica {
+                reportError(
+                    if (sessao != null) {
+                        "Não consegui gravar os dados neste computador, mas enviei a alteração para a nuvem. " +
+                            "Se fechar o programa agora, o que está no disco pode estar atrás."
+                    } else {
+                        "Não consegui gravar os dados neste computador. " +
+                            "A alteração está só nesta janela: copie o que importa antes de fechar."
+                    }
+                )
             }
         }
-        // ponytail: sem fsync explícito. O rename atômico garante que o arquivo
-        // nunca fica truncado, mas uma queda de energia logo após o rename pode
-        // perder a última gravação (o SO ainda não fez flush). Custo de fsync:
-        // uma chamada FileChannel.force() por gravação — adicionar se durabilidade
-        // imediata virar requisito.
+    }
+
+    /** [true] se o `dados.json` foi gravado. */
+    private fun saveLocal(s: Store): Boolean {
+        return try {
+            file.parentFile?.mkdirs()
+            val tmp = File(file.parentFile, "dados.json.tmp")
+            synchronized(writeLock) {
+                tmp.writeText(json.encodeToString(s))
+                try {
+                    // Escrita atômica: grava em temporário e faz rename por cima,
+                    // evitando deixar o dados.json pela metade se o app fechar no
+                    // meio da escrita.
+                    Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+                } catch (e: java.nio.file.AtomicMoveNotSupportedException) {
+                    Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                }
+            }
+            true
+            // ponytail: sem fsync explícito. O rename atômico garante que o arquivo
+            // nunca fica truncado, mas uma queda de energia logo após o rename pode
+            // perder a última gravação (o SO ainda não fez flush). Custo de fsync:
+            // uma chamada FileChannel.force() por gravação — adicionar se durabilidade
+            // imediata virar requisito.
+        } catch (e: Exception) {
+            // Antes isto não tinha catch: `tmp.writeText` e `Files.move` propagavam
+            // para o onClick do Compose. Disco cheio, pasta bloqueada pelo antivírus
+            // ou OneDrive com conflito de sync viravam exceção na thread de UI,
+            // sem snackbar e sem registro. O comentário de `reportError` na classe
+            // falava em "falha de escrita" — e este caminho nunca usava ele.
+            log("saveLocal falhou: ${e.javaClass.simpleName}: ${e.message}")
+            false
+        }
     }
 
     fun login(email: String, pass: String): String? {
@@ -422,7 +455,7 @@ class StoreController {
                         // `lastStore` é @Volatile e pode ficar aqui.
                         val localAGora = data
                         val merge = mesclarCloudComLocal(cloudStore, localAGora)
-                        saveLocal(merge.store)
+                        val gravou = saveLocal(merge.store)
                         Edt.publica {
                             data = merge.store
                             lastStore = merge.store
@@ -431,6 +464,14 @@ class StoreController {
                                 // mas é o tipo de coisa que o usuário precisa saber
                                 // para não achar que o cadastro sumiu.
                                 reportError(mensagemDeNuvemVazia(merge.preservadas))
+                            } else if (!gravou) {
+                                // Veio dado bom da nuvem e ele não coube no disco:
+                                // a tela mostra o certo, o arquivo está atrás, e o
+                                // próximo boot pode reverter a tela sem explicação.
+                                reportError(
+                                    "Sincronizei, mas não consegui gravar o resultado neste computador. " +
+                                        "Se o programa for fechado agora, ele pode abrir com os dados anteriores."
+                                )
                             }
                         }
                     } else {

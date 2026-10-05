@@ -152,17 +152,26 @@ object DesktopAuthManager {
 
     fun logout() {
         currentSession = null
+        // Falha ao apagar deixa o refresh token em disco. Não é Ideal, mas o
+        // usuário pediu para sair e a sessão foi limpa da memória: avisar no
+        // log é o suficiente, e a próxima gravação sobrescreve o arquivo.
         runCatching { sessionFile.delete() }
+            .onFailure { System.err.println("[DesktopAuth] nao consegui apagar a sessao: ${it.message}") }
     }
 
-    fun saveSessionPublic(session: AuthSession) = saveSession(session)
+    /** Grava a sessão e devolve [false] se o disco recusou. */
+    fun saveSessionPublic(session: AuthSession): Boolean = saveSession(session)
 
-    private fun saveSession(session: AuthSession) {
+    private fun saveSession(session: AuthSession): Boolean {
         currentSession = session
-        runCatching {
+        // Antes era `runCatching` sem tratamento: se o disco recusasse, o
+        // resultado sumia e o próximo boot entrava "Offline" sem explicar nada.
+        // O usuário logava, o app confirmava o login, e na abertura seguinte era
+        // preciso entrar de novo sem saber por quê.
+        return runCatching {
             sessionFile.parentFile?.mkdirs()
             sessionFile.writeText(json.encodeToString(session))
-        }
+        }.isSuccess
     }
 
     private fun parseFirebaseError(jsonStr: String): String = runCatching {
