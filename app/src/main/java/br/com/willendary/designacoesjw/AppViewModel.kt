@@ -10,6 +10,8 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import br.com.willendary.designacoesjw.data.*
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
+import br.com.willendary.designacoesjw.importer.ImportadorDesignacoes
+import br.com.willendary.designacoesjw.importer.Resultado
 import br.com.willendary.designacoesjw.export.CsvDataHandler
 import br.com.willendary.designacoesjw.export.ListaDeNomes
 import br.com.willendary.designacoesjw.export.MwbProgramImporter
@@ -487,6 +489,33 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val item = meeting.program.getOrNull(position - 1) ?: return null
         val ids = meeting.programAssignments.firstOrNull { it.item == position }?.brotherIds.orEmpty()
         return AssignmentGenerator.unqualifiedWarning(item, ids, brothers.value)
+    }
+
+    /**
+     * Grava as designações de partes que vieram coladas da IA.
+     *
+     * Só toca em `programAssignments` — as partes do programa. **Não toca em
+     * `assignments`**, que são os privilégios mecânicos: são coisas diferentes,
+     * vêm de listas diferentes e uma lista de partes do programa nunca tem o
+     * direito de mexer num cargo de som ou de orador.
+     *
+     * @param substituindo troca a semana inteira das reuniões tocadas; sem isso,
+     *   acrescenta ao que já estava.
+     * @return quantas linhas entraram, para a tela dizer.
+     */
+    fun aplicarDesignacoesColadas(
+        resultados: List<Resultado>,
+        substituindo: Boolean
+    ): Int {
+        if (!can(AppPermissions.GENERATE_ASSIGNMENTS)) {
+            lastActionError.value = denied(AppPermissions.GENERATE_ASSIGNMENTS, "importar designações")
+            return 0
+        }
+        val novas = ImportadorDesignacoes.aplicar(resultados, meetings.value, substituindo)
+        if (novas == meetings.value) return 0
+        meetings.value = novas.sortedBy { AssignmentGenerator.parseDate(it.date) }
+        repo.saveMeetings(meetings.value)
+        return resultados.count { it.podeEntrar }
     }
 
     fun deleteMeeting(meetingId: Long): Meeting? {

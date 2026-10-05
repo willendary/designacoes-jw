@@ -45,6 +45,7 @@ import br.com.willendary.designacoesjw.screens.EditPrivilegeDialog
 import br.com.willendary.designacoesjw.stats.EquityStatisticsHelper
 import br.com.willendary.designacoesjw.ui.MeetingProgramList
 import br.com.willendary.designacoesjw.export.MonthBoardPrint
+import br.com.willendary.designacoesjw.importer.DialogoImportarDesignacoes
 import br.com.willendary.designacoesjw.sync.Changelog
 import br.com.willendary.designacoesjw.ui.JwCard
 import br.com.willendary.designacoesjw.screens.ReplaceDialog
@@ -487,6 +488,7 @@ private fun HomeScreen(vm: AppViewModel) {
     var month by remember { mutableStateOf(YearMonth.now()) }
     var selectedMeetingId by remember { mutableStateOf<Long?>(null) }
     var showRegenerateConfirm by remember { mutableStateOf(false) }
+    var showImportDialog by remember { mutableStateOf(false) }
     var viewMode by remember { mutableStateOf("LIST") } // "LIST" or "CALENDAR"
     var showEquityDialog by remember { mutableStateOf(false) }
     var showMeetingDaysDialog by remember { mutableStateOf(false) }
@@ -698,6 +700,20 @@ private fun HomeScreen(vm: AppViewModel) {
                             Text("Equidade", style = MaterialTheme.typography.labelMedium)
                         }
 
+                        // Importar as partes que vieram da IA. Fica no mês, e não
+                        // em cada reunião, porque a lista colada costuma trazer
+                        // várias semanas de uma vez.
+                        OutlinedButton(
+                            enabled = vm.can(AppPermissions.GENERATE_ASSIGNMENTS) &&
+                                monthMeetings.any { it.program.isNotEmpty() },
+                            onClick = { showImportDialog = true },
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
+                        ) {
+                            Icon(Icons.Filled.ContentPaste, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Colar", style = MaterialTheme.typography.labelMedium)
+                        }
+
                         // Menu Exportar
                         Box {
                             OutlinedButton(
@@ -816,6 +832,39 @@ private fun HomeScreen(vm: AppViewModel) {
     }
 
     // Diálogos Modais da Home
+    if (showImportDialog) {
+        DialogoImportarDesignacoes(
+            reunioes = vm.meetings.value,
+            irmaos = vm.brothers.value,
+            anoDeReferencia = month.year,
+            aoAbrirConversa = { url ->
+                // Preferir o app instalado; cair para o navegador se não houver.
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                runCatching {
+                    context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }.onFailure {
+                    runCatching {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                .addCategory(Intent.CATEGORY_BROWSABLE)
+                        )
+                    }
+                }
+            },
+            aoConfirmar = { resultados, substituir ->
+                val quantas = vm.aplicarDesignacoesColadas(resultados, substituir)
+                showImportDialog = false
+                if (quantas > 0) {
+                    vm.reportError(
+                        if (substituir) "Substituí $quantas designações pelas coladas."
+                        else "Adicionei $quantas designações."
+                    )
+                }
+            },
+            aoFechar = { showImportDialog = false }
+        )
+    }
+
     if (showRegenerateConfirm) {
         AlertDialog(
             onDismissRequest = { showRegenerateConfirm = false },
