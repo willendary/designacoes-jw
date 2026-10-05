@@ -801,7 +801,7 @@ private fun HomeScreen(vm: AppViewModel) {
         AlertDialog(
             onDismissRequest = { showRegenerateConfirm = false },
             title = { Text(stringResource(R.string.regenerar_escala_do_mes)) },
-            text = { Text("As ${monthMeetings.size} reuniões de ${monthName} serão recalculadas e substituídas de acordo com as regras atuais.") },
+            text = { Text(stringResource(R.string.regenerar_explicacao, monthMeetings.size, monthName)) },
             confirmButton = {
                 Button({
                     vm.deleteMonth(month)

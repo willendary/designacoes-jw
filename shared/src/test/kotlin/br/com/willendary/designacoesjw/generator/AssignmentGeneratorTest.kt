@@ -762,4 +762,88 @@ class AssignmentGeneratorTest {
             "nextId tem que ficar longe do id derivado"
         )
     }
+
+    // --- DJW-004: "Gerar" o mês não apaga o programa da semana ---
+
+    private val programaDaSemana = listOf(
+        ProgramItem(number = 1, title = "Joias espirituais", minutes = 10),
+        ProgramItem(number = 2, title = "Encenação", minutes = 5, kind = PartKind.PAIR)
+    )
+
+    private fun reuniaoDe07ComConteudo(): Meeting = Meeting(
+        id = 99L,
+        date = "07/10/2026",
+        type = "Reunião de Meio de Semana",
+        assignments = listOf(Assignment(1, 10)),
+        blockedBrotherIds = setOf(12L),
+        theme = "JEREMIAS 40-41",
+        program = programaDaSemana,
+        programAssignments = listOf(ProgramAssignment(1, listOf(10L, 11L)))
+    )
+
+    @Test
+    fun `gerar o mes preserva o programa importado`() {
+        val jaExistia = reuniaoDe07ComConteudo()
+
+        val gerado = AssignmentGenerator.generateMonth(
+            YearMonth.of(2026, 10), MeetingSchedule(3, 6), irmaosDjw005, privilegiosDjw005,
+            existingMeetings = listOf(jaExistia)
+        )
+
+        val seteDeOutubro = gerado.first { it.date == "07/10/2026" }
+        assertEquals(programaDaSemana, seteDeOutubro.program, "o programa do jw.org foi apagado")
+        assertEquals("JEREMIAS 40-41", seteDeOutubro.theme, "a leitura do dia foi apagada")
+    }
+
+    @Test
+    fun `gerar o mes preserva quem ficou com cada parte do programa`() {
+        val gerado = AssignmentGenerator.generateMonth(
+            YearMonth.of(2026, 10), MeetingSchedule(3, 6), irmaosDjw005, privilegiosDjw005,
+            existingMeetings = listOf(reuniaoDe07ComConteudo())
+        )
+
+        val seteDeOutubro = gerado.first { it.date == "07/10/2026" }
+        assertEquals(
+            listOf(ProgramAssignment(1, listOf(10L, 11L))),
+            seteDeOutubro.programAssignments,
+            "as partes designadas a mao foram apagadas"
+        )
+    }
+
+    @Test
+    fun `gerar o mes preserva o irmao bloqueado naquela reuniao`() {
+        val gerado = AssignmentGenerator.generateMonth(
+            YearMonth.of(2026, 10), MeetingSchedule(3, 6), irmaosDjw005, privilegiosDjw005,
+            existingMeetings = listOf(reuniaoDe07ComConteudo())
+        )
+
+        val seteDeOutubro = gerado.first { it.date == "07/10/2026" }
+        assertEquals(setOf(12L), seteDeOutubro.blockedBrotherIds, "o bloqueio manual foi perdido")
+    }
+
+    @Test
+    fun `gerar o mes recalcula as designacoes mecanicas`() {
+        // O contrário também precisa valer: preservar o conteudo da semana não
+        // pode virar "não regenerou nada".
+        val gerado = AssignmentGenerator.generateMonth(
+            YearMonth.of(2026, 10), MeetingSchedule(3, 6), irmaosDjw005, privilegiosDjw005,
+            existingMeetings = listOf(reuniaoDe07ComConteudo())
+        )
+
+        val seteDeOutubro = gerado.first { it.date == "07/10/2026" }
+        assertEquals(1, seteDeOutubro.assignments.size, "a privilege mecanica nao foi recalculada")
+        assertEquals(1L, seteDeOutubro.assignments.first().privilegeId)
+    }
+
+    @Test
+    fun `reuniao que ainda nao existe nao ganha conteudo inventado`() {
+        val gerado = AssignmentGenerator.generateMonth(
+            YearMonth.of(2026, 10), MeetingSchedule(3, 6), irmaosDjw005, privilegiosDjw005,
+            existingMeetings = emptyList()
+        )
+
+        assertTrue(gerado.all { it.program.isEmpty() }, "reuniao nova nao pode ter programa")
+        assertTrue(gerado.all { it.programAssignments.isEmpty() })
+        assertTrue(gerado.all { it.blockedBrotherIds.isEmpty() })
+    }
 }

@@ -53,7 +53,11 @@ object AssignmentGenerator {
                 history = history,
                 previousMeeting = prevMeeting
             )
-            generated += meeting
+            // O chamador tira do mês as reuniões antigas antes de chamar isto, e
+            // quem volta são estas — então o programa e as decisões da semana
+            // tinham de vir junto. Ver [preservarConteudoDaSemana].
+            val jaExistia = history.firstOrNull { it.date == meeting.date }
+            generated += if (jaExistia == null) meeting else preservarConteudoDaSemana(meeting, jaExistia)
             history = history + meeting
         }
 
@@ -137,6 +141,36 @@ object AssignmentGenerator {
             type = type,
             assignments = result,
             blockedBrotherIds = blocked
+        )
+    }
+
+    /**
+     * Junta a reunião gerada com o que a reunião do mesmo dia já tinha.
+     *
+     * **Só o que muda a cada semana é regenerado: [Meeting.assignments].** Tudo
+     * o que é decisão humana ou vem do jw.org atravessa:
+     *
+     * - `program` — o programa oficial importado. Uma hora de digitação;
+     * - `programAssignments` — quem ficou com cada parte, decidido por quem
+     *   designa com a reunião na mão;
+     * - `theme` — a leitura do dia ("JEREMIAS 40-41"), que vem do import;
+     * - `blockedBrotherIds` — quem foi bloqueado daquela reunião. Bloquear é
+     *   decisão, não cálculo.
+     *
+     * Sem isto, "Gerar" do mês apagava o programa importado e as designações
+     * manuais, sem aviso — e o diálogo de confirmação não dizia nada disso, ou
+     * seja, confirmava uma pergunta errada.
+     *
+     * @param gerada a reunião que [generateMeeting] acabou de produzir.
+     * @param existente a reunião anterior da mesma data, ou `null` na primeira vez.
+     */
+    fun preservarConteudoDaSemana(gerada: Meeting, existente: Meeting?): Meeting {
+        if (existente == null) return gerada
+        return gerada.copy(
+            program = existente.program,
+            programAssignments = existente.programAssignments,
+            theme = existente.theme,
+            blockedBrotherIds = existente.blockedBrotherIds
         )
     }
 

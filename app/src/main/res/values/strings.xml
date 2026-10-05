@@ -76,6 +76,7 @@
     <string name="quantidade_necessaria_por_reuniao">Quantidade necessária por reunião</string>
     <string name="regenerar">Regenerar</string>
     <string name="regenerar_escala_do_mes">Regenerar escala do mês?</string>
+    <string name="regenerar_explicacao">As %1$d reuniões de %2$s serão recalculadas. O programa importado do jw.org, as partes que você já designou e os irmãos bloqueados naquela semana são mantidos.</string>
     <string name="remover">Remover</string>
     <string name="sair_da_conta">Sair da conta</string>
     <string name="salvar">Salvar</string>
