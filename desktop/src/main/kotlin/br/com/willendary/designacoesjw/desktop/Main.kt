@@ -48,6 +48,8 @@ import br.com.willendary.designacoesjw.export.MwbProgramImporter
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
 import br.com.willendary.designacoesjw.stats.EquityStatisticsHelper
 import br.com.willendary.designacoesjw.sync.CoalescingWorker
+import br.com.willendary.designacoesjw.sync.ContadorSincronizacao
+import br.com.willendary.designacoesjw.sync.EstadoSincronizacao
 import br.com.willendary.designacoesjw.sync.falhasDoPush
 import br.com.willendary.designacoesjw.sync.mensagemDeFalhaNoPush
 import br.com.willendary.designacoesjw.sync.mensagemDeNuvemVazia
@@ -211,6 +213,25 @@ class StoreController {
     private val ultimaFalhaFoiDeToken = java.util.concurrent.atomic.AtomicBoolean(false)
 
     /**
+     * O que a tela mostra sobre a sincronização.
+     *
+     * [EstadoSincronizacao] e [ContadorSincronizacao] já existiam, com teste, e
+     * são usados sete vezes no Android. No desktop havia só
+     * `pendingLocalChange`: um booleano interno, sem contador, sem rótulo e sem
+     * nenhum hook de UI — lido apenas dentro de `syncWithCloud`. Com a carência de
+     * 2 s do [CoalescingWorker], o usuário editava, fechava o programa, e o push
+     * podia não ter saído: **sem como ele saber**.
+     *
+     * Reaproveitar o mesmo tipo é o ponto. "1 alteração não enviada" e "Falha ao
+     * enviar" são palavras que já foram escritas e testadas para o outro app; o
+     * desktop não devia inventar um terceiro vocabulário para a mesma coisa.
+     *
+     * `var syncStatus` continua existindo e alimentando o rodapé antigo — trocar
+     * a tela inteira é DJW-034, e as duas fontes dizem a mesma coisa agora.
+     */
+    private val sync = ContadorSincronizacao()
+
+    /**
      * Há alteração local ainda não confirmada pelo servidor?
      *
      * Sem isto, um sync que chega da nuvem depois de uma edição local
@@ -226,7 +247,12 @@ class StoreController {
         debounceMs = PUSH_DEBOUNCE_MS,
         current = { lastStore },
         action = { snapshot ->
-            val token = tokenParaPush() ?: throw PushIncompleto(listOf("sessão"))
+            val token = tokenParaPush() ?: run {
+                sync.falhou("sem sessão: entre de novo para sincronizar")
+                throw PushIncompleto(listOf("sessão"))
+            }
+            sync.emGravacao()
+            publicarEstadoSinc()
             var falhas = pushToCloud(token, snapshot)
 
             // Token revogado não se resolve com tempo: o servidor respondeu 401
@@ -247,10 +273,17 @@ class StoreController {
             // passou, e o `onError` recebe o motivo.
             if (falhas.isNotEmpty()) throw PushIncompleto(falhas)
             pendingLocalChange = false
+            sync.confirmada()
+            publicarEstadoSinc()
         },
         onError = { e ->
             val colecoes = (e as? PushIncompleto)?.colecoes
             System.err.println("[StoreController] push falhou: ${e.message}")
+            // `falhou` **não** volta o contador: a escrita continua não enviada, e
+            // é isso que a pessoa precisa saber — o dado está seguro, falta
+            // chegar aos outros.
+            sync.falhou(e.message ?: "falha ao enviar")
+            publicarEstadoSinc()
             // Continua marcado como pendente: o servidor ainda não tem isso.
             publicarFalhaDePush(
                 if (colecoes != null) mensagemDeFalhaNoPush(colecoes)
@@ -258,6 +291,24 @@ class StoreController {
             )
         }
     )
+
+    /**
+     * Publica o [EstadoSincronizacao] na thread de UI.
+     *
+     * Existe como função porque o estado muda na thread do push e o Compose só
+     * recompõe na EDT — e porque "publicar" aparece em quatro lugares, que é
+     * exatamente onde uma assinatura esquecida passaria despercebida.
+     */
+    private fun publicarEstadoSinc() {
+        Edt.publica { estadoSincronizacaoState.value = sync.atual }
+    }
+
+    /** Espelho do contador, em estado do Compose, para a barra reagir. */
+    private val estadoSincronizacaoState =
+        mutableStateOf(EstadoSincronizacao())
+
+    /** O que a barra mostra. Lê o espelho, não o contador. */
+    val estadoSincronizacao: EstadoSincronizacao get() = estadoSincronizacaoState.value
 
     /**
      * Token válido para o push, renovando se estiver perto de expirar. Faz rede.
@@ -533,8 +584,11 @@ class StoreController {
                         falhas = pushToCloud(session.idToken, lastStore)
                     }
                     val msg = if (falhas.isNotEmpty()) mensagemDeFalhaNoPush(falhas) else null
+                    sync.lidaDoServidor()
+                    if (msg != null) sync.falhou(msg)
                     Edt.publica {
                         isSyncing = false
+                        estadoSincronizacaoState.value = sync.atual
                         if (msg != null) {
                             // A nuvem pode ter trazido dado bom mesmo assim; o que
                             // falhou foi enviar o que o usuário acabou de editar.
@@ -1145,10 +1199,65 @@ class StoreController {
     }
 }
 
+/**
+ * Sair com alteração que não subiu.
+ *
+ * Três saídas, porque há três decisões diferentes:
+ * - **Sincronizar e sair** — o caminho que preserva o dado;
+ * - **Sair assim mesmo** — o usuário sabe o que está fazendo e pode sincronizar
+ *   depois de abrir de novo;
+ * - **Cancelar** — o padrão de todo diálogo, porque um modal sem caminho de
+ *   volta é um erro.
+ */
+@Composable
+private fun DialogoSaidaComPendencia(
+    rotulo: String,
+    aoEsperar: () -> Unit,
+    aoSairAssimMesmo: () -> Unit,
+    aoCancelar: () -> Unit
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = aoCancelar) {
+        Surface(
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+            color = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+            modifier = Modifier.width(420.dp).padding(20.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Default.CloudOff, null, tint = JwTheme.colors.alerta)
+                    Text("Ainda não enviei para a nuvem", fontWeight = FontWeight.Bold)
+                }
+                Text("Estado atual: $rotulo.")
+                Text(
+                    "Se fechar agora, essa alteração fica só neste computador. " +
+                        "Abrindo o programa de novo ela volta a ser enviada.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
+                ) {
+                    TextButton(onClick = aoCancelar) { Text("Cancelar") }
+                    TextButton(onClick = aoSairAssimMesmo) { Text("Sair assim mesmo") }
+                    Button(onClick = aoEsperar) { Text("Sincronizar e sair") }
+                }
+            }
+        }
+    }
+}
+
 fun main() = application {
-    val c = remember { StoreController() }
+    val controller = remember { StoreController() }
+    val c = controller
     var updateInfo by remember { mutableStateOf<WindowsUpdateInfo?>(null) }
     var checkingUpdate by remember { mutableStateOf(true) }
+    var mostrarConfirmacaoDeSaida by remember { mutableStateOf(false) }
 
     // "O que ha de novo" e a checagem de atualizacao sao a mesma ida ao
     // servidor. Uma so chamada na abertura, nao duas.
@@ -1170,7 +1279,18 @@ fun main() = application {
     }
 
     Window(
-        onCloseRequest = ::exitApplication,
+        // Fechar com alteração não enviada é a forma de perder o dado: o push
+        // tem 2 s de carência, e fechar mata o worker antes dele sair. O aviso
+        // dá uma escolha — sair esperando a barra confirmar, ou sair mesmo assim
+        // sabendo que vai precisar sincronizar de novo.
+        onCloseRequest = {
+            val estado = controller.estadoSincronizacao
+            if (estado.mereceAviso) {
+                mostrarConfirmacaoDeSaida = true
+            } else {
+                exitApplication()
+            }
+        },
         title = "Designações JW $CURRENT_VERSION",
         state = rememberWindowState(width = 1280.dp, height = 800.dp)
     ) {
@@ -1211,6 +1331,17 @@ fun main() = application {
             }
             novidades?.let { changelog ->
                 DialogoNovidades(changelog, aoFechar = { novidades = null })
+            }
+            if (mostrarConfirmacaoDeSaida) {
+                DialogoSaidaComPendencia(
+                    rotulo = c.estadoSincronizacao.rotulo,
+                    aoEsperar = {
+                        mostrarConfirmacaoDeSaida = false
+                        c.syncWithCloud { _, _ -> mostrarConfirmacaoDeSaida = true }
+                    },
+                    aoSairAssimMesmo = { exitApplication() },
+                    aoCancelar = { mostrarConfirmacaoDeSaida = false }
+                )
             }
             if (!checkingUpdate && updateInfo != null) {
                 UpdateDialog(

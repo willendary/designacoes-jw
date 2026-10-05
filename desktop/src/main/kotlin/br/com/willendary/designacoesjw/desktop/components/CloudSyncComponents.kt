@@ -41,9 +41,16 @@ fun CloudSyncBar(c: StoreController) {
             Text("Entrar na Conta (Nuvem)", fontSize = 13.sp)
         }
     } else {
+        // O estado vem do mesmo `EstadoSincronizacao` que o Android usa, com o
+        // mesmo vocabulario. Antes a barra mostrava so o e-mail: nao havia como
+        // saber se o que estava na tela ja tinha subido, e com a carencia de 2 s
+        // do worker o push podia nem ter saído. `mereceAviso` esconde o rotulo
+        // quando esta tudo bem — silencio e o estado bom.
+        val sync = c.estadoSincronizacao
         Surface(
             shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.primaryContainer,
+            color = if (sync.ultimaFalha != null) JwTheme.colors.perigo.copy(alpha = 0.12f)
+            else MaterialTheme.colorScheme.primaryContainer,
             modifier = Modifier.clip(RoundedCornerShape(20.dp))
         ) {
             Row(
@@ -52,20 +59,46 @@ fun CloudSyncBar(c: StoreController) {
                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
             ) {
                 Icon(
-                    Icons.Default.CloudDone,
+                    when {
+                        sync.ultimaFalha != null -> Icons.Default.CloudOff
+                        sync.pendentes > 0 -> Icons.Default.CloudSync
+                        else -> Icons.Default.CloudDone
+                    },
                     contentDescription = null,
-                    tint = JwTheme.colors.sucesso,
+                    tint = if (sync.ultimaFalha != null) JwTheme.colors.perigo else JwTheme.colors.sucesso,
                     modifier = Modifier.size(18.dp)
                 )
-                Text(
-                    text = session.email.ifBlank { "Conectado" },
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium
-                )
+                if (sync.mereceAviso) {
+                    Text(
+                        text = sync.rotulo,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = if (sync.ultimaFalha != null) JwTheme.colors.perigo
+                        else MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    // Falha sem saída é um beco: o botão de sincronizar não
+                    // resolve permissão negada nem token revogado. Sair e entrar
+                    // de novo resolve os dois.
+                    if (sync.ultimaFalha != null) {
+                        IconButton(onClick = { c.logout() }, modifier = Modifier.size(24.dp)) {
+                            Icon(
+                                Icons.Default.Logout,
+                                contentDescription = "Sair e entrar de novo",
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                } else {
+                    Text(
+                        text = session.email.ifBlank { "Conectado" },
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
 
                 if (c.isSyncing) {
                     CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                } else {
+                } else if (!sync.mereceAviso) {
                     IconButton(
                         onClick = { c.syncWithCloud() },
                         modifier = Modifier.size(24.dp)
