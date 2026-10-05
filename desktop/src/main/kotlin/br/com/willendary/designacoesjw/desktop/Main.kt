@@ -201,8 +201,14 @@ class StoreController {
     @Volatile
     private var lastStore: Store = initialStore
 
-    @Volatile
-    private var pushToken: String = ""
+    /**
+     * A última falha de push veio de token recusado (HTTP 401)?
+     *
+     * [AtomicBoolean] e não um `var` porque é escrito na thread de push e lida na
+     * mesma thread — mas ele também sobrevive a uma leitura de outra, e um campo
+     * comum daria ao JVM a liberdade de emendar a leitura.
+     */
+    private val ultimaFalhaFoiDeToken = java.util.concurrent.atomic.AtomicBoolean(false)
 
     /**
      * Há alteração local ainda não confirmada pelo servidor?
@@ -220,10 +226,25 @@ class StoreController {
         debounceMs = PUSH_DEBOUNCE_MS,
         current = { lastStore },
         action = { snapshot ->
+            val token = tokenParaPush() ?: throw PushIncompleto(listOf("sessão"))
+            var falhas = pushToCloud(token, snapshot)
+
+            // Token revogado não se resolve com tempo: o servidor respondeu 401
+            // mesmo com o token ainda no prazo. Uma renovação e uma nova tentativa,
+            // e só uma — se não resolveu com o token novo, o problema é outro.
+            if (falhas.isNotEmpty() && tokenFoiRecusado()) {
+                // Só 401 entra aqui: 403 é falta de permissão, e renovar o token
+                // não muda nada — dizer "renovei" seria mentira.
+                val renovada = DesktopAuthManager.renovarAgora(authSession)
+                if (renovada != null) {
+                    Edt.publica { authSession = renovada }
+                    if (renovada.idToken != token) falhas = pushToCloud(renovada.idToken, snapshot)
+                }
+            }
+
             // Lançar é o que faz o worker parar de fingir que deu certo: o
             // `pendingLocalChange = false` abaixo só roda se o push inteiro
             // passou, e o `onError` recebe o motivo.
-            val falhas = pushToCloud(pushToken, snapshot)
             if (falhas.isNotEmpty()) throw PushIncompleto(falhas)
             pendingLocalChange = false
         },
@@ -238,8 +259,42 @@ class StoreController {
         }
     )
 
-    private fun schedulePush(token: String) {
-        pushToken = token
+    /**
+     * Token válido para o push, renovando se estiver perto de expirar. Faz rede.
+     *
+     * **É isto que mantinha o app quebrado depois de uma hora de uso.** A
+     * renovação só acontecia no `init`, uma vez. O `idToken` do Firebase dura 1 h;
+     * passado isso, todo `PATCH` voltava 401, sem retry e sem aviso — e como o
+     * push descartava o resultado (DJW-002), o usuário via "Sincronizado" e a
+     * congregação ficava só no aparelho até ele fechar e abrir o programa.
+     *
+     * @return o `idToken` a usar, ou `null` se não há sessão.
+     */
+    private fun tokenParaPush(): String? {
+        val sessao = authSession ?: return null
+        val renovada = DesktopAuthManager.refreshIfNeeded(sessao) ?: return null
+        if (renovada != sessao) {
+            // `authSession` é estado do Compose; a troca precisa ser na EDT.
+            Edt.publica { authSession = renovada }
+        }
+        return renovada.idToken
+    }
+
+    /**
+     * O último push foi recusado por token (HTTP 401)? Serve de gatilho para uma
+     * renovação e uma nova tentativa.
+     */
+    private fun tokenFoiRecusado(): Boolean = ultimaFalhaFoiDeToken.get()
+
+    /**
+     * Pede um push.
+     *
+     * Sem token: o `pushWorker` chama [tokenParaPush] na hora de executar, e não
+     * no momento do agendamento. A diferença é a会话 de uma hora — com o token
+     * guardado no agendamento, o push usava sempre o token do último `save`, e
+     * uma hora depois de aberto o app subia tudo com um token vencido.
+     */
+    private fun schedulePush() {
         pendingLocalChange = true
         pushWorker.schedule()
     }
@@ -296,7 +351,7 @@ class StoreController {
         // **única** cópia que vai sobreviver a um fechamento do programa.
         // Não publicar seria jogar fora a chance de não perder o dado.
         val sessao = authSession
-        if (sessao != null) schedulePush(sessao.idToken)
+        if (sessao != null) schedulePush()
 
         if (!gravou) {
             Edt.publica {
@@ -524,6 +579,7 @@ class StoreController {
      * disparava para falha de HTTP, porque falha de HTTP não era exceção.
      */
     private fun pushToCloud(token: String, snapshot: Store): List<String> {
+        ultimaFalhaFoiDeToken.set(false)
         // Um `runCatching` por coleção: `runCatching` na volta inteira esconderia
         // a falha de uma e deixaria as outras sem registro, que é exatamente o
         // defeito que isto corrige.
@@ -614,6 +670,9 @@ class StoreController {
 
     private fun logFalhaDePush(rotulo: String, erro: Throwable) {
         log("push: $rotulo recusado: ${erro.javaClass.simpleName}: ${erro.message}")
+        if (erro.message?.contains("HTTP 401") == true) {
+            ultimaFalhaFoiDeToken.set(true)
+        }
     }
 
     /** Push incompleto: alguma coleção ficou só neste aparelho. */

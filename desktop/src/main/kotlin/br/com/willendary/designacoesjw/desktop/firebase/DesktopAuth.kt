@@ -40,9 +40,70 @@ private data class RefreshTokenResponse(
     @SerialName("user_id") val userId: String = ""
 )
 
+/**
+ * A sessão é gravada cifrada com a **DPAPI do Windows**, a proteção de disco do
+ * próprio usuário do Windows.
+ *
+ * **Por que.** O refresh token é de longa duração: com ele, dá para emitir
+ * idTokens novos sem pedir a senha. Em texto claro dentro de
+ * `~/.designacoes-jw/auth_session.json`, qualquer programa rodando com a mesma
+ * conta lia o token — e também qualquer backup, ou uma pasta sincronizada na
+ * nuvem, ou o botão "Abrir pasta dos dados" da tela de Configurações, que abre
+ * exatamente a pasta onde ele mora. DPAPI não é um esquema do projeto: quem
+ * decifra precisa ser o mesmo usuário, no mesmo Windows.
+ *
+ * **Por que JNA.** O JDK não expõe `CryptProtectData`.
+ * `Cipher.getInstance("Windows-ENCRYPTION")` **não** é um provedor dele — é um
+ * provedor do JNA, e usá-lo sem declarar a dependência daria `NoSuchProvider`.
+ * São 1,8 MB num app de 93 MB.
+ *
+ * **Por que não há fallback para texto claro.** Se a DPAPI falhar, a gravação
+ * falha e o usuário entra de novo no próximo boot. Isso é melhor do que gravar o
+ * token sem proteção e fingir que salvou — e o desktop é Windows
+ * (`targetFormats(Exe, Msi)`), então não há caminho legítimo onde a DPAPI não
+ * esteja.
+ *
+ * Arquivos antigos em texto claro continuam sendo lidos: [loadSessionFromDisk]
+ * reconhece o cabeçalho do formato novo e, sem ele, assume o antigo, lê e regrava
+ * cifrado.
+ */
+internal object SessionCrypt {
+
+    /** Cabeçalho do arquivo cifrado. Sem ele, é o formato antigo em texto claro. */
+    private const val CABECALHO = "DESIGNACOESJW-SESSAO-CIFRADA:"
+
+    fun cifrar(texto: String): String {
+        val protegido = com.sun.jna.platform.win32.Crypt32Util.cryptProtectData(
+            texto.toByteArray(StandardCharsets.UTF_8)
+        )
+        return CABECALHO + java.util.Base64.getEncoder().encodeToString(protegido)
+    }
+
+    fun decifrar(conteudo: String): String {
+        val base64 = conteudo.removePrefix(CABECALHO)
+        val bytes = java.util.Base64.getDecoder().decode(base64.trim())
+        val desprotegido = com.sun.jna.platform.win32.Crypt32Util.cryptUnprotectData(bytes)
+        return String(desprotegido, StandardCharsets.UTF_8)
+    }
+
+    fun pareceCifrado(conteudo: String): Boolean = conteudo.trimStart().startsWith(CABECALHO)
+}
+
 object DesktopAuthManager {
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
-    private val sessionFile = File(System.getProperty("user.home"), ".designacoes-jw/auth_session.json")
+
+    /**
+     * Onde a sessão mora. Apontável só para teste.
+     *
+     * É a única costura do objeto, e existe por um motivo concreto: a migração do
+     * formato antigo para o cifrado é o caminho que faz **quem já usa o app**
+     * perder o login se estiver errado, e ela não se prova sozinha. Com o
+     * arquivo redirecionável, dá para escrever um `auth_session.json` em texto
+     * claro, chamar [loadSessionFromDisk] e conferir que leu **e regravou
+     * cifrado** — sem isso a migração éfaith em quem a escreve.
+     */
+    internal var sessionFile: File =
+        File(System.getProperty("user.home"), ".designacoes-jw/auth_session.json")
 
     var currentSession: AuthSession? = null
         private set
@@ -60,7 +121,41 @@ object DesktopAuthManager {
      */
     fun loadSessionFromDisk(): AuthSession? {
         if (!sessionFile.exists()) return null
-        return runCatching { json.decodeFromString<AuthSession>(sessionFile.readText()) }.getOrNull()
+        val conteudo = runCatching { sessionFile.readText() }.getOrNull() ?: return null
+
+        val sessao = runCatching {
+            if (SessionCrypt.pareceCifrado(conteudo)) {
+                json.decodeFromString<AuthSession>(SessionCrypt.decifrar(conteudo))
+            } else {
+                // Arquivo no formato antigo, em texto claro. Lê e regrava
+                // cifrado: quem tinha a pasta expondo o token deixa de ter.
+                val antiga = json.decodeFromString<AuthSession>(conteudo)
+                saveSession(antiga)
+                antiga
+            }
+        }.getOrNull()
+
+        if (sessao == null) {
+            // Cifrado mas ilegível: DPAPI de outra conta, ou arquivo alterado.
+            // Não tenta texto claro — seria aceitar um arquivo forjado.
+            System.err.println("[DesktopAuth] sessao ilegivel; va ser preciso entrar de novo")
+        }
+        return sessao
+    }
+
+    /**
+     * Renova o token **sem** olhar a validade.
+     *
+     * Para quando o servidor já respondeu 401: um token ainda "no prazo" pode
+     * ter sido revogado (senha trocada, sessões revogadas, app removido do
+     * dispositivo). Verificar a validade diria "não precisa renovar" e o push
+     * falharia de novo com o mesmo token.
+     *
+     * **Faz rede** — thread de background, nunca a de UI.
+     */
+    fun renovarAgora(session: AuthSession?): AuthSession? {
+        if (session == null) return null
+        return refreshSession(session.refreshToken).getOrNull() ?: session
     }
 
     /**
@@ -170,7 +265,9 @@ object DesktopAuthManager {
         // preciso entrar de novo sem saber por quê.
         return runCatching {
             sessionFile.parentFile?.mkdirs()
-            sessionFile.writeText(json.encodeToString(session))
+            sessionFile.writeText(SessionCrypt.cifrar(json.encodeToString(session)))
+        }.onFailure {
+            System.err.println("[DesktopAuth] nao consegui gravar a sessao: ${it.message}")
         }.isSuccess
     }
 

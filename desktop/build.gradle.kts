@@ -72,6 +72,14 @@ dependencies {
     implementation(compose.materialIconsExtended)
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
+    // DPAPI do Windows, para cifrar a sessao. O JDK nao expoe CryptProtectData:
+    // `Cipher.getInstance("Windows-ENCRYPTION")` nao e' um provedor dele, e' um
+    // provedor do JNA. Sem isto, o refresh token de longa duracao fica em texto
+    // claro em ~/.designacoes-jw/auth_session.json — legivel por qualquer
+    // programa da conta, por qualquer backup, e pelo botao "Abrir pasta dos
+    // dados" da tela de Configuracoes. Sao 1,8 MB num app de 93 MB.
+    implementation("net.java.dev.jna:jna-platform:5.14.0")
+
     // O desktop nao tinha nenhum teste. `StoreController` e
     // `DesktopFirestoreClient` — onde mora a perda de dado e o tratamento de
     // erro do app — sao exatamente o que nao se pode deixar sem prova.
