@@ -115,7 +115,15 @@ object WindowsUpdateManager {
                 )
 
                 onInstalling()
-                launchInstallerAndExit(targetFile)
+                // `false` = o instalador não abriu. Ficar no app com o arquivo
+                // baixado e o caminho na mão é melhor que fechar sem instalar e
+                // sem o usuário saber por quê.
+                if (!launchInstallerAndExit(targetFile)) {
+                    onError(
+                        "Não consegui abrir o instalador automaticamente. Ele ficou em ${targetFile.parentFile}. " +
+                            "Abra o arquivo ${targetFile.name} de lá."
+                    )
+                }
             } catch (e: Throwable) {
                 val msg = e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName
                 onError(msg)
@@ -150,7 +158,18 @@ object WindowsUpdateManager {
                 val location = conn.getHeaderField("Location")
                     ?: throw IllegalStateException("Redirecionamento HTTP $code sem cabeçalho Location.")
                 conn.disconnect()
-                currentUrl = if (location.startsWith("http://") || location.startsWith("https://")) {
+                // **Rejeita http://.** O endpoint da API é https, mas o `Location`
+                // é decidido pelo servidor de onde o arquivo está, e o código
+                // aceitava os dois esquemas. Um `Location: http://...` derrubava
+                // para texto claro — e o resultado disso é executado com
+                // `explorer.exe`. Não é hipótese: proxy corporativo ou CDN
+                // configurado errado mandam http sem querer.
+                if (location.startsWith("http://")) {
+                    throw IllegalStateException(
+                        "O servidor mandou o download por http://, sem criptografia. Recusei o instalador."
+                    )
+                }
+                currentUrl = if (location.startsWith("https://")) {
                     location
                 } else {
                     URI(currentUrl).resolve(location).toString()
@@ -217,10 +236,11 @@ object WindowsUpdateManager {
         }
     }
 
-    private fun launchInstallerAndExit(installerFile: File) {
+    /** [true] se o instalador foi aberto. [false] se nenhuma das três formas funcionou. */
+    private fun launchInstaller(installerFile: File): Boolean {
         val path = installerFile.absolutePath
 
-        val started = runCatching {
+        val viaNativo = runCatching {
             if (installerFile.extension.equals("msi", ignoreCase = true)) {
                 ProcessBuilder("msiexec.exe", "/i", path).start()
             } else {
@@ -228,14 +248,46 @@ object WindowsUpdateManager {
             }
         }.isSuccess
 
-        if (!started) {
-            runCatching {
-                ProcessBuilder("cmd.exe", "/c", "start", "\"\"", "\"$path\"").start()
-            }
-        }
+        if (viaNativo) return true
 
+        // `cmd /c start` é o plano B do Windows para abrir um .exe associado.
+        val viaCmd = runCatching {
+            ProcessBuilder("cmd.exe", "/c", "start", "\"\"", "\"$path\"").start()
+        }.isSuccess
+
+        if (viaCmd) return true
+
+        // Terceiro plano, e o único que funciona quando o explorador association
+        // está quebrado: o próprio Java abre o arquivo com o shell do Windows.
+        return runCatching {
+            if (java.awt.Desktop.isDesktopSupported()) {
+                java.awt.Desktop.getDesktop().open(installerFile)
+                true
+            } else {
+                false
+            }
+        }.getOrDefault(false)
+    }
+
+    /**
+     * Abre o instalador e sai.
+     *
+     * **Só sai se o instalador realmente abriu.** Antes era `System.exit(0)`
+     * incondicional: se `explorer.exe` e `cmd /c start` falhassem, o programa
+     * fechava do mesmo jeito e o usuário ficava sem instalador, sem aviso, e
+     * achando que a atualização tinha começado.
+     */
+    private fun launchInstallerAndExit(installerFile: File): Boolean {
+        if (!launchInstaller(installerFile)) {
+            System.err.println(
+                "[UpdateManager] nao consegui abrir o instalador ${installerFile.name}; " +
+                    "o app continua aberto e o arquivo esta em ${installerFile.parent}"
+            )
+            return false
+        }
         Thread.sleep(1500)
         System.exit(0)
+        return true
     }
 
     fun openInBrowser(url: String) {

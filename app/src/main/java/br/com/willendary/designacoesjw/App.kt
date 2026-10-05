@@ -426,6 +426,25 @@ fun App(
                                         Toast.LENGTH_LONG
                                     ).show()
                                 }
+                                UpdateInstallResult.NOT_SIGNED -> {
+                                    // O arquivo não foi assinado pela chave
+                                    // deste app. Não é o caso de "tente de novo":
+                                    // insistir seria oferecer o mesmo arquivo
+                                    // outra vez. A mensagem diz o que fazer.
+                                    CrashLog.gravar(
+                                        context,
+                                        IllegalStateException(
+                                            "APK de atualização recusado: assinatura diferente da do app instalado " +
+                                                "(versão ${update.versionName}, url ${update.downloadUrl})"
+                                        )
+                                    )
+                                    Toast.makeText(
+                                        context,
+                                        "A atualização baixada não foi assinada por este aplicativo e foi descartada. " +
+                                            "Não instale versões de outra origem.",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
                                 UpdateInstallResult.FAILED -> {
                                     availableUpdate = update
                                     Toast.makeText(

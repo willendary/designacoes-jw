@@ -2,6 +2,7 @@ package br.com.willendary.designacoesjw
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -13,13 +14,61 @@ import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 
 data class AppUpdate(val versionName: String, val downloadUrl: String, val releaseUrl: String)
 
 enum class UpdateInstallResult {
     STARTED,
     NEED_PERMISSION,
+    /** O arquivo não foi assinado pela chave deste app. Não é atualização nossa. */
+    NOT_SIGNED,
     FAILED
+}
+
+/**
+ * `GET_SIGNING_CERTIFICATES` só existe a partir do Android 9 (API 28), e o
+ * `minSdk` do app é 26. Nos dois caminhos a informação é a mesma: o
+ * `PackageInfo` traz a assinatura por `signingInfo` ou por `signatures`, e o
+ * pedido da flag certa é o que faz o sistema incluir os dados.
+ */
+private fun flagsDeAssinatura(): Int =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        PackageManager.GET_SIGNING_CERTIFICATES
+    } else {
+        @Suppress("DEPRECATION")
+        PackageManager.GET_SIGNATURES
+    }
+
+/**
+ * O APK baixado foi assinado pela mesma chave do app instalado?
+ *
+ * Compara os certificados byte a byte com [MessageDigest.isEqual], que é
+ * comparação em tempo constante — o costume de segurança em comparar material
+ * criptográfico. Passar null é falha: sem certificado dos dois lados não há como
+ * afirmar que é a mesma chave, e afirmar seria aceitar qualquer assinatura.
+ *
+ * O app já rodando é a referência. Um APK reempacotado com outra chave tem
+ * `packageName` igual e `versionName` igual — só a assinatura denuncia.
+ */
+private fun mesmaChaveDeAssinatura(instalado: PackageInfo, baixado: PackageInfo): Boolean {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        val esperadas = instalado.signingInfo?.apkContentsSigners ?: return false
+        val obtidas = baixado.signingInfo?.apkContentsSigners ?: return false
+        if (esperadas.isEmpty() || obtidas.isEmpty()) return false
+        return esperadas.any { esperada ->
+            obtidas.any { obtida -> MessageDigest.isEqual(esperada.toByteArray(), obtida.toByteArray()) }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    val esperadas = instalado.signatures ?: return false
+    @Suppress("DEPRECATION")
+    val obtidas = baixado.signatures ?: return false
+    if (esperadas.isEmpty() || obtidas.isEmpty()) return false
+    return esperadas.any { esperada ->
+        obtidas.any { obtida -> MessageDigest.isEqual(esperada.toByteArray(), obtida.toByteArray()) }
+    }
 }
 
 object UpdateManager {
@@ -128,21 +177,40 @@ object UpdateManager {
             }
 
             // Confirma antes de abrir o instalador que o arquivo realmente é um APK
-            // desta aplicação e contém a versão esperada.
-            val archiveInfo = context.packageManager.getPackageArchiveInfo(
+            // desta aplicação, contém a versão esperada e foi assinado pela MESMA
+            // chave do app instalado.
+            //
+            // A assinatura é a parte que importa. O `packageName` e o
+            // `versionName` são metadados do próprio arquivo: um repositório
+            // comprometido os preenche sem dificuldade, e o Android recusaria a
+            // instalação — mas o usuário já teria visto "atualizando" e o APK já
+            // teria baixado. Comparar com o certificado do app que está rodando
+            // é o que impede o arquivo errado de chegar à tela de instalação.
+            val installed = context.packageManager.getPackageInfo(
+                context.packageName,
+                flagsDeAssinatura()
+            )
+            val downloaded = context.packageManager.getPackageArchiveInfo(
                 apkFile.absolutePath,
-                PackageManager.GET_META_DATA
+                flagsDeAssinatura()
             )
 
-            if (archiveInfo == null || archiveInfo.packageName != context.packageName) {
+            if (downloaded == null || downloaded.packageName != context.packageName) {
                 apkFile.delete()
                 return@withContext UpdateInstallResult.FAILED
             }
 
-            val downloadedVersion = archiveInfo.versionName ?: ""
+            val downloadedVersion = downloaded.versionName ?: ""
             if (downloadedVersion != update.versionName) {
                 apkFile.delete()
                 return@withContext UpdateInstallResult.FAILED
+            }
+
+            if (!mesmaChaveDeAssinatura(installed, downloaded)) {
+                // Não é a minha chave. Apaga na hora: deixar o arquivo aqui seria
+                // deixar um APK de outra origem no cache do app.
+                apkFile.delete()
+                return@withContext UpdateInstallResult.NOT_SIGNED
             }
 
             withContext(Dispatchers.Main) {
