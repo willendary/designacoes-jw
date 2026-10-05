@@ -3,9 +3,13 @@ package br.com.willendary.designacoesjw.data
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.SetOptions
+import android.util.Log
 import java.util.UUID
 
 class UserAccessRepository {
+    private companion object {
+        const val TAG_CONVITE = "UserAccess"
+    }
     private val firestore = FirebaseFirestore.getInstance()
     private val users = firestore.collection("users")
     private val invitations = firestore.collection("workspaces").document("designacoes-jw").collection("invitations")
@@ -167,6 +171,17 @@ class UserAccessRepository {
                     active = true,
                     invitationId = invitationId
                 )
+                // A ordem é perfil primeiro, convite depois, e é deliberada.
+                //
+                // O inverso (marcar o convite como usado e só então gravar o
+                // perfil) prende o usuário: a regra do Firestore só deixa um
+                // convite `pending` virar `accepted` uma vez, então uma falha na
+                // segunda escrita deixaria o convite consumido e sem perfil, sem
+                // como tentar de novo.
+                //
+                // Com esta ordem, uma falha no update do convite deixa o perfil
+                // gravado e o convite ainda `pending` — e o caminho de retry
+                // acima (status `pending` + `set` com merge) refaz o trabalho.
                 users.document(uid).set(toMap(profile), SetOptions.merge())
                     .addOnSuccessListener {
                         invitations.document(invitationId).update(mapOf(
@@ -174,11 +189,47 @@ class UserAccessRepository {
                             "acceptedBy" to uid,
                             "acceptedAt" to System.currentTimeMillis()
                         )).addOnSuccessListener { onResult(null) }
-                          .addOnFailureListener { onResult(null) }
+                          .addOnFailureListener { erro ->
+                              // Antes isto era `onResult(null)`, o MESMO valor do
+                              // sucesso: o usuário entrava na congregação, o app
+                              // confirmava "tudo certo", e o convite continuava
+                              // `pending` do lado do administrador — que via um
+                              // convite aparentemente não usado.
+                              registrarFalhaAoAceitarConvite(erro)
+                              onResult(
+                                  "Seu acesso foi liberado, mas não consegui confirmar o convite. " +
+                                      "Tente aceitar de novo em instantes; se persistir, peça ao responsável " +
+                                      "para conferir seu acesso."
+                              )
+                          }
                     }
-                    .addOnFailureListener { onResult(it.localizedMessage ?: "Não foi possível aceitar o convite.") }
+                    .addOnFailureListener {
+                        registrarFalhaAoAceitarConvite(it)
+                        onResult(
+                            "Não foi possível liberar seu acesso. Verifique sua conexão e tente de novo."
+                        )
+                    }
             }
-            .addOnFailureListener { onResult(it.localizedMessage ?: "Não foi possível validar o convite.") }
+            .addOnFailureListener {
+                registrarFalhaAoAceitarConvite(it)
+                onResult(
+                    "Não foi possível validar este convite. Verifique sua conexão e tente de novo."
+                )
+            }
+    }
+
+    /**
+     * Falha ao aceitar convite vai para o log, com a causa técnica.
+     *
+     * A tela recebe uma frase que diz o que fazer; aqui fica o motivo. Sem esta
+     * separação, o usuário vê "não foi possível validar" sem causa e ninguém
+     * descobre se foi regra, token ou rede.
+     *
+     * `Log.e` e não `CrashLog.gravar`: aquele exige `Context`, e o caminho de
+     * erro é justamente o que não pode depender de contexto nenhum.
+     */
+    private fun registrarFalhaAoAceitarConvite(e: Exception) {
+        Log.e(TAG_CONVITE, "Falha ao aceitar convite: ${e.javaClass.simpleName}: ${e.message}")
     }
 
     fun updateUser(profile: UserProfile, onResult: (String?) -> Unit) {
