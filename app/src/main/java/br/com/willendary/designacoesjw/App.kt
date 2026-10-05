@@ -224,7 +224,7 @@ fun App(
                                     ) {
                                         Image(
                                             painter = painterResource(id = R.drawable.ic_logo),
-                                            contentDescription = "stringResource(R.string.logo)",
+                                            contentDescription = stringResource(R.string.logo),
                                             modifier = Modifier.size(44.dp).clip(CircleShape)
                                         )
                                         Column {
@@ -349,7 +349,7 @@ fun App(
                     },
                     navigationIcon = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(Icons.Filled.Menu, contentDescription = "stringResource(R.string.menu_lateral)")
+                            Icon(Icons.Filled.Menu, contentDescription = stringResource(R.string.menu_lateral))
                         }
                     },
                     actions = {
@@ -364,7 +364,7 @@ fun App(
                             modifier = Modifier.padding(end = 4.dp)
                         )
                         IconButton(onClick = { tela = Tela.TELAO }) {
-                            Icon(Icons.Filled.Tv, contentDescription = "stringResource(R.string.modo_telao)")
+                            Icon(Icons.Filled.Tv, contentDescription = stringResource(R.string.modo_telao))
                         }
                     }
                 )
@@ -401,7 +401,7 @@ fun App(
     availableUpdate?.let { update ->
         AlertDialog(
             onDismissRequest = { if (!updating) availableUpdate = null },
-            title = { Text("stringResource(R.string.atualizacao_disponivel)") },
+            title = { Text(stringResource(R.string.atualizacao_disponivel)) },
             text = {
                 Text(
                     if (updating) "Baixando a versão " + update.versionName + "..."
@@ -440,7 +440,7 @@ fun App(
                 ) { Text(if (updating) "Baixando..." else "Atualizar") }
             },
             dismissButton = {
-                if (!updating) TextButton({ availableUpdate = null }) { Text("stringResource(R.string.agora_nao)") }
+                if (!updating) TextButton({ availableUpdate = null }) { Text(stringResource(R.string.agora_nao)) }
             }
         )
     }
@@ -580,7 +580,7 @@ private fun HomeScreen(vm: AppViewModel) {
                             onClick = { month = month.minusMonths(1); selectedMeetingId = null },
                             modifier = Modifier.size(36.dp)
                         ) {
-                            Icon(Icons.Filled.ChevronLeft, contentDescription = "stringResource(R.string.mes_anterior)")
+                            Icon(Icons.Filled.ChevronLeft, contentDescription = stringResource(R.string.mes_anterior))
                         }
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
@@ -594,7 +594,7 @@ private fun HomeScreen(vm: AppViewModel) {
                             onClick = { month = month.plusMonths(1); selectedMeetingId = null },
                             modifier = Modifier.size(36.dp)
                         ) {
-                            Icon(Icons.Filled.ChevronRight, contentDescription = "stringResource(R.string.proximo_mes)")
+                            Icon(Icons.Filled.ChevronRight, contentDescription = stringResource(R.string.proximo_mes))
                         }
                     }
 
@@ -692,7 +692,7 @@ private fun HomeScreen(vm: AppViewModel) {
                             }
                             DropdownMenu(expanded = showExportMenu, onDismissRequest = { showExportMenu = false }) {
                                 DropdownMenuItem(
-                                    text = { Text("stringResource(R.string.compartilhar_pdf)") },
+                                    text = { Text(stringResource(R.string.compartilhar_pdf)) },
                                     leadingIcon = { Icon(Icons.Filled.PictureAsPdf, null) },
                                     onClick = {
                                         showExportMenu = false
@@ -700,7 +700,7 @@ private fun HomeScreen(vm: AppViewModel) {
                                     }
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("stringResource(R.string.compartilhar_word_docx)") },
+                                    text = { Text(stringResource(R.string.compartilhar_word_docx)) },
                                     leadingIcon = { Icon(Icons.Filled.Description, null) },
                                     onClick = {
                                         showExportMenu = false
@@ -708,7 +708,7 @@ private fun HomeScreen(vm: AppViewModel) {
                                     }
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("stringResource(R.string.exportar_ical_ics)") },
+                                    text = { Text(stringResource(R.string.exportar_ical_ics)) },
                                     leadingIcon = { Icon(Icons.Filled.CalendarMonth, null) },
                                     onClick = {
                                         showExportMenu = false
@@ -725,7 +725,7 @@ private fun HomeScreen(vm: AppViewModel) {
                         ) {
                             Icon(
                                 if (viewMode == "LIST") Icons.Filled.CalendarMonth else Icons.Filled.ViewList,
-                                contentDescription = "stringResource(R.string.alternar_modo_de_exibicao)",
+                                contentDescription = stringResource(R.string.alternar_modo_de_exibicao),
                                 tint = MaterialTheme.colorScheme.primary
                             )
                         }
@@ -800,16 +800,16 @@ private fun HomeScreen(vm: AppViewModel) {
     if (showRegenerateConfirm) {
         AlertDialog(
             onDismissRequest = { showRegenerateConfirm = false },
-            title = { Text("stringResource(R.string.regenerar_escala_do_mes)") },
+            title = { Text(stringResource(R.string.regenerar_escala_do_mes)) },
             text = { Text("As ${monthMeetings.size} reuniões de ${monthName} serão recalculadas e substituídas de acordo com as regras atuais.") },
             confirmButton = {
                 Button({
                     vm.deleteMonth(month)
                     selectedMeetingId = vm.generateMonth(month).firstOrNull()?.id
                     showRegenerateConfirm = false
-                }) { Text("stringResource(R.string.regenerar)") }
+                }) { Text(stringResource(R.string.regenerar)) }
             },
-            dismissButton = { TextButton({ showRegenerateConfirm = false }) { Text("stringResource(R.string.cancelar)") } }
+            dismissButton = { TextButton({ showRegenerateConfirm = false }) { Text(stringResource(R.string.cancelar)) } }
         )
     }
 
@@ -937,7 +937,7 @@ private fun MeetingCardView(
                     },
                     modifier = Modifier.size(38.dp)
                 ) {
-                    Icon(Icons.Filled.Share, contentDescription = "stringResource(R.string.whatsapp)", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Filled.Share, contentDescription = stringResource(R.string.whatsapp), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                 }
 
                 // Exportar a imagem da reunião. No desktop isso já existia
@@ -983,7 +983,7 @@ private fun MeetingCardView(
                     if (exportingImage) {
                         CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                     } else {
-                        Icon(Icons.Filled.Share, contentDescription = "stringResource(R.string.exportar_imagem_da_reuniao)")
+                        Icon(Icons.Filled.Share, contentDescription = stringResource(R.string.exportar_imagem_da_reuniao))
                     }
                 }
 
@@ -1017,7 +1017,7 @@ private fun MeetingCardView(
                 IconButton(onClick = onToggleExpand) {
                     Icon(
                         if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                        contentDescription = "stringResource(R.string.expandir_detalhes)"
+                        contentDescription = stringResource(R.string.expandir_detalhes)
                     )
                 }
             }
@@ -1119,7 +1119,7 @@ private fun MeetingCardView(
                                             },
                                             modifier = Modifier.size(32.dp)
                                         ) {
-                                            Icon(Icons.Filled.Share, contentDescription = "stringResource(R.string.avisar_via_whatsapp)", modifier = Modifier.size(16.dp))
+                                            Icon(Icons.Filled.Share, contentDescription = stringResource(R.string.avisar_via_whatsapp), modifier = Modifier.size(16.dp))
                                         }
                                     }
 
@@ -1128,7 +1128,7 @@ private fun MeetingCardView(
                                         onClick = { replaceTarget = Triple(meeting.id, assignment.privilegeId, assignment.brotherId) },
                                         modifier = Modifier.size(32.dp)
                                     ) {
-                                        Icon(Icons.Filled.SwapHoriz, contentDescription = "stringResource(R.string.trocar)", modifier = Modifier.size(18.dp))
+                                        Icon(Icons.Filled.SwapHoriz, contentDescription = stringResource(R.string.trocar), modifier = Modifier.size(18.dp))
                                     }
                                 }
                             }
@@ -1198,7 +1198,7 @@ private fun MeetingCardView(
     importError?.let { msg ->
         AlertDialog(
             onDismissRequest = { importError = null },
-            title = { Text("stringResource(R.string.nao_foi_possivel_importar_o_programa)") },
+            title = { Text(stringResource(R.string.nao_foi_possivel_importar_o_programa)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(msg)
@@ -1219,13 +1219,13 @@ private fun MeetingCardView(
                         }, modifier = Modifier.fillMaxWidth()) {
                             Icon(Icons.Default.OpenInNew, null, Modifier.size(18.dp))
                             Spacer(Modifier.size(JwTheme.spacing.xs))
-                            Text("stringResource(R.string.abrir_no_navegador)")
+                            Text(stringResource(R.string.abrir_no_navegador))
                         }
                     }
                 }
             },
             confirmButton = {
-                TextButton(onClick = { importError = null }) { Text("stringResource(R.string.fechar)") }
+                TextButton(onClick = { importError = null }) { Text(stringResource(R.string.fechar)) }
             }
         )
     }
@@ -1252,7 +1252,7 @@ private fun QuickMeetingUnavailabilityDialog(
                 OutlinedTextField(
                     value = search,
                     onValueChange = { search = it },
-                    label = { Text("stringResource(R.string.buscar_irmao)") },
+                    label = { Text(stringResource(R.string.buscar_irmao)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1280,7 +1280,7 @@ private fun QuickMeetingUnavailabilityDialog(
                             ) {
                                 Text(b.name, fontWeight = FontWeight.Medium)
                                 if (alreadyUnavailable) {
-                                    Badge(containerColor = MaterialTheme.colorScheme.errorContainer) { Text("stringResource(R.string.ja_ausente)") }
+                                    Badge(containerColor = MaterialTheme.colorScheme.errorContainer) { Text(stringResource(R.string.ja_ausente)) }
                                 } else {
                                     Text("Marcar ausente", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
                                 }
@@ -1290,7 +1290,7 @@ private fun QuickMeetingUnavailabilityDialog(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("stringResource(R.string.concluir)") } }
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.concluir)) } }
     )
 }
 
@@ -1362,12 +1362,12 @@ private fun MeetingDaysDialog(
         },
         confirmButton = {
             Button(onClick = { onSave(firstDay, secondDay); onDismiss() }) {
-                Text("stringResource(R.string.salvar)")
+                Text(stringResource(R.string.salvar))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("stringResource(R.string.cancelar)")
+                Text(stringResource(R.string.cancelar))
             }
         }
     )
@@ -1416,12 +1416,12 @@ private fun BrothersScreen(vm: AppViewModel) {
             OutlinedTextField(
                 value = search,
                 onValueChange = { search = it },
-                label = { Text("stringResource(R.string.buscar_por_nome_ou_telefone)") },
+                label = { Text(stringResource(R.string.buscar_por_nome_ou_telefone)) },
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                 trailingIcon = {
                     if (search.isNotBlank()) {
                         IconButton(onClick = { search = "" }) {
-                            Icon(Icons.Filled.Clear, contentDescription = "stringResource(R.string.limpar_busca)")
+                            Icon(Icons.Filled.Clear, contentDescription = stringResource(R.string.limpar_busca))
                         }
                     }
                 },
@@ -1561,14 +1561,14 @@ private fun BrothersScreen(vm: AppViewModel) {
                                 IconButton(onClick = { unavailBrother = brother }) {
                                     Icon(
                                         Icons.Filled.Event,
-                                        contentDescription = "stringResource(R.string.ausencias)",
+                                        contentDescription = stringResource(R.string.ausencias),
                                         modifier = Modifier.size(22.dp)
                                     )
                                 }
                                 IconButton(onClick = { editing = brother }) {
                                     Icon(
                                         Icons.Filled.Edit,
-                                        contentDescription = "stringResource(R.string.editar)",
+                                        contentDescription = stringResource(R.string.editar),
                                         modifier = Modifier.size(22.dp)
                                     )
                                 }
@@ -1583,7 +1583,7 @@ private fun BrothersScreen(vm: AppViewModel) {
                                 IconButton(onClick = { vm.deleteBrother(brother.id) }) {
                                     Icon(
                                         Icons.Filled.Delete,
-                                        contentDescription = "stringResource(R.string.excluir)",
+                                        contentDescription = stringResource(R.string.excluir),
                                         tint = JwTheme.colors.perigo,
                                         modifier = Modifier.size(22.dp)
                                     )
@@ -1603,7 +1603,7 @@ private fun BrothersScreen(vm: AppViewModel) {
                 .padding(20.dp),
             containerColor = MaterialTheme.colorScheme.primary
         ) {
-            Icon(Icons.Filled.Add, contentDescription = "stringResource(R.string.adicionar_irmao)")
+            Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.adicionar_irmao))
         }
     }
 
@@ -1638,9 +1638,9 @@ private fun BrothersScreen(vm: AppViewModel) {
     error?.let { message ->
         AlertDialog(
             onDismissRequest = { error = null },
-            title = { Text("stringResource(R.string.aviso)") },
+            title = { Text(stringResource(R.string.aviso)) },
             text = { Text(message) },
-            confirmButton = { TextButton({ error = null }) { Text("stringResource(R.string.ok)") } }
+            confirmButton = { TextButton({ error = null }) { Text(stringResource(R.string.ok)) } }
         )
     }
 
@@ -1707,9 +1707,9 @@ private fun BrotherProfileDialog(
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Badge { Text(brother.role.label) }
                         if (brother.active) {
-                            Badge(containerColor = MaterialTheme.colorScheme.primaryContainer) { Text("stringResource(R.string.ativo)") }
+                            Badge(containerColor = MaterialTheme.colorScheme.primaryContainer) { Text(stringResource(R.string.ativo)) }
                         } else {
-                            Badge(containerColor = MaterialTheme.colorScheme.errorContainer) { Text("stringResource(R.string.inativo)") }
+                            Badge(containerColor = MaterialTheme.colorScheme.errorContainer) { Text(stringResource(R.string.inativo)) }
                         }
                     }
                 }
@@ -1785,22 +1785,22 @@ private fun BrotherProfileDialog(
                                 FilterChip(
                                     selected = !brother.baptized,
                                     onClick = { vm.setBrotherBaptized(brother.id, !brother.baptized) },
-                                    label = { Text("stringResource(R.string.nao_batizado)") }
+                                    label = { Text(stringResource(R.string.nao_batizado)) }
                                 )
                                 FilterChip(
                                     selected = brother.trainee,
                                     onClick = { vm.setBrotherTrainee(brother.id, !brother.trainee) },
-                                    label = { Text("stringResource(R.string.aprendiz)") }
+                                    label = { Text(stringResource(R.string.aprendiz)) }
                                 )
                                 FilterChip(
                                     selected = brother.isReader,
                                     onClick = { vm.setBrotherIsReader(brother.id, !brother.isReader) },
-                                    label = { Text("stringResource(R.string.leitor)") }
+                                    label = { Text(stringResource(R.string.leitor)) }
                                 )
                                 FilterChip(
                                     selected = brother.isSentinelReader,
                                     onClick = { vm.setBrotherIsSentinelReader(brother.id, !brother.isSentinelReader) },
-                                    label = { Text("stringResource(R.string.leitor_de_a_sentinela)") }
+                                    label = { Text(stringResource(R.string.leitor_de_a_sentinela)) }
                                 )
                             }
                             if (brother.trainee) {
@@ -1841,13 +1841,13 @@ private fun BrotherProfileDialog(
                         ) {
                             Icon(Icons.Filled.Share, null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("stringResource(R.string.abrir_conversa_no_whatsapp)")
+                            Text(stringResource(R.string.abrir_conversa_no_whatsapp))
                         }
                     }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("stringResource(R.string.fechar)") } }
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.fechar)) } }
     )
 }
 
@@ -1874,14 +1874,14 @@ private fun AddBrotherDialog(
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("stringResource(R.string.nome_completo)") },
+                    label = { Text(stringResource(R.string.nome_completo)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
                     value = phone,
                     onValueChange = { phone = it },
-                    label = { Text("stringResource(R.string.whatsapp_com_ddd)") },
+                    label = { Text(stringResource(R.string.whatsapp_com_ddd)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1904,10 +1904,10 @@ private fun AddBrotherDialog(
             Button(
                 enabled = name.isNotBlank(),
                 onClick = { onSave(name, phone, role) }
-            ) { Text("stringResource(R.string.salvar)") }
+            ) { Text(stringResource(R.string.salvar)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("stringResource(R.string.cancelar)") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancelar)) }
         }
     )
 }
@@ -1951,12 +1951,12 @@ private fun PrivilegesScreen(vm: AppViewModel) {
             OutlinedTextField(
                 value = searchPrivilege,
                 onValueChange = { searchPrivilege = it },
-                label = { Text("stringResource(R.string.buscar_privilegio)") },
+                label = { Text(stringResource(R.string.buscar_privilegio)) },
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                 trailingIcon = {
                     if (searchPrivilege.isNotBlank()) {
                         IconButton(onClick = { searchPrivilege = "" }) {
-                            Icon(Icons.Filled.Clear, contentDescription = "stringResource(R.string.limpar)")
+                            Icon(Icons.Filled.Clear, contentDescription = stringResource(R.string.limpar))
                         }
                     }
                 },
@@ -2029,14 +2029,14 @@ private fun PrivilegesScreen(vm: AppViewModel) {
                                     IconButton(onClick = { editing = privilege }) {
                                         Icon(
                                             Icons.Filled.Edit,
-                                            contentDescription = "stringResource(R.string.editar)",
+                                            contentDescription = stringResource(R.string.editar),
                                             modifier = Modifier.size(22.dp)
                                         )
                                     }
                                     IconButton(onClick = { vm.deletePrivilege(privilege.id) }) {
                                         Icon(
                                             Icons.Filled.Delete,
-                                            contentDescription = "stringResource(R.string.excluir)",
+                                            contentDescription = stringResource(R.string.excluir),
                                             tint = JwTheme.colors.perigo,
                                             modifier = Modifier.size(22.dp)
                                         )
@@ -2155,7 +2155,7 @@ private fun PrivilegesScreen(vm: AppViewModel) {
                                 FilterChip(
                                     selected = privilege.allowedDays.isEmpty(),
                                     onClick = { vm.setPrivilegeAllowedDays(privilege.id, emptySet()) },
-                                    label = { Text("stringResource(R.string.qualquer_dia)") }
+                                    label = { Text(stringResource(R.string.qualquer_dia)) }
                                 )
                             }
 
@@ -2197,7 +2197,7 @@ private fun PrivilegesScreen(vm: AppViewModel) {
                 .padding(20.dp),
             containerColor = MaterialTheme.colorScheme.primary
         ) {
-            Icon(Icons.Filled.Add, contentDescription = "stringResource(R.string.adicionar_privilegio)")
+            Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.adicionar_privilegio))
         }
     }
 
@@ -2225,9 +2225,9 @@ private fun PrivilegesScreen(vm: AppViewModel) {
     error?.let { message ->
         AlertDialog(
             onDismissRequest = { error = null },
-            title = { Text("stringResource(R.string.aviso)") },
+            title = { Text(stringResource(R.string.aviso)) },
             text = { Text(message) },
-            confirmButton = { TextButton({ error = null }) { Text("stringResource(R.string.ok)") } }
+            confirmButton = { TextButton({ error = null }) { Text(stringResource(R.string.ok)) } }
         )
     }
 
@@ -2263,14 +2263,14 @@ private fun AddPrivilegeDialog(
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("stringResource(R.string.nome_ex_leitor_do_livro_indicador)") },
+                    label = { Text(stringResource(R.string.nome_do_privilogio_ex_leitor_do_livro)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
                     value = quantity,
                     onValueChange = { quantity = it.filter(Char::isDigit) },
-                    label = { Text("stringResource(R.string.quantidade_necessaria_por_reuniao)") },
+                    label = { Text(stringResource(R.string.quantidade_necessaria_por_reuniao)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -2280,10 +2280,10 @@ private fun AddPrivilegeDialog(
             Button(
                 enabled = name.isNotBlank(),
                 onClick = { onSave(name, quantity.toIntOrNull() ?: 1) }
-            ) { Text("stringResource(R.string.salvar)") }
+            ) { Text(stringResource(R.string.salvar)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("stringResource(R.string.cancelar)") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancelar)) }
         }
     )
 }
@@ -2314,7 +2314,7 @@ private fun ManagePrivilegeBrothersDialog(
                 OutlinedTextField(
                     value = search,
                     onValueChange = { search = it },
-                    label = { Text("stringResource(R.string.buscar_irmao)") },
+                    label = { Text(stringResource(R.string.buscar_irmao)) },
                     leadingIcon = { Icon(Icons.Filled.Search, null) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
@@ -2384,7 +2384,7 @@ private fun ManagePrivilegeBrothersDialog(
             }
         },
         confirmButton = {
-            Button(onClick = onDismiss) { Text("stringResource(R.string.concluir)") }
+            Button(onClick = onDismiss) { Text(stringResource(R.string.concluir)) }
         }
     )
 }
@@ -2413,11 +2413,11 @@ private fun HistoryScreen(vm: AppViewModel) {
             OutlinedTextField(
                 value = busca,
                 onValueChange = { busca = it },
-                label = { Text("stringResource(R.string.buscar_por_irmao_privilegio_tema_ou_data)") },
+                label = { Text(stringResource(R.string.buscar_por_irmao_privilegio_tema_ou_data)) },
                 leadingIcon = { Icon(Icons.Default.Search, null) },
                 trailingIcon = {
                     if (busca.isNotEmpty()) {
-                        TextButton(onClick = { busca = "" }) { Text("stringResource(R.string.limpar)") }
+                        TextButton(onClick = { busca = "" }) { Text(stringResource(R.string.limpar)) }
                     }
                 },
                 singleLine = true,
@@ -2560,7 +2560,7 @@ private fun SettingsScreen(
                             },
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text("stringResource(R.string.exportar_irmaos)")
+                            Text(stringResource(R.string.exportar_irmaos))
                         }
                         OutlinedButton(
                             onClick = {
@@ -2569,7 +2569,7 @@ private fun SettingsScreen(
                             },
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text("stringResource(R.string.exportar_escala)")
+                            Text(stringResource(R.string.exportar_escala))
                         }
                     }
 
@@ -2579,7 +2579,7 @@ private fun SettingsScreen(
                     ) {
                         Icon(Icons.Filled.FileDownload, null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("stringResource(R.string.importar_irmaos)")
+                        Text(stringResource(R.string.importar_irmaos))
                     }
                 }
             }
@@ -2636,8 +2636,8 @@ private fun SettingsScreen(
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Regras teocráticas de leitores", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text("stringResource(R.string.leitor_do_livro_ebc_atua_nas_reunioes_de)")
-                    Text("stringResource(R.string.leitor_da_sentinela_atua_nas_reunioes_de)")
+                    Text(stringResource(R.string.leitor_do_livro_ebc_atua_nas_reunioes_de))
+                    Text(stringResource(R.string.leitor_da_sentinela_atua_nas_reunioes_de))
                 }
             }
         }
@@ -2648,7 +2648,7 @@ private fun SettingsScreen(
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Conta", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text("Sua sessão é protegida pelo Firebase Authentication.", style = MaterialTheme.typography.bodyMedium)
-                    OutlinedButton(onClick = onSignOut, modifier = Modifier.fillMaxWidth()) { Text("stringResource(R.string.sair_da_conta)") }
+                    OutlinedButton(onClick = onSignOut, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.sair_da_conta)) }
                 }
             }
         }
@@ -2668,7 +2668,7 @@ private fun SettingsScreen(
                     OutlinedButton(
                         onClick = { showLogErros = true },
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text("stringResource(R.string.ver_log_de_erros)") }
+                    ) { Text(stringResource(R.string.ver_log_de_erros)) }
                 }
             }
         }
@@ -2677,21 +2677,21 @@ private fun SettingsScreen(
     if (showLogErros) {
         AlertDialog(
             onDismissRequest = { showLogErros = false },
-            title = { Text("stringResource(R.string.log_de_erros)") },
+            title = { Text(stringResource(R.string.log_de_erros)) },
             text = {
                 Text(
                     remember(showLogErros) { vm.lerLogDeErros().ifBlank { "Nenhum erro registrado." } },
                     style = MaterialTheme.typography.bodySmall
                 )
             },
-            confirmButton = { TextButton(onClick = { showLogErros = false }) { Text("stringResource(R.string.fechar)") } }
+            confirmButton = { TextButton(onClick = { showLogErros = false }) { Text(stringResource(R.string.fechar)) } }
         )
     }
 
     if (showImportDialog) {
         AlertDialog(
             onDismissRequest = { showImportDialog = false },
-            title = { Text("stringResource(R.string.importar_irmaos)") },
+            title = { Text(stringResource(R.string.importar_irmaos)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
@@ -2703,7 +2703,7 @@ private fun SettingsScreen(
                     OutlinedTextField(
                         value = importCsvText,
                         onValueChange = { importCsvText = it },
-                        label = { Text("stringResource(R.string.nomes)") },
+                        label = { Text(stringResource(R.string.nomes)) },
                         placeholder = { Text("Carlos, Daniel\nMarcos") },
                         modifier = Modifier.fillMaxWidth().height(160.dp),
                         maxLines = 8
@@ -2741,18 +2741,18 @@ private fun SettingsScreen(
                             }
                         }
                     }
-                ) { Text("stringResource(R.string.importar)") }
+                ) { Text(stringResource(R.string.importar)) }
             },
-            dismissButton = { TextButton(onClick = { showImportDialog = false }) { Text("stringResource(R.string.cancelar)") } }
+            dismissButton = { TextButton(onClick = { showImportDialog = false }) { Text(stringResource(R.string.cancelar)) } }
         )
     }
 
     message?.let { msg ->
         AlertDialog(
             onDismissRequest = { message = null },
-            title = { Text("stringResource(R.string.aviso)") },
+            title = { Text(stringResource(R.string.aviso)) },
             text = { Text(msg) },
-            confirmButton = { TextButton(onClick = { message = null }) { Text("stringResource(R.string.ok)") } }
+            confirmButton = { TextButton(onClick = { message = null }) { Text(stringResource(R.string.ok)) } }
         )
     }
 }
@@ -2867,7 +2867,7 @@ private fun MeetingResult(vm: AppViewModel, meeting: Meeting, context: android.c
         if (missing.isNotEmpty()) {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp)) {
-                    Text("stringResource(R.string.atencao_faltaram_candidatos_para)")
+                    Text(stringResource(R.string.atencao_faltaram_candidatos_para))
                     missing.forEach {
                         val n = it.quantity
                         Text("• " + it.name + " — " + n + " necessário" + if (n == 1) "" else "s")
@@ -2885,7 +2885,7 @@ private fun MeetingResult(vm: AppViewModel, meeting: Meeting, context: android.c
                         Text(brother?.name ?: "Irmão", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     }
                     IconButton(enabled = vm.can(AppPermissions.GENERATE_ASSIGNMENTS), onClick = { replaceTarget = Triple(meeting.id, assignment.privilegeId, assignment.brotherId) }) {
-                        Icon(Icons.Filled.SwapHoriz, contentDescription = "stringResource(R.string.trocar)")
+                        Icon(Icons.Filled.SwapHoriz, contentDescription = stringResource(R.string.trocar))
                     }
                 }
             }
@@ -2896,7 +2896,7 @@ private fun MeetingResult(vm: AppViewModel, meeting: Meeting, context: android.c
                 null, meeting, vm.brothers.value, vm.privileges.value, missing
             )
             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(WhatsAppHelper.buildUniversalLink("", msg))))
-        }, Modifier.fillMaxWidth()) { Text("stringResource(R.string.compartilhar_no_whatsapp)") }
+        }, Modifier.fillMaxWidth()) { Text(stringResource(R.string.compartilhar_no_whatsapp)) }
         FilledTonalButton(
             onClick = {
                 val ok = MeetingReminderHelper.notifyMeeting(context, meeting, vm.brothers.value, vm.privileges.value)
@@ -2910,7 +2910,7 @@ private fun MeetingResult(vm: AppViewModel, meeting: Meeting, context: android.c
         ) {
             Icon(Icons.Filled.Notifications, contentDescription = null)
             Spacer(Modifier.width(8.dp))
-            Text("stringResource(R.string.lembrete_na_barra_de_notificacoes)")
+            Text(stringResource(R.string.lembrete_na_barra_de_notificacoes))
         }
     }
     replaceTarget?.let { target ->
@@ -3055,7 +3055,7 @@ private fun EquityStatisticsDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("stringResource(R.string.fechar)") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.fechar)) }
         }
     )
 }
@@ -3078,7 +3078,7 @@ private fun BrotherUnavailabilityDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (brother.unavailabilities.isEmpty()) {
-                    Text("stringResource(R.string.nenhuma_ausencia_registrada_para_este_ir)")
+                    Text(stringResource(R.string.nenhuma_ausencia_registrada_para_este_irmao))
                 } else {
                     Text("Períodos cadastrados:", fontWeight = FontWeight.Bold)
                     brother.unavailabilities.forEach { u ->
@@ -3089,7 +3089,7 @@ private fun BrotherUnavailabilityDialog(
                         ) {
                             Text("${u.startDate} a ${u.endDate}${if (u.reason.isNotBlank()) " (${u.reason})" else ""}", style = MaterialTheme.typography.bodySmall)
                             IconButton(onClick = { onRemove(u.id) }) {
-                                Icon(Icons.Filled.Delete, contentDescription = "stringResource(R.string.remover)")
+                                Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.remover))
                             }
                         }
                     }
@@ -3097,10 +3097,10 @@ private fun BrotherUnavailabilityDialog(
                 HorizontalDivider()
                 Text("Adicionar novo período:", fontWeight = FontWeight.Bold)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    OutlinedTextField(start, { start = it }, label = { Text("stringResource(R.string.inicio_dd_mm_yyyy)") }, modifier = Modifier.weight(1f))
-                    OutlinedTextField(end, { end = it }, label = { Text("stringResource(R.string.fim_dd_mm_yyyy)") }, modifier = Modifier.weight(1f))
+                    OutlinedTextField(start, { start = it }, label = { Text(stringResource(R.string.inicio_dd_mm_yyyy)) }, modifier = Modifier.weight(1f))
+                    OutlinedTextField(end, { end = it }, label = { Text(stringResource(R.string.fim_dd_mm_yyyy)) }, modifier = Modifier.weight(1f))
                 }
-                OutlinedTextField(reason, { reason = it }, label = { Text("stringResource(R.string.motivo_ex_viagem_ferias)") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(reason, { reason = it }, label = { Text(stringResource(R.string.motivo_ex_viagem_ferias)) }, modifier = Modifier.fillMaxWidth())
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 Button(
                     onClick = {
@@ -3113,11 +3113,11 @@ private fun BrotherUnavailabilityDialog(
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("stringResource(R.string.adicionar_ausencia)")
+                    Text(stringResource(R.string.adicionar_ausencia))
                 }
             }
         },
-        confirmButton = { TextButton(onDismiss) { Text("stringResource(R.string.concluir)") } }
+        confirmButton = { TextButton(onDismiss) { Text(stringResource(R.string.concluir)) } }
     )
 }
 
@@ -3241,7 +3241,7 @@ private fun QuadroDoMesDialog(
                     Spacer(Modifier.width(6.dp))
                     Text(if (imprimindo) "Preparando…" else "Imprimir")
                 }
-                TextButton(onClick = onDismiss) { Text("stringResource(R.string.fechar)") }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.fechar)) }
             }
         }
     }
@@ -3303,7 +3303,7 @@ private fun ImagensDoMesDialog(vm: AppViewModel, mes: YearMonth, onDismiss: () -
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("stringResource(R.string.imagens_de_todas_as_reunioes)") },
+        title = { Text(stringResource(R.string.imagens_de_todas_as_reunioes)) },
         text = {
             Column(
                 Modifier.fillMaxWidth(),
@@ -3327,7 +3327,7 @@ private fun ImagensDoMesDialog(vm: AppViewModel, mes: YearMonth, onDismiss: () -
                 Text(if (enviando) "Gerando…" else "Gerar e salvar")
             }
         },
-        dismissButton = { TextButton(onDismiss) { Text("stringResource(R.string.cancelar)") } }
+        dismissButton = { TextButton(onDismiss) { Text(stringResource(R.string.cancelar)) } }
     )
 }
 

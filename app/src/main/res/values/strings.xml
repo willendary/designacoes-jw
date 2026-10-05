@@ -65,10 +65,10 @@
     <string name="motivo_ex_viagem_ferias">Motivo (ex: Viagem, Férias)</string>
     <string name="nao_batizado">Não batizado</string>
     <string name="nao_foi_possivel_importar_o_programa">Não foi possível importar o programa</string>
-    <string name="nao_ha_outro_irmao_autorizado_e_disponiv">Não há outro irmão autorizado e disponível.</string>
-    <string name="nenhuma_ausencia_registrada_para_este_ir">Nenhuma ausência registrada para este irmão.</string>
+    <string name="nao_ha_outro_irmao_autorizado_e_disponivel">Não há outro irmão autorizado e disponível.</string>
+    <string name="nenhuma_ausencia_registrada_para_este_irmao">Nenhuma ausência registrada para este irmão.</string>
     <string name="nome_completo">Nome completo</string>
-    <string name="nome_ex_leitor_do_livro_indicador">Nome (ex: Leitor do Livro, Indicador)</string>
+    <string name="nome_do_privilogio_ex_leitor_do_livro">Nome (ex: Leitor do Livro, Indicador)</string>
     <string name="nomes">Nomes</string>
     <string name="ok">OK</string>
     <string name="proximo_mes">Próximo mês</string>

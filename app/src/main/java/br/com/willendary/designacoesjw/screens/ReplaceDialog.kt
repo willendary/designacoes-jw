@@ -63,6 +63,10 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.Locale
+// Explicito, e nao pelo curinga abaixo: `R` precisa resolver para o gerado do
+// modulo Android, e o curinga traz quatro candidatos `R` — um de cada source set
+// do Compose Multiplatform no `shared`.
+import br.com.willendary.designacoesjw.R
 import br.com.willendary.designacoesjw.*
 
 
@@ -72,15 +76,15 @@ fun ReplaceDialog(candidates: List<Brother>, onSelect: (Long) -> Unit, onDismiss
     val filtered = candidates.filter { it.name.contains(search.trim(), ignoreCase = true) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("stringResource(R.string.trocar_designacao)") },
+        title = { Text(stringResource(R.string.trocar_designacao)) },
         text = {
             Column {
-                OutlinedTextField(search, { search = it }, label = { Text("stringResource(R.string.buscar_irmao)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(search, { search = it }, label = { Text(stringResource(R.string.buscar_irmao)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
-                if (filtered.isEmpty()) Text("stringResource(R.string.nao_ha_outro_irmao_autorizado_e_disponiv)")
+                if (filtered.isEmpty()) Text(stringResource(R.string.nao_ha_outro_irmao_autorizado_e_disponivel))
                 filtered.forEach { brother -> TextButton({ onSelect(brother.id) }, Modifier.fillMaxWidth()) { Text(brother.name) } }
             }
         },
-        confirmButton = { TextButton(onDismiss) { Text("stringResource(R.string.cancelar)") } }
+        confirmButton = { TextButton(onDismiss) { Text(stringResource(R.string.cancelar)) } }
     )
 }
