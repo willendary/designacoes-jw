@@ -1,5 +1,6 @@
 package br.com.willendary.designacoesjw.importer
 
+import br.com.willendary.designacoesjw.data.Assignment
 import br.com.willendary.designacoesjw.data.Brother
 import br.com.willendary.designacoesjw.data.Meeting
 import br.com.willendary.designacoesjw.data.PartKind
@@ -348,6 +349,96 @@ class ImportadorDesignacoesTest {
         val dia7 = ImportadorDesignacoes.aplicar(r, reunioes).first { it.date == "07/10/2026" }
 
         assertEquals(1, dia7.programAssignments.single().brotherIds.size)
+    }
+
+    // ── A separação que não pode quebrar ────────────────────────────────────
+
+    @Test
+    fun `importar NAO toca nos privilegios mecanicos`() {
+        // "Partes do programa" e "privilégios" são coisas diferentes, de listas
+        // diferentes, com regras diferentes. A lista de partes que veio da IA diz
+        // "Fulano - Demonstração": isso é quem faz a DEMONSTRAÇÃO, e não quem é
+        // o som, o indicador ou o orador.
+        //
+        // Se algum dia alguém "acomodar" a importação para também preencher
+        // `assignments`, este teste é o que para. Ele compara o campo antes e
+        // depois, campo a campo — não só a lista inteira.
+        val antes = listOf(
+            reuniao("07/10/2026").copy(
+                assignments = listOf(
+                    Assignment(privilegeId = 10L, brotherId = 1L),
+                    Assignment(privilegeId = 11L, brotherId = 2L)
+                )
+            ),
+            reuniao("14/10/2026").copy(
+                assignments = listOf(Assignment(privilegeId = 10L, brotherId = 2L))
+            )
+        )
+
+        val r = interpretar(
+            """
+            07/10 - Fulano - Demonstração
+            07/10 - Beltrano - Joias espirituais
+            14/10 - Fulano - Leitura do livro
+            """.trimIndent()
+        )
+
+        val depois = ImportadorDesignacoes.aplicar(r, antes)
+
+        assertEquals(
+            antes.map { it.assignments },
+            depois.map { it.assignments },
+            "a importação mexeu nos privilégios mecânicos"
+        )
+    }
+
+    @Test
+    fun `substituir tambem NAO toca nos privilegios mecanicos`() {
+        // `substituirTudo` é a opção destrutiva. Se ela limpasse `assignments`, o
+        // mês inteiro perderia os cargos mecânicos e ninguém notaria até a
+        // reunião.
+        val antes = listOf(
+            reuniao("07/10/2026").copy(
+                assignments = listOf(Assignment(privilegeId = 10L, brotherId = 1L))
+            )
+        )
+        val r = interpretar("07/10 - Fulano - Demonstração")
+
+        val depois = ImportadorDesignacoes.aplicar(r, antes, substituirTudo = true)
+
+        assertEquals(
+            antes.first().assignments,
+            depois.first().assignments,
+            "\"substituir a semana\" apagou os privilégios mecânicos"
+        )
+    }
+
+    @Test
+    fun `importar nao mexe nas reunioes que nao aparecem no texto`() {
+        // A reunião vizinha tem seus próprios privilégios; nada nela pode mudar.
+        val vizinha = listOf(
+            reuniao("21/10/2026").copy(
+                assignments = listOf(Assignment(privilegeId = 10L, brotherId = 3L)),
+                programAssignments = listOf(ProgramAssignmentRef(1, listOf(3L)))
+            )
+        )
+        val r = interpretar("07/10 - Fulano - Demonstração")
+
+        val depois = ImportadorDesignacoes.aplicar(r, vizinha)
+
+        assertEquals(vizinha.first(), depois.first(), "uma reunião fora do texto foi alterada")
+    }
+
+    @Test
+    fun `o importador nao conhece a palavra privilegio`() {
+        // Trava de leitura, não de teste: o interpretador não importa nada de
+        // privilégio, e qualquer `Privilege` que aparecer aqui é bug por construção.
+        val fonte = ImportadorDesignacoes::class.java
+
+        assertTrue(
+            fonte.declaredMethods.none { it.parameterTypes.any { p -> p.simpleName.contains("Privilege") } },
+            "o interpretador passou a depender de privilégio"
+        )
     }
 
     @Test

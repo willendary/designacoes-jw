@@ -10,20 +10,28 @@ package br.com.willendary.designacoesjw.importer
  * interpretador passa a adivinhar. O prompt é a versão que produz
  * `data - nome - parte`, que é o que o parser entende.
  *
- * ## Por que "abrir" e não "abrir já com o texto"
+ * ## Por que abrir e não "abrir já com o texto"
  *
- * ChatGPT e Gemini **não documentam** um parâmetro de URL que pré-preencha a
- * caixa de texto. Existe `?q=` em alguns clientes, mas não é garantido e muda
- * conforme o produto. Prometer preenchimento automático seria prometer algo que
- * às vezes não acontece — e o usuário perceberia na hora que a caixa veio vazia.
+ * Testado nos dois, em 04/10/2026, e **nenhum dos dois preenche**:
  *
- * Então o caminho é o que funciona sempre: **um clique copia o prompt**, e o
- * botão ao lado abre a conversa. Do ponto de vista de quem usa, são dois cliques
- * e um Ctrl+V, e o texto está lá.
+ * - `chatgpt.com/?q=<texto>` → o ChatGPT reescreve a URL para `?model=auto` e o
+ *   parâmetro é descartado. A caixa fica vazia.
+ * - `gemini.google.com/app?q=<texto>` → o parâmetro sobrevive na URL, mas o
+ *   compositor (`rich-textarea`) continua vazio.
  *
- * A ordem dos botões importa: abrir primeiro e copiar depois deixa a janela do
- * navegador na frente do app, e trocar de janela para colar é o atrito que a
- * pessoa não devia ter.
+ * Então não há caminho por URL que funcione. O caminho confiável é o que o app
+ * faz: **um clique copia** (e agora confirma que copiou), e o botão ao lado abre
+ * a conversa. São dois cliques e um Ctrl+V, e o texto está lá.
+ *
+ * Fica registrado aqui porque é o tipo de coisa que alguém tenta de novo em seis
+ * meses e perde uma hora: se um dia os dois aceitarem prefill, é neste lugar que
+ * entra a URL preenchida — e só depois de testar de novo.
+ *
+ * ## Ordem dos botões
+ *
+ * Copiar antes de abrir. Abrir primeiro deixa a janela do navegador na frente do
+ * app, e trocar entre as duas para colar é o atrito que este recurso existe para
+ * tirar.
  */
 object PromptImportacao {
 

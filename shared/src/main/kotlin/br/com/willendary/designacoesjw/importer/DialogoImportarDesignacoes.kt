@@ -72,6 +72,11 @@ fun DialogoImportarDesignacoes(
     var texto by remember { mutableStateOf("") }
     var interpretados by remember { mutableStateOf<List<Resultado>?>(null) }
     var substituir by remember { mutableStateOf(false) }
+
+    // O botão de copiar precisa dizer que copiou. Sem isto, clicar não muda nada
+    // na tela e a pessoa não sabe se o passo deu certo — e o passo seguinte é
+    // abrir o chat e colar.
+    var copiado by remember { mutableStateOf(false) }
     val areaTransferencia = LocalClipboardManager.current
 
     AlertDialog(
@@ -90,7 +95,10 @@ fun DialogoImportarDesignacoes(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = {
                             areaTransferencia.setText(AnnotatedString(PromptImportacao.TEXTO))
-                        }) { Text("Copiar o pedido") }
+                            copiado = true
+                        }) {
+                            Text(if (copiado) "Copiado — cole no chat" else "Copiar o pedido")
+                        }
                         OutlinedButton(onClick = { aoAbrirConversa(PromptImportacao.Conversa.CHATGPT) }) {
                             Text("ChatGPT")
                         }
@@ -98,7 +106,18 @@ fun DialogoImportarDesignacoes(
                             Text("Gemini")
                         }
                     }
-                    JwSectionLabel("2. Cole a resposta aqui")
+                    // O texto pedido, à vista. "Copiar" sem dar para conferir o
+                    // que foi copiado obriga a cola cega — e o passo seguinte é
+                    // anexar a imagem, que é o que a pessoa veio fazer.
+                    Text(
+                        PromptImportacao.TEXTO,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 140.dp)
+                    )
+                    JwSectionLabel("2. Cole a resposta da IA aqui")
                     OutlinedTextField(
                         value = texto,
                         onValueChange = { texto = it },
