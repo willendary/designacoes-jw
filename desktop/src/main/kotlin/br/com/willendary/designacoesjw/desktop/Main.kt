@@ -49,6 +49,9 @@ import br.com.willendary.designacoesjw.generator.AssignmentGenerator
 import br.com.willendary.designacoesjw.stats.EquityStatisticsHelper
 import br.com.willendary.designacoesjw.sync.CoalescingWorker
 import br.com.willendary.designacoesjw.sync.ContadorSincronizacao
+import br.com.willendary.designacoesjw.importer.DialogoImportarDesignacoes
+import br.com.willendary.designacoesjw.importer.ImportadorDesignacoes
+import br.com.willendary.designacoesjw.importer.Resultado
 import br.com.willendary.designacoesjw.sync.EstadoSincronizacao
 import br.com.willendary.designacoesjw.sync.falhasDoPush
 import br.com.willendary.designacoesjw.sync.mensagemDeFalhaNoPush
@@ -521,6 +524,31 @@ class StoreController {
                 )
             }
         }
+    }
+
+    /**
+     * Grava as designações de partes que vieram coladas da IA.
+     *
+     * Só toca em `programAssignments` — as partes do programa. `assignments`, que
+     * são os privilégios mecânicos, ficam intocados: a lista de partes do
+     * programa nunca tem o direito de mexer num cargo de som ou de orador.
+     *
+     * @param substituindo troca a semana inteira das reuniões tocadas; sem isso,
+     *   acrescenta ao que já estava.
+     * @return quantas linhas entraram.
+     */
+    fun aplicarDesignacoesColadas(
+        resultados: List<Resultado>,
+        substituindo: Boolean
+    ): Int {
+        val novasMeetings = ImportadorDesignacoes.aplicar(resultados, data.meetings, substituindo)
+        if (novasMeetings == data.meetings) return 0
+        save(
+            data.copy(
+                meetings = novasMeetings.sortedBy { AssignmentGenerator.parseDate(it.date) }
+            )
+        )
+        return resultados.count { it.podeEntrar }
     }
 
     fun logout() {
@@ -2138,6 +2166,7 @@ private fun Home(c: StoreController) {
     var selectedMeetingId by remember { mutableStateOf<Long?>(null) }
     var replaceTarget by remember { mutableStateOf<Triple<Long, Long, Long>?>(null) }
     var infoMessage by remember { mutableStateOf<String?>(null) }
+    var showImportDialog by remember { mutableStateOf(false) }
     var viewMode by remember { mutableStateOf("LIST") } // "LIST" or "CALENDAR"
     var showEquityStats by remember { mutableStateOf(false) }
     var showDaysDialog by remember { mutableStateOf(false) }
@@ -2273,6 +2302,17 @@ private fun Home(c: StoreController) {
                     Spacer(Modifier.width(6.dp))
                     Text("Imprimir / HTML")
                 }
+                // Importar as partes que vieram da IA. Mesmo diálogo e mesmo
+                // interpretador do Android: o texto da IA não é interpretável de
+                // duas maneiras, e a lista de partes é a mesma nas duas pontas.
+                OutlinedButton(
+                    enabled = meetings.any { it.program.isNotEmpty() },
+                    onClick = { showImportDialog = true }
+                ) {
+                    Icon(Icons.Default.ContentPaste, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Colar partes")
+                }
                 OutlinedButton(
                     enabled = meetings.isNotEmpty(),
                     onClick = {
@@ -2396,6 +2436,38 @@ private fun Home(c: StoreController) {
                 }
             },
             confirmButton = { TextButton({ replaceTarget = null }) { Text("Fechar") } }
+        )
+    }
+
+    if (showImportDialog) {
+        DialogoImportarDesignacoes(
+            reunioes = c.data.meetings,
+            irmaos = c.data.brothers,
+            anoDeReferencia = month.year,
+            aoAbrirConversa = { url ->
+                // Abre no navegador do usuário, no perfil que ele já usa. No
+                // Android a preferência é pelo app instalado, porque ali o botão
+                // é "ChatGPT" e a pessoa espera o app; no desktop, um atalho que
+                // abre o navegador de outro perfil seria surpresa.
+                runCatching {
+                    if (Desktop.isDesktopSupported()) {
+                        Desktop.getDesktop().browse(URI(url))
+                    } else {
+                        infoMessage = "Abra este endereço no navegador: $url"
+                    }
+                }.onFailure { infoMessage = "Não consegui abrir o navegador. Abra: $url" }
+            },
+            aoConfirmar = { resultados, substituir ->
+                val quantas = c.aplicarDesignacoesColadas(resultados, substituir)
+                showImportDialog = false
+                infoMessage = if (quantas > 0) {
+                    if (substituir) "Substituí $quantas designações pelas coladas."
+                    else "Adicionei $quantas designações."
+                } else {
+                    "Nada foi aplicado."
+                }
+            },
+            aoFechar = { showImportDialog = false }
         )
     }
 }
