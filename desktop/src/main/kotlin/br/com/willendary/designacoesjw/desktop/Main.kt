@@ -48,6 +48,8 @@ import br.com.willendary.designacoesjw.export.MwbProgramImporter
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
 import br.com.willendary.designacoesjw.stats.EquityStatisticsHelper
 import br.com.willendary.designacoesjw.sync.CoalescingWorker
+import br.com.willendary.designacoesjw.sync.falhasDoPush
+import br.com.willendary.designacoesjw.sync.mensagemDeFalhaNoPush
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import br.com.willendary.designacoesjw.ui.MeetingProgramList
@@ -214,12 +216,21 @@ class StoreController {
         debounceMs = PUSH_DEBOUNCE_MS,
         current = { lastStore },
         action = { snapshot ->
-            pushToCloud(pushToken, snapshot)
+            // Lançar é o que faz o worker parar de fingir que deu certo: o
+            // `pendingLocalChange = false` abaixo só roda se o push inteiro
+            // passou, e o `onError` recebe o motivo.
+            val falhas = pushToCloud(pushToken, snapshot)
+            if (falhas.isNotEmpty()) throw PushIncompleto(falhas)
             pendingLocalChange = false
         },
         onError = { e ->
+            val colecoes = (e as? PushIncompleto)?.colecoes
             System.err.println("[StoreController] push falhou: ${e.message}")
             // Continua marcado como pendente: o servidor ainda não tem isso.
+            publicarFalhaDePush(
+                if (colecoes != null) mensagemDeFalhaNoPush(colecoes)
+                else "Não consegui enviar a alteração para a nuvem. Ela ficou só neste computador."
+            )
         }
     )
 
@@ -390,23 +401,36 @@ class StoreController {
             val res = DesktopFirestoreClient.fetchCloudStore(session.idToken)
             res.fold(
                 onSuccess = { cloudStore ->
+                    // Push disparado aqui dentro do sync: o resultado conta igual.
+                    // Antes, um pull que acabasse em push recusado dizia
+                    // "Sincronizado" e zerava o pendente.
+                    var falhas: List<String> = emptyList()
                     if (pendingLocalChange) {
                         // Tem edição local que o push ainda não levou. O que
                         // veio da nuvem é mais velho: aplicar aqui apagaria a
                         // edição da tela (issue #17). Envia a local e preserva.
                         log("sync: alteracao local pendente; enviando local em vez de sobrescrever")
-                        pushToCloud(session.idToken, lastStore)
+                        falhas = pushToCloud(session.idToken, lastStore)
                     } else if (cloudStore.brothers.isNotEmpty() || cloudStore.meetings.isNotEmpty() || cloudStore.privileges.isNotEmpty()) {
                         val merged = cloudStore.copy(themeMode = data.themeMode)
                         data = merged
                         lastStore = merged
                         saveLocal(merged)
                     } else {
-                        pushToCloud(session.idToken, lastStore)
+                        falhas = pushToCloud(session.idToken, lastStore)
                     }
-                    syncStatus = "Sincronizado"
                     isSyncing = false
-                    onComplete?.invoke(true, null)
+                    if (falhas.isNotEmpty()) {
+                        // A nuvem pode ter trazido dado bom mesmo assim; o que
+                        // falhou foi enviar o que o usuário acabou de editar.
+                        syncStatus = "Falha ao enviar"
+                        val msg = mensagemDeFalhaNoPush(falhas)
+                        reportError(msg)
+                        onComplete?.invoke(false, msg)
+                    } else {
+                        syncStatus = "Sincronizado"
+                        onComplete?.invoke(true, null)
+                    }
                 },
                 onFailure = { err ->
                     syncStatus = "Erro de sincronização"
@@ -423,14 +447,51 @@ class StoreController {
      * a lista mudasse no meio do push — a mesma.push gravando metade do estado
      * antigo e metade do novo.
      */
-    private fun pushToCloud(token: String, snapshot: Store) {
-        DesktopFirestoreClient.pushBrothers(token, snapshot.brothers)
-        DesktopFirestoreClient.pushPrivileges(token, snapshot.privileges)
-        DesktopFirestoreClient.pushMeetings(token, snapshot.meetings)
-        DesktopFirestoreClient.pushPublicTalks(token, snapshot.publicTalks)
-        DesktopFirestoreClient.pushFieldServiceGroups(token, snapshot.fieldServiceGroups)
-        DesktopFirestoreClient.pushCleaningSchedules(token, snapshot.cleaningSchedules)
-        DesktopFirestoreClient.pushScheduleSettings(token, snapshot.firstDay, snapshot.secondDay)
+    /**
+     * @param snapshot o que será enviado. Passar a referência é seguro: [Store]
+     * é uma data class imutável, e ler o estado vivo `data` aqui permitia que
+     * a lista mudasse no meio do push — a mesma.push gravando metade do estado
+     * antigo e metade do novo.
+     * @return os rótulos das coleções que o servidor recusou. Vazio = tudo subiu.
+     *
+     * **Por que devolver.** Cada `push*` é um `runCatching`, então nenhuma
+     * exceção escapa: o resultado era descartado e uma recusa do Firestore
+     * (403 por falta de permissão, 401 por token vencido, 400 por regra) virava
+     * silêncio. O `pendingLocalChange` era zerado, a barra dizia "Sincronizado",
+     * e o usuário acreditava que estava na nuvem. O `onError` do worker nunca
+     * disparava para falha de HTTP, porque falha de HTTP não era exceção.
+     */
+    private fun pushToCloud(token: String, snapshot: Store): List<String> {
+        // Um `runCatching` por coleção: `runCatching` na volta inteira esconderia
+        // a falha de uma e deixaria as outras sem registro, que é exatamente o
+        // defeito que isto corrige.
+        val resultados = listOf(
+            "irmãos" to runCatching { DesktopFirestoreClient.pushBrothers(token, snapshot.brothers) }.getOrElse { logFalhaDePush("irmãos", it); Result.failure(it) },
+            "privilégios" to runCatching { DesktopFirestoreClient.pushPrivileges(token, snapshot.privileges) }.getOrElse { logFalhaDePush("privilégios", it); Result.failure(it) },
+            "reuniões" to runCatching { DesktopFirestoreClient.pushMeetings(token, snapshot.meetings) }.getOrElse { logFalhaDePush("reuniões", it); Result.failure(it) },
+            "discursos" to runCatching { DesktopFirestoreClient.pushPublicTalks(token, snapshot.publicTalks) }.getOrElse { logFalhaDePush("discursos", it); Result.failure(it) },
+            "grupos de campo" to runCatching { DesktopFirestoreClient.pushFieldServiceGroups(token, snapshot.fieldServiceGroups) }.getOrElse { logFalhaDePush("grupos de campo", it); Result.failure(it) },
+            "escala de limpeza" to runCatching { DesktopFirestoreClient.pushCleaningSchedules(token, snapshot.cleaningSchedules) }.getOrElse { logFalhaDePush("escala de limpeza", it); Result.failure(it) },
+            "configurações" to runCatching { DesktopFirestoreClient.pushScheduleSettings(token, snapshot.firstDay, snapshot.secondDay) }.getOrElse { logFalhaDePush("configurações", it); Result.failure(it) }
+        )
+
+        return falhasDoPush(resultados)
+    }
+
+    private fun logFalhaDePush(rotulo: String, erro: Throwable) {
+        log("push: $rotulo recusado: ${erro.javaClass.simpleName}: ${erro.message}")
+    }
+
+    /** Push incompleto: alguma coleção ficou só neste aparelho. */
+    private class PushIncompleto(val colecoes: List<String>) :
+        Exception("não subiu: ${colecoes.joinToString(", ")}")
+
+    /** Leva a falha do push para a tela, na thread de UI. */
+    private fun publicarFalhaDePush(mensagem: String) {
+        java.awt.EventQueue.invokeLater {
+            syncStatus = "Falha ao enviar"
+            reportError(mensagem)
+        }
     }
 
     fun addBrother(name: String, phone: String, role: BrotherRole = BrotherRole.PUBLISHER, gender: Gender = Gender.MALE, groupId: Long? = null): String? {
