@@ -50,6 +50,8 @@ import br.com.willendary.designacoesjw.stats.EquityStatisticsHelper
 import br.com.willendary.designacoesjw.sync.CoalescingWorker
 import br.com.willendary.designacoesjw.sync.falhasDoPush
 import br.com.willendary.designacoesjw.sync.mensagemDeFalhaNoPush
+import br.com.willendary.designacoesjw.sync.mensagemDeNuvemVazia
+import br.com.willendary.designacoesjw.sync.mesclarCloudComLocal
 import br.com.willendary.designacoesjw.sync.Prune
 import br.com.willendary.designacoesjw.sync.decidirPrune
 import kotlinx.coroutines.Dispatchers
@@ -415,15 +417,21 @@ class StoreController {
                         // edição da tela (issue #17). Envia a local e preserva.
                         log("sync: alteracao local pendente; enviando local em vez de sobrescrever")
                         falhas = pushToCloud(session.idToken, lastStore)
-                    } else if (cloudStore.brothers.isNotEmpty() || cloudStore.meetings.isNotEmpty() || cloudStore.privileges.isNotEmpty()) {
+                    } else if (cloudStoreHasAlgo(cloudStore)) {
                         // `data` e estado do Compose: tem de ser escrito na EDT.
                         // `lastStore` é @Volatile e pode ficar aqui.
-                        val temaLocal = data.themeMode
-                        val merged = cloudStore.copy(themeMode = temaLocal)
-                        saveLocal(merged)
+                        val localAGora = data
+                        val merge = mesclarCloudComLocal(cloudStore, localAGora)
+                        saveLocal(merge.store)
                         Edt.publica {
-                            data = merged
-                            lastStore = merged
+                            data = merge.store
+                            lastStore = merge.store
+                            if (merge.preservadas.isNotEmpty()) {
+                                // A nuvem voltou vazia em uma coleção. Não é erro,
+                                // mas é o tipo de coisa que o usuário precisa saber
+                                // para não achar que o cadastro sumiu.
+                                reportError(mensagemDeNuvemVazia(merge.preservadas))
+                            }
                         }
                     } else {
                         falhas = pushToCloud(session.idToken, lastStore)
@@ -497,6 +505,22 @@ class StoreController {
 
         return falhas
     }
+
+    /**
+     * A nuvem devolveu alguma coisa que vale aplicar?
+     *
+     * Todas as coleções, não três delas. O teste antigo era
+     * `brothers.isNotEmpty() || meetings.isNotEmpty() || privileges.isNotEmpty()`,
+     * e uma nuvem que só tinha discursos passava nele: o Store inteiro substituía o
+     * local e os irmãos sumiam da tela. Uma coleção decidindo sobre todas.
+     */
+    private fun cloudStoreHasAlgo(cloud: Store): Boolean =
+        cloud.brothers.isNotEmpty() ||
+            cloud.privileges.isNotEmpty() ||
+            cloud.meetings.isNotEmpty() ||
+            cloud.publicTalks.isNotEmpty() ||
+            cloud.fieldServiceGroups.isNotEmpty() ||
+            cloud.cleaningSchedules.isNotEmpty()
 
     /**
      * Apaga do servidor o que o aparelho não tem mais.
