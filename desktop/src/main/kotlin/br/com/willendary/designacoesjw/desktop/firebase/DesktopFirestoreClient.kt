@@ -14,6 +14,18 @@ object DesktopFirestoreClient {
     /** Número máximo de tentativas por requisição (1 inicial + retries). */
     private const val MAX_ATTEMPTS = 3
 
+    /** Documentos por página no GET de coleção. */
+    private const val PAGE_SIZE = 500
+
+    /**
+     * Teto de documentos lidos numa coleção.
+     *
+     * Não é um limite de "chega": um laço sem fim numa API paginada pode
+     * baixar o servidor sem sair. Acima disto a leitura **falha com mensagem**,
+     * que é a diferença entre "não tenho isto" e "tenho isto e não sei".
+     */
+    private const val PAGE_LIMIT = 20_000
+
     /** Erro de HTTP do Firestore, carregando o status code para retry seletivo. */
     private class FirestoreException(val statusCode: Int, message: String) : Exception(message)
 
@@ -275,14 +287,55 @@ object DesktopFirestoreClient {
         patchDocument(idToken, "settings", "main", fields)
     }
 
-    private fun <T> fetchCollection(idToken: String, collectionName: String, parser: (JsonObject) -> T?): List<T> {
-        val resp = request(idToken, URI("$BASE_URL/$collectionName?pageSize=300"), "GET")
-        val root = json.parseToJsonElement(resp).jsonObject
-        val docs = root["documents"]?.jsonArray ?: return emptyList()
-        return docs.mapNotNull { doc ->
-            val fields = doc.jsonObject["fields"]?.jsonObject ?: return@mapNotNull null
-            parser(fields)
+    /**
+     * Todos os documentos de uma coleção, página a página.
+ *
+ * **Paginação não é aqui um detalhe de desempenho — é segurança.** Duas
+ * leituras dependem de não truncar:
+ *  - o parse do [Store], que substitui o dado local inteiro: truncar apagava da
+ *    tela tudo que passou da primeira página, sem aviso;
+ *  - o prune, que apaga do servidor o que não está no `keep` local: truncar
+ *    significava apagar no servidor tudo que não coubesse na primeira página.
+ *
+ * Por isso o `pageToken` é seguido até o servidor dizer que acabou, e o
+ * `PAGE_SIZE` é grande: a coleção maior de uma congregação grande é a de
+ * reuniões, alguns milhares de documentos.
+ */
+private fun fetchDocuments(idToken: String, collectionName: String): List<JsonObject> {
+    val todos = mutableListOf<JsonObject>()
+    var pageToken: String? = null
+
+    do {
+        val url = buildString {
+            append("$BASE_URL/$collectionName?pageSize=$PAGE_SIZE")
+            if (pageToken != null) append("&pageToken=$pageToken")
         }
+        val resp = request(idToken, URI(url), "GET")
+        val root = json.parseToJsonElement(resp).jsonObject
+        root["documents"]?.jsonArray?.forEach { doc ->
+            todos += doc.jsonObject
+        }
+        pageToken = root["nextPageToken"]?.jsonPrimitive?.contentOrNull
+    } while (!pageToken.isNullOrBlank() && todos.size <= PAGE_LIMIT)
+
+    if (!pageToken.isNullOrBlank()) {
+        throw FirestoreException(
+            0,
+            "a coleção $collectionName tem mais de $PAGE_LIMIT documentos; " +
+                "a leitura parou no limite para não truncar em silêncio"
+        )
+    }
+
+    return todos
+}
+
+/** O id do documento, que é o último segmento do `name` que o Firestore devolve. */
+private fun docIdDe(document: JsonObject): String? =
+    document["name"]?.jsonPrimitive?.contentOrNull?.substringAfterLast('/')
+
+private fun <T> fetchCollection(idToken: String, collectionName: String, parser: (JsonObject) -> T?): List<T> =
+    fetchDocuments(idToken, collectionName).mapNotNull { doc ->
+        parser(doc["fields"]?.jsonObject ?: return@mapNotNull null)
     }
 
     private fun fetchDocument(idToken: String, documentPath: String): JsonObject? {
@@ -300,6 +353,32 @@ object DesktopFirestoreClient {
     private fun patchDocument(idToken: String, collection: String, docId: String, fields: JsonObject) {
         val body = buildJsonObject { put("fields", fields) }.toString()
         request(idToken, URI("$BASE_URL/$collection/$docId"), "PATCH", body)
+    }
+
+    /**
+     * Os ids que existem no servidor numa coleção.
+     *
+     * Existe para o prune: escrita avisa o que subiu, mas só a leitura da
+     * coleção diz o que **sobrou** no servidor depois disso.
+     *
+     * O id vem do `name` do documento, não de um campo: o prune compara com o
+     * `id.toString()` que o `push*` usou como chave, e são os mesmos.
+     */
+    fun fetchIds(idToken: String, collection: String): Result<List<String>> = runCatching {
+        fetchDocuments(idToken, collection).mapNotNull { docIdDe(it) }
+    }
+
+    /**
+     * Apaga um documento.
+     *
+     * **Faz falta disto para o desktop poder excluir de verdade.** O cliente
+     * só fazia `PATCH`, então nenhuma remoção chegava à nuvem: o documento
+     * órfão continuava lá e o pull seguinte trazia o irmão, o privilégio ou a
+     * reunião de volta para a tela. Quem apagava ficava achando que tinha
+     * apagado.
+     */
+    fun deleteDocument(idToken: String, collection: String, docId: String) {
+        request(idToken, URI("$BASE_URL/$collection/$docId"), "DELETE")
     }
 
     /**

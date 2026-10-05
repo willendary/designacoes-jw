@@ -50,6 +50,8 @@ import br.com.willendary.designacoesjw.stats.EquityStatisticsHelper
 import br.com.willendary.designacoesjw.sync.CoalescingWorker
 import br.com.willendary.designacoesjw.sync.falhasDoPush
 import br.com.willendary.designacoesjw.sync.mensagemDeFalhaNoPush
+import br.com.willendary.designacoesjw.sync.Prune
+import br.com.willendary.designacoesjw.sync.decidirPrune
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import br.com.willendary.designacoesjw.ui.MeetingProgramList
@@ -475,7 +477,63 @@ class StoreController {
             "configurações" to runCatching { DesktopFirestoreClient.pushScheduleSettings(token, snapshot.firstDay, snapshot.secondDay) }.getOrElse { logFalhaDePush("configurações", it); Result.failure(it) }
         )
 
-        return falhasDoPush(resultados)
+        val falhas = falhasDoPush(resultados)
+
+        // A exclusão só é tentada nas coleções que subiram inteiras. Apagar o que
+        // "sobrou" depois de um push parcial apagaria o que não conseguiu ser
+        // reenviado — o oposto do que se quer.
+        if (falhas.isEmpty()) apararNoServidor(token, snapshot)
+
+        return falhas
+    }
+
+    /**
+     * Apaga do servidor o que o aparelho não tem mais.
+     *
+     * **Sem isto o desktop não excluía nada.** O cliente só fazia `PATCH`, então
+     * apagar um irmão, um privilégio ou uma reunião deixava o documento lá, e o
+     * pull seguinte trazia o item de volta para a tela. Quem excluía achava que
+     * tinha excluído.
+     *
+     * Por coleção, e cada decisão vai para [decidirPrune] — inclusive a recusa
+     * de apagar com o aparelho vazio, que é a que impede que um erro de leitura
+     * apague a congregação inteira.
+     */
+    private fun apararNoServidor(token: String, snapshot: Store) {
+        // `toString()` porque é assim que o `push*` nomeou o documento: o
+        // `keep` do prune tem de ser a mesma chave que a escrita usou.
+        apararColecao(token, "brothers", "irmãos", snapshot.brothers.map { it.id.toString() }.toSet())
+        apararColecao(token, "privileges", "privilégios", snapshot.privileges.map { it.id.toString() }.toSet())
+        apararColecao(token, "meetings", "reuniões", snapshot.meetings.map { it.id.toString() }.toSet())
+        apararColecao(token, "publicTalks", "discursos", snapshot.publicTalks.map { it.id.toString() }.toSet())
+        apararColecao(token, "fieldServiceGroups", "grupos de campo", snapshot.fieldServiceGroups.map { it.id.toString() }.toSet())
+        apararColecao(token, "cleaningSchedules", "escala de limpeza", snapshot.cleaningSchedules.map { it.id.toString() }.toSet())
+    }
+
+    private fun apararColecao(token: String, collection: String, rotulo: String, keep: Set<String>) {
+        val lidos = DesktopFirestoreClient.fetchIds(token, collection)
+        val idsNoServidor = lidos.getOrNull() ?: run {
+            log("prune: nao consegui ler $rotulo do servidor: ${lidos.exceptionOrNull()?.message}")
+            return
+        }
+
+        when (val decisao = decidirPrune(idsNoServidor, keep, rotulo)) {
+            is Prune.Apagar -> {
+                log("prune: $rotulo, apagando ${decisao.ids.size} do servidor")
+                for (id in decisao.ids) {
+                    val r = runCatching { DesktopFirestoreClient.deleteDocument(token, collection, id) }
+                    if (r.isFailure) log("prune: $rotulo/$id nao apagado: ${r.exceptionOrNull()?.message}")
+                }
+            }
+            // Só a recusa com motivo vira mensagem. "Não havia nada" e "não
+            // sobrou nada" são o caminho normal, não um problema para o usuário.
+            is Prune.Preservar -> {
+                if (keep.isEmpty() && idsNoServidor.isNotEmpty()) {
+                    log("prune: $rotulo preservado: ${decisao.motivo}")
+                    publicarFalhaDePush(decisao.motivo)
+                }
+            }
+        }
     }
 
     private fun logFalhaDePush(rotulo: String, erro: Throwable) {
