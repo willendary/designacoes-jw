@@ -3,7 +3,13 @@
 Levantamento de 01/10/2026, depois das releases `0.3.0` a `0.3.7`. Ordenado por
 relação entre esforço e valor para a congregação, não por dificuldade técnica.
 
-Nada aqui está implementado. São candidatas a issue quando houver interesse.
+**Atualizado em 04/10/2026, depois da auditoria completa do projeto.** O texto
+original dizia que nada aqui estava implementado, e isso já não era verdade —
+a `0.9.0` entregou os itens 7 (parcialmente) e 9. Os itens corrigidos estão
+marcados como resolvidos, com a versão. O que sobrou continua candidato a issue.
+
+Referência: `DJW-nnn` é o id do backlog da auditoria. Onde o item recebeu id, ele
+aparece no título.
 
 ---
 
@@ -61,10 +67,22 @@ cairia bastante e a instalação ficaria mais rápida.
 
 ### 7. Sincronização com indicador de pendência visível
 
-Existe `pendingLocalChange` e `isSyncing`, mas nada mostra "enviando…". Com o
-worker de 2 s de carência, o usuário edita, fecha o app e o push pode não ter
-saído. **Falta um aviso de "alterações não enviadas"** — é a garantia de que
-o dado não se perdeu. Alta prioridade por involve risco de perda.
+> **Parcialmente resolvido na `0.9.0`, no Android.** A barra de cima passou a
+> dizer "Sincronizando", "1 alteração não enviada", "Falha ao enviar" ou
+> "Cache local", e a `EstadoSincronizacao` foi criada com teste.
+>
+> **Continua pendente no desktop.** `EstadoSincronizacao` e
+> `ContadorSincronizacao` existem e têm teste, mas **nenhum dos dois é usado no
+> desktop**. Lá existe `pendingLocalChange`, `@Volatile` e sem nenhum hook de
+> UI: só é lido dentro de `syncWithCloud`. Com o worker de 2 s de carência, o
+> usuário edita, fecha o app e o push pode não ter saído — e ele não tem como
+> saber. Backlog: **DJW-023**.
+
+Além disso, o desktop **descarta o resultado dos 7 `push*`** (`pushToCloud` em
+`Main.kt:426-434`): como cada `push*` é `runCatching`, nenhum erro HTTP escapa,
+`pendingLocalChange` vira `false` e a barra diz "Sincronizado" mesmo com tudo
+rejeitado. Backlog: **DJW-002**. É esse defeito — e não a falta do rótulo — que
+torna o item urgente.
 
 ### 8. Atalho de teclado e navegação por comando
 
@@ -74,9 +92,14 @@ para sincronizar, Esc para fechar diálogo. Barato de implementar em Compose
 
 ### 9. Histórico com filtro por irmão
 
-O histórico mostra reuniões do mês. Não há forma de responder "quando o irmão
-João leu pela última vez?" sem percorrer todas. A tela de estatísticas de
-equidade tem parte disso, mas é mensal e agregada.
+> **Resolvido na `0.9.0`.** O Histórico ganhou busca por irmão, privilégio,
+> tema e data. Na mesma release foi corrigido o caso em que um irmão removido
+> do cadastro fazia a busca casar com qualquer palavra e devolver o histórico
+> inteiro.
+>
+> O que continua aberto é mais estreito: **"quando o irmão João leu pela
+> última vez?"** sem percorrer as reuniões. A tela de estatísticas de
+> equidade tem parte disso, mas é mensal e agregada. Backlog: **DJW-044**.
 
 ---
 
