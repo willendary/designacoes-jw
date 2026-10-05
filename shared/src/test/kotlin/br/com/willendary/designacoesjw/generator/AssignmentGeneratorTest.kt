@@ -674,4 +674,92 @@ class AssignmentGeneratorTest {
         assertTrue(msg.contains("Indicador"), msg)
         assertTrue(msg.contains("Quarta"), msg)
     }
+
+    // --- DJW-005: id de reunião derivado de (data, tipo) ---
+
+    private val irmaosDjw005 = listOf(
+        Brother(10, "Ana", privileges = setOf(1L)),
+        Brother(11, "Bruno", privileges = setOf(1L)),
+        Brother(12, "Clara", privileges = setOf(1L))
+    )
+    private val privilegiosDjw005 = listOf(Privilege(id = 1, name = "Som", quantity = 1))
+
+    @Test
+    fun `o id da reunião depende da data e do tipo, não de quando o app rodou`() {
+        val data = LocalDate.of(2026, 10, 7)
+
+        val a = AssignmentGenerator.meetingId(data, MeetingType.MIDWEEK)
+        val b = AssignmentGenerator.meetingId(data, MeetingType.MIDWEEK)
+        val outraSemana = AssignmentGenerator.meetingId(data.plusWeeks(1), MeetingType.MIDWEEK)
+
+        assertEquals(a, b, "mesma data e mesmo tipo têm que dar o mesmo id")
+        assertTrue(a != outraSemana, "semanas diferentes não podem virar o mesmo documento")
+    }
+
+    @Test
+    fun `os dois tipos de reunião na mesma data são documentos diferentes`() {
+        val data = LocalDate.of(2026, 10, 7)
+
+        assertTrue(
+            AssignmentGenerator.meetingId(data, MeetingType.MIDWEEK) !=
+                AssignmentGenerator.meetingId(data, MeetingType.WEEKEND),
+            "reunião de meio de semana e de fim de semana no mesmo dia são duas reuniões"
+        )
+    }
+
+    @Test
+    fun `gerar o mesmo mês duas vezes não duplica reunião`() {
+        val mes = YearMonth.of(2026, 10)
+        val agenda = MeetingSchedule(firstDay = 3, secondDay = 6)
+
+        val primeira = AssignmentGenerator.generateMonth(
+            mes, agenda, irmaosDjw005, privilegiosDjw005, existingMeetings = emptyList()
+        )
+        val segunda = AssignmentGenerator.generateMonth(
+            mes, agenda, irmaosDjw005, privilegiosDjw005, existingMeetings = emptyList()
+        )
+
+        assertEquals(
+            primeira.map { it.id }.toSet(),
+            segunda.map { it.id }.toSet(),
+            "as duas gerações têm que cair nos mesmos documentos"
+        )
+        assertEquals(
+            primeira.size, segunda.size,
+            "uma semana tem 8 reuniões (4 quartas + 4 sábados), não o dobro"
+        )
+    }
+
+    @Test
+    fun `as datas do mês não se repetem quando os dois dias de reunião são iguais`() {
+        // Alguém pode configurar os dois dias iguais. O filtro itera sobre os dias
+        // do mês uma vez só, então a data não nasce duplicada — e agora o id é
+        // derivado dela, então também não pode haver dois irmãos com id igual.
+        val mes = YearMonth.of(2026, 10)
+
+        val mesmoDia = AssignmentGenerator.generateMonth(
+            mes, MeetingSchedule(firstDay = 3, secondDay = 3), irmaosDjw005,
+            privilegiosDjw005, existingMeetings = emptyList()
+        )
+
+        assertEquals(4, mesmoDia.size, "só as quartas-feiras de outubro")
+        assertEquals(
+            mesmoDia.map { it.id }.size, mesmoDia.size,
+            "nenhum id repetido dentro do mesmo mês"
+        )
+    }
+
+    @Test
+    fun `o id derivado não cai na faixa do nextId`() {
+        // nextId vale ~1,7e15. Se um dia o id derivado chegar perto, um id de
+        // relógio poderia sobrescrever uma reunião.
+        val data = LocalDate.of(2026, 10, 7)
+        val derivado = AssignmentGenerator.meetingId(data, MeetingType.MIDWEEK)
+
+        assertTrue(derivado < 1_000_000_000L, "id derivado tem que ser curto, veio $derivado")
+        assertTrue(
+            AssignmentGenerator.nextId() > 1_000_000_000L,
+            "nextId tem que ficar longe do id derivado"
+        )
+    }
 }

@@ -809,7 +809,11 @@ class StoreController {
         val newSchedules = monthMeetings.mapIndexed { index, m ->
             val group = sortedGroups[index % sortedGroups.size]
             CleaningSchedule(
-                id = AssignmentGenerator.nextId(),
+                // Reaproveita o id da escala que já existe para a mesma semana, como
+                // o Android faz. Com id novo a cada geração, e sem exclusão no
+                // desktop, a mesma semana aparecia duplicada e o lixo acumulava.
+                id = data.cleaningSchedules.firstOrNull { it.weekDate == m.date }?.id
+                    ?: AssignmentGenerator.nextId(),
                 weekDate = m.date,
                 groupId = group.id,
                 details = "Limpeza após ${m.type}",

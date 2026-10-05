@@ -6,6 +6,7 @@ import br.com.willendary.designacoesjw.data.BrotherStatus
 import br.com.willendary.designacoesjw.data.Gender
 import br.com.willendary.designacoesjw.data.Meeting
 import br.com.willendary.designacoesjw.data.MeetingSchedule
+import br.com.willendary.designacoesjw.data.MeetingType
 import br.com.willendary.designacoesjw.data.Privilege
 import br.com.willendary.designacoesjw.data.PartKind
 import br.com.willendary.designacoesjw.data.ProgramItem
@@ -20,6 +21,9 @@ import java.util.concurrent.atomic.AtomicLong
 
 object AssignmentGenerator {
     val DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
+
+    /** Quantos tipos de reunião existem. Só para caber no id derivado. */
+    private const val TIPOS_DE_REUNIAO = 4
 
     fun generateMonth(
         yearMonth: YearMonth,
@@ -128,13 +132,35 @@ object AssignmentGenerator {
         }
 
         return Meeting(
-            id = nextId(),
+            id = meetingId(date, MeetingType.parse(type)),
             date = date.format(DATE_FORMATTER),
             type = type,
             assignments = result,
             blockedBrotherIds = blocked
         )
     }
+
+    /**
+     * Id de reunião que depende **só de quando e qual** — não de quando o app rodou.
+     *
+     * Uma congregação não tem duas reuniões do mesmo tipo na mesma data: a
+     * semana é um conjunto de dias, e cada dia tem um tipo. Então (data, tipo)
+     * identifica a reunião, e o id sai disso.
+     *
+     * **Por que isso importa.** Com [nextId], "Gerar" de novo o mesmo mês criava
+     * reuniões **novas** para as mesmas datas. Como o desktop não propaga
+     * exclusão, as duas gerações ficavam no Firestore, o pull trazia as duas e a
+     * tela mostrava duas linhas para a mesma data — com o lixo acumulando a cada
+     * regeneração. Agora a segunda geração reescreve o mesmo documento.
+     *
+     * Não colide com id de [nextId]: os dois nascem em faixas diferentes
+     * (`epochDay * 4 + ordinal` dá número de seis dígitos; `nextId` dá quinze).
+     * E reunião que já existia com id antigo continua válida: o Firestore
+     * endereça por `id.toString()`, então o documento novo tem outro endereço
+     * até o prune do Android remover o velho.
+     */
+    fun meetingId(date: LocalDate, tipo: MeetingType): Long =
+        date.toEpochDay() * TIPOS_DE_REUNIAO + tipo.ordinal
 
     fun candidatesFor(
         meeting: Meeting,
@@ -298,10 +324,15 @@ object AssignmentGenerator {
             .replace("\\p{InCombiningDiacriticalMarks}+".toRegex(), "")
             .lowercase(Locale.ROOT)
 
-    // Sequencial e monotônico dentro do processo: evita colisão de IDs (chave de
-    // documento no Firestore e chave de `keep` na limpeza do sync). O valor inicial
-    // deriva do relógio, mas o incremento atômico garante unicidade mesmo sob
-    // concorrência entre threads.
+    // Sequencial e monotônico **dentro do processo**: o valor inicial deriva do
+    // relógio e o incremento atômico garante unicidade mesmo sob concorrência de
+    // threads. É o id certo para o que pode legitimamente se repetir (dois
+    // irmãos com o mesmo nome, dois discursos na mesma data) e é a chave de
+    // documento no Firestore e de `keep` na limpeza do sync.
+    //
+    // **Reunião não usa mais isto** — usa [meetingId], que é derivado da data.
+    // A distinção importa: com id de relógio, o mesmo irmão podia receber dois
+    // documentos e o segundo sobrescrevia o primeiro em silêncio.
     private val idCounter = AtomicLong(System.currentTimeMillis() * 1000L)
 
     fun nextId(): Long = idCounter.incrementAndGet()
