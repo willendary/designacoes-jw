@@ -249,7 +249,7 @@ class StoreController {
             // a janela abrir na hora; a UI é avisada quando terminar.
             Thread {
                 val fresh = DesktopAuthManager.refreshIfNeeded(diskSession)
-                java.awt.EventQueue.invokeLater {
+                Edt.publica {
                     if (fresh != null) {
                         authSession = fresh
                         syncStatus = "Conectado à nuvem"
@@ -334,9 +334,11 @@ class StoreController {
             val result = GoogleDesktopAuth.signInWithGoogle(onAuthUrl)
             if (result.session != null) {
                 DesktopAuthManager.saveSessionPublic(result.session)
-                authSession = result.session
-                syncWithCloud { ok, err ->
-                    onResult(if (ok) null else err)
+                Edt.publica {
+                    authSession = result.session
+                    syncWithCloud { ok, err ->
+                        onResult(if (ok) null else err)
+                    }
                 }
             } else {
                 onResult(result.error ?: "Falha ao entrar com Google.")
@@ -366,7 +368,7 @@ class StoreController {
                     ProgramItem(section = p.section, number = p.number, title = p.title, minutes = p.minutes)
                 }
             }
-            java.awt.EventQueue.invokeLater {
+            Edt.publica {
                 result.fold(
                     onSuccess = { (program, items) ->
                         save(data.copy(meetings = data.meetings.map {
@@ -414,30 +416,39 @@ class StoreController {
                         log("sync: alteracao local pendente; enviando local em vez de sobrescrever")
                         falhas = pushToCloud(session.idToken, lastStore)
                     } else if (cloudStore.brothers.isNotEmpty() || cloudStore.meetings.isNotEmpty() || cloudStore.privileges.isNotEmpty()) {
-                        val merged = cloudStore.copy(themeMode = data.themeMode)
-                        data = merged
-                        lastStore = merged
+                        // `data` e estado do Compose: tem de ser escrito na EDT.
+                        // `lastStore` é @Volatile e pode ficar aqui.
+                        val temaLocal = data.themeMode
+                        val merged = cloudStore.copy(themeMode = temaLocal)
                         saveLocal(merged)
+                        Edt.publica {
+                            data = merged
+                            lastStore = merged
+                        }
                     } else {
                         falhas = pushToCloud(session.idToken, lastStore)
                     }
-                    isSyncing = false
-                    if (falhas.isNotEmpty()) {
-                        // A nuvem pode ter trazido dado bom mesmo assim; o que
-                        // falhou foi enviar o que o usuário acabou de editar.
-                        syncStatus = "Falha ao enviar"
-                        val msg = mensagemDeFalhaNoPush(falhas)
-                        reportError(msg)
-                        onComplete?.invoke(false, msg)
-                    } else {
-                        syncStatus = "Sincronizado"
-                        onComplete?.invoke(true, null)
+                    val msg = if (falhas.isNotEmpty()) mensagemDeFalhaNoPush(falhas) else null
+                    Edt.publica {
+                        isSyncing = false
+                        if (msg != null) {
+                            // A nuvem pode ter trazido dado bom mesmo assim; o que
+                            // falhou foi enviar o que o usuário acabou de editar.
+                            syncStatus = "Falha ao enviar"
+                            reportError(msg)
+                            onComplete?.invoke(false, msg)
+                        } else {
+                            syncStatus = "Sincronizado"
+                            onComplete?.invoke(true, null)
+                        }
                     }
                 },
                 onFailure = { err ->
-                    syncStatus = "Erro de sincronização"
-                    isSyncing = false
-                    onComplete?.invoke(false, err.message)
+                    Edt.publica {
+                        syncStatus = "Erro de sincronização"
+                        isSyncing = false
+                        onComplete?.invoke(false, err.message)
+                    }
                 }
             )
         }
@@ -546,7 +557,7 @@ class StoreController {
 
     /** Leva a falha do push para a tela, na thread de UI. */
     private fun publicarFalhaDePush(mensagem: String) {
-        java.awt.EventQueue.invokeLater {
+        Edt.publica {
             syncStatus = "Falha ao enviar"
             reportError(mensagem)
         }
@@ -1511,7 +1522,7 @@ private fun MonthBoardDialog(
  * um mês inteiro passaria por lá sem o usuário ver o resultado. O que ele quer
  * é a pasta com os PNGs para mandar no grupo.
  *
- * Roda fora da thread de UI e volta por `EventQueue.invokeLater`, como o
+ * Roda fora da thread de UI e volta por `Edt.publica`, como o
  * "Imagem PNG" da lista de reuniões: `c.reportError` escreve em estado do
  * Compose, que não pode ser tocado da thread de desenho.
  */
@@ -1563,7 +1574,7 @@ private fun salvarImagensDoMes(
             }
         }
 
-        java.awt.EventQueue.invokeLater {
+        Edt.publica {
             // Falha parcial ainda é sucesso: as imagens que saíram estão no
             // disco. Por isso o resumo vem sempre, e o erro é um acréscimo —
             // senão o usuário fica procurando um arquivo que nunca apareceu.
@@ -2309,7 +2320,7 @@ private fun MeetingCardItem(
                                 )
                             }.getOrElse { erro ->
                                 c.logImageError("falha ao desenhar a imagem", erro)
-                                java.awt.EventQueue.invokeLater {
+                                Edt.publica {
                                     c.reportError("Não consegui desenhar a imagem: ${erro.message}")
                                 }
                                 return@Thread
@@ -2321,7 +2332,7 @@ private fun MeetingCardItem(
                             runCatching { ImageExportHelper.saveToPngFile(imagem, arquivo) }
                                 .onFailure { erro ->
                                     c.logImageError("falha ao salvar o PNG", erro)
-                                    java.awt.EventQueue.invokeLater {
+                                    Edt.publica {
                                         c.reportError("Desenhei a imagem mas não consegui salvar: ${erro.message}")
                                     }
                                     return@Thread
@@ -2336,7 +2347,7 @@ private fun MeetingCardItem(
                                 }
                             }.onFailure { erro ->
                                 c.logImageError("imagem salva, mas a area de transferencia falhou", erro)
-                                java.awt.EventQueue.invokeLater {
+                                Edt.publica {
                                     c.reportError("Imagem salva em ${arquivo.name}, mas não consegui copiar para a área de transferência.")
                                 }
                             }
@@ -3859,7 +3870,7 @@ private fun Settings(c: StoreController, onShowUpdate: (WindowsUpdateInfo) -> Un
                                 kotlin.concurrent.thread(isDaemon = true) {
                                     val info = WindowsUpdateManager.checkForUpdate()
                                     // Estado do Compose só na thread de UI.
-                                    java.awt.EventQueue.invokeLater {
+                                    Edt.publica {
                                         isCheckingUpdateManual = false
                                         if (info != null) {
                                             onShowUpdate(info)

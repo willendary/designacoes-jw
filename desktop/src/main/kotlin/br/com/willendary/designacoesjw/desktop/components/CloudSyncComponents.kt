@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import br.com.willendary.designacoesjw.desktop.Edt
 import br.com.willendary.designacoesjw.desktop.StoreController
 import br.com.willendary.designacoesjw.ui.JwTheme
 import br.com.willendary.designacoesjw.ui.corDeContorno
@@ -145,10 +146,10 @@ fun DesktopLoginDialog(
                                 // UI não é seguro; o mesmo padrao ja usado em
                                 // Main.kt:252.
                                 onAuthUrl = { url ->
-                                    java.awt.EventQueue.invokeLater { authUrl = url }
+                                    Edt.publica { authUrl = url }
                                 },
                                 onResult = { err ->
-                                    java.awt.EventQueue.invokeLater {
+                                    Edt.publica {
                                         googleLoading = false
                                         statusMessage = null
                                         if (err == null) {
@@ -331,11 +332,18 @@ fun DesktopLoginDialog(
                     errorMessage = null
                     kotlin.concurrent.thread {
                         val err = c.login(email.trim(), password)
-                        isLoading = false
-                        if (err == null) {
-                            onDismiss()
-                        } else {
-                            errorMessage = err
+                        // `isLoading` e `errorMessage` sao estado do Compose e
+                        // estavam sendo escritos de thread crua — a tela as vezes
+                        // ficava com "Entrando..." presa depois do erro. O login
+                        // com Google, logo acima, ja usava invokeLater: duas
+                        // politicas no mesmo arquivo.
+                        Edt.publica {
+                            isLoading = false
+                            if (err == null) {
+                                onDismiss()
+                            } else {
+                                errorMessage = err
+                            }
                         }
                     }
                 },

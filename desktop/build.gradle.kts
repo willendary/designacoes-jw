@@ -71,6 +71,12 @@ dependencies {
     implementation(compose.material3)
     implementation(compose.materialIconsExtended)
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+
+    // O desktop nao tinha nenhum teste. `StoreController` e
+    // `DesktopFirestoreClient` — onde mora a perda de dado e o tratamento de
+    // erro do app — sao exatamente o que nao se pode deixar sem prova.
+    testImplementation(kotlin("test"))
+    testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 }
 
 compose.desktop {
