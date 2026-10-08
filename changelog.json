@@ -2,7 +2,8 @@
   "0.10.2": {
     "android": [
       "Melhorias visuais na tela de Privilégios, com orientação mais clara.",
-      "Removida a seleção redundante de irmãos por privilégio; as autorizações são mantidas no cadastro de cada irmão."
+      "Removida a seleção redundante de irmãos por privilégio; as autorizações são mantidas no cadastro de cada irmão.",
+      "As autorizações permanecem centralizadas no cadastro de cada irmão, evitando seleções duplicadas e mantendo a versão Android atualizável."
     ],
     "desktop": [
       "Versão alinhada com a release 0.10.2; sem mudanças funcionais específicas no desktop."
