@@ -1144,12 +1144,12 @@ private fun MeetingCardView(
 
     replaceTarget?.let { target ->
         val candidates = vm.candidatesFor(meeting, target.second, target.third)
-        ReplaceAssignmentDialog(
-            vm = vm,
-            meeting = meeting,
-            privilegeId = target.second,
-            currentBrotherId = target.third,
+        ReplaceDialog(
             candidates = candidates,
+            onSelect = { newBrotherId ->
+                vm.replaceAssignment(meeting.id, target.second, target.third, newBrotherId)
+                replaceTarget = null
+            },
             onDismiss = { replaceTarget = null }
         )
     }
