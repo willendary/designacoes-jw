@@ -1916,7 +1916,6 @@ private fun AddBrotherDialog(
 private fun PrivilegesScreen(vm: AppViewModel) {
     var searchPrivilege by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<Privilege?>(null) }
-    var manageBrothersPrivilege by remember { mutableStateOf<Privilege?>(null) }
     var showAddDialog by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
@@ -1962,6 +1961,12 @@ private fun PrivilegesScreen(vm: AppViewModel) {
                 },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
+            )
+
+            Text(
+                "As permissões são definidas no cadastro de cada irmão.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             // Lista de Cards de Privilégio
@@ -2174,14 +2179,7 @@ private fun PrivilegesScreen(vm: AppViewModel) {
                                     color = MaterialTheme.colorScheme.primary
                                 )
 
-                                Button(
-                                    onClick = { manageBrothersPrivilege = privilege },
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                                ) {
-                                    Icon(Icons.Filled.Groups, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(Modifier.width(6.dp))
-                                    Text("Gerenciar Irmãos", style = MaterialTheme.typography.labelMedium)
-                                }
+
                             }
                         }
                     }
@@ -2210,15 +2208,6 @@ private fun PrivilegesScreen(vm: AppViewModel) {
                 else error = err
             },
             onDismiss = { showAddDialog = false }
-        )
-    }
-
-    // Diálogo Modal para Gerenciar Irmãos de um Privilégio
-    manageBrothersPrivilege?.let { priv ->
-        ManagePrivilegeBrothersDialog(
-            vm = vm,
-            privilege = priv,
-            onDismiss = { manageBrothersPrivilege = null }
         )
     }
 
@@ -2284,107 +2273,6 @@ private fun AddPrivilegeDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("stringResource(R.string.cancelar)") }
-        }
-    )
-}
-
-@Composable
-private fun ManagePrivilegeBrothersDialog(
-    vm: AppViewModel,
-    privilege: Privilege,
-    onDismiss: () -> Unit
-) {
-    var search by remember { mutableStateOf("") }
-    val isBook = privilege.readerGrant == ReaderGrant.BOOK
-
-    val filteredBrothers = vm.brothers.value.filter {
-        it.name.contains(search.trim(), ignoreCase = true)
-    }.sortedBy { it.name.lowercase(Locale.getDefault()) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Column {
-                Text("Autorizações — ${privilege.name}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                Text("Marque os irmãos qualificados para esta designação.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-            }
-        },
-        text = {
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = search,
-                    onValueChange = { search = it },
-                    label = { Text("stringResource(R.string.buscar_irmao)") },
-                    leadingIcon = { Icon(Icons.Filled.Search, null) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                if (isBook) {
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))) {
-                        Text(
-                            "Nota teocrática: Leitores da Sentinela já são autorizados automaticamente para o Livro.",
-                            modifier = Modifier.padding(8.dp),
-                            style = MaterialTheme.typography.labelSmall
-                        )
-                    }
-                }
-
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 380.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    items(filteredBrothers, key = { it.id }) { brother ->
-                        val directAuthorization = privilege.id in brother.privileges
-                        // Herança: quem é leitor de A Sentinela também pode ler o livro.
-                        val inheritedFromSentinel = !directAuthorization && isBook && brother.isSentinelReader
-
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable(enabled = !inheritedFromSentinel) {
-                                    vm.togglePrivilege(brother.id, privilege.id)
-                                },
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (directAuthorization || inheritedFromSentinel) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
-                            else MaterialTheme.colorScheme.surface
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column(Modifier.weight(1f)) {
-                                    Text(brother.name, fontWeight = FontWeight.Medium)
-                                    if (inheritedFromSentinel) {
-                                        Text(
-                                            "Autorizado automaticamente (Leitor da Sentinela)",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    } else {
-                                        Text(brother.role.label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                                    }
-                                }
-                                Checkbox(
-                                    checked = directAuthorization || inheritedFromSentinel,
-                                    onCheckedChange = {
-                                        if (!inheritedFromSentinel) {
-                                            vm.togglePrivilege(brother.id, privilege.id)
-                                        }
-                                    },
-                                    enabled = !inheritedFromSentinel
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            Button(onClick = onDismiss) { Text("stringResource(R.string.concluir)") }
         }
     )
 }
