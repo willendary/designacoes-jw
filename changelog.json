@@ -1,4 +1,14 @@
 {
+  "0.10.3": {
+    "android": [
+      "Reformulada a apresentação das reuniões para ficar mais próxima da organização visual do programa oficial: cabeçalho da semana, seções destacadas, itens numerados, duração e designados.",
+      "Programa da reunião ganhou leitura mais limpa e hierárquica, separando claramente o programa semanal das designações mecânicas.",
+      "Ações de importação, compartilhamento e expansão foram reorganizadas para não competir visualmente com o conteúdo da reunião."
+    ],
+    "desktop": [
+      "Versão alinhada com a release 0.10.3."
+    ]
+  },
   "0.10.2": {
     "android": [
       "Melhorias visuais na tela de Privilégios, com orientação mais clara.",
