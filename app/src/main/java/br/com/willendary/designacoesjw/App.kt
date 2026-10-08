@@ -846,114 +846,110 @@ private fun MeetingCardView(
     var showQuickUnavailability by remember { mutableStateOf(false) }
     var importing by remember { mutableStateOf(false) }
     var importError by remember { mutableStateOf<String?>(null) }
+    var exportingImage by remember { mutableStateOf(false) }
     val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
 
     val dateParts = meeting.date.split("/")
-    val dayNum = dateParts.getOrNull(0) ?: "--"
     val parsedDate = runCatching {
         LocalDate.of(dateParts[2].toInt(), dateParts[1].toInt(), dateParts[0].toInt())
     }.getOrNull()
-    val dayOfWeekShort = parsedDate?.let { Datas.diaDaSemanaCurto(it) } ?: "REU"
+    val dayNum = dateParts.getOrNull(0) ?: "--"
+    val monthName = parsedDate?.month?.getDisplayName(java.time.format.TextStyle.FULL, Locale("pt", "BR"))
+        ?.replaceFirstChar { it.uppercase() } ?: ""
+    val dayOfWeek = parsedDate?.let { Datas.diaDaSemanaCurto(it) } ?: "REU"
 
     Card(
-        Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isExpanded) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-        )
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // Bloco Visual de Data Estilo Calendário
-                Box(
-                    modifier = Modifier
-                        .size(54.dp)
-                        .background(
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            shape = RoundedCornerShape(10.dp)
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "NOSSA VIDA E MINISTÉRIO CRISTÃO",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        dayNum + " " + monthName.uppercase() + " • " + dayOfWeek.uppercase(),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                    if (meeting.type.isNotBlank()) {
                         Text(
-                            text = dayOfWeekShort.take(3),
+                            meeting.type,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    if (missing.isEmpty()) {
+                        Text("✓ COMPLETA", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    } else {
+                        Text("⚠ PENDÊNCIAS", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                    }
+                    Text(
+                        meeting.assignments.size.toString() + " designações",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+            if (meeting.theme.isNotBlank()) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                        Text(
+                            "LEITURA DA BÍBLIA",
                             style = MaterialTheme.typography.labelSmall,
-                            fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = dayNum,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Black,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                            meeting.theme,
+                            modifier = Modifier.padding(top = 2.dp),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
+            }
 
-                // Centro: Tipo e Badges
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = meeting.type,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        if (missing.isEmpty()) {
-                            Badge(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)) {
-                                Text(
-                                    "✓ ${meeting.assignments.size} designações",
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                                    style = MaterialTheme.typography.labelSmall
-                                )
-                            }
-                        } else {
-                            Badge(containerColor = MaterialTheme.colorScheme.errorContainer) {
-                                Text(
-                                    "⚠ Faltam candidatos",
-                                    color = MaterialTheme.colorScheme.onErrorContainer,
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
-                }
+            if (meeting.isMidweek && importError != null) {
+                Text(importError!!, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
 
-                // Ações Rápidas: WhatsApp da Reunião e Toggle Detalhes
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 FilledTonalIconButton(
                     onClick = {
-                        val msg = WhatsAppHelper.buildMeetingBroadcastMessage(
-                            null, meeting, vm.brothers.value, vm.privileges.value, missing
-                        )
+                        val msg = WhatsAppHelper.buildMeetingBroadcastMessage(null, meeting, vm.brothers.value, vm.privileges.value, missing)
                         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(WhatsAppHelper.buildUniversalLink("", msg))))
-                    },
-                    modifier = Modifier.size(38.dp)
-                ) {
-                    Icon(Icons.Filled.Share, contentDescription = "stringResource(R.string.whatsapp)", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                }
+                    }
+                ) { Icon(Icons.Filled.Share, contentDescription = "WhatsApp") }
 
-                // Exportar a imagem da reunião. No desktop isso já existia
-                // (java.awt); no celular não havia botão nem gerador, porque
-                // java.awt não existe no Android.
-                var exportingImage by remember { mutableStateOf(false) }
                 IconButton(
                     onClick = {
                         if (exportingImage) return@IconButton
                         exportingImage = true
                         coroutineScope.launch {
                             val bitmap = withContext(Dispatchers.Main) {
-                                ImageExport.render(
-                                    context, meeting,
-                                    vm.brothers.value, vm.privileges.value
-                                )
+                                ImageExport.render(context, meeting, vm.brothers.value, vm.privileges.value)
                             }
                             exportingImage = false
                             if (bitmap == null) {
@@ -961,35 +957,19 @@ private fun MeetingCardView(
                                 return@launch
                             }
                             val fileName = ImageExport.fileNameFor(meeting)
-                            val uri = withContext(Dispatchers.IO) {
-                                ImageExport.saveToGallery(context, bitmap, fileName)
-                            }
+                            val uri = withContext(Dispatchers.IO) { ImageExport.saveToGallery(context, bitmap, fileName) }
                             val share = ImageExport.shareIntent(context, bitmap, fileName)
-                            if (share != null) {
-                                context.startActivity(Intent.createChooser(share, "Enviar designações"))
-                            } else if (uri != null) {
-                                Toast.makeText(
-                                    context,
-                                    "Salvo em Imagens/Designações JW.",
-                                    Toast.LENGTH_LONG
-                                ).show()
-                            } else {
-                                Toast.makeText(context, "Não consegui salvar a imagem.", Toast.LENGTH_LONG).show()
-                            }
+                            if (share != null) context.startActivity(Intent.createChooser(share, "Enviar designações"))
+                            else if (uri != null) Toast.makeText(context, "Salvo em Imagens/Designações JW.", Toast.LENGTH_LONG).show()
+                            else Toast.makeText(context, "Não consegui salvar a imagem.", Toast.LENGTH_LONG).show()
                         }
                     },
                     enabled = !exportingImage
                 ) {
-                    if (exportingImage) {
-                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                    } else {
-                        Icon(Icons.Filled.Share, contentDescription = "stringResource(R.string.exportar_imagem_da_reuniao)")
-                    }
+                    if (exportingImage) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    else Icon(Icons.Filled.Image, contentDescription = "Exportar imagem")
                 }
 
-                // Importar o programa oficial. Acao de manutencao: fica como
-                // icone ao lado das outras acoes, nao como botao de largura
-                // natural no meio do conteudo do card.
                 if (meeting.isMidweek) {
                     IconButton(
                         onClick = {
@@ -1002,85 +982,74 @@ private fun MeetingCardView(
                         },
                         enabled = !importing
                     ) {
-                        if (importing) {
-                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                        } else {
-                            Icon(
-                                if (meeting.theme.isBlank()) Icons.Filled.CloudDownload else Icons.Filled.CloudDone,
-                                contentDescription = if (meeting.theme.isBlank())
-                                    "Importar programa do jw.org" else "Atualizar programa do jw.org"
-                            )
-                        }
+                        if (importing) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        else Icon(
+                            if (meeting.theme.isBlank()) Icons.Filled.CloudDownload else Icons.Filled.CloudDone,
+                            contentDescription = if (meeting.theme.isBlank()) "Importar programa do jw.org" else "Atualizar programa do jw.org"
+                        )
                     }
                 }
 
-                IconButton(onClick = onToggleExpand) {
-                    Icon(
-                        if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                        contentDescription = "stringResource(R.string.expandir_detalhes)"
-                    )
+                Spacer(Modifier.weight(1f))
+                OutlinedButton(onClick = onToggleExpand) {
+                    Text(if (isExpanded) "Recolher" else "Ver programa")
+                    Spacer(Modifier.width(4.dp))
+                    Icon(if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, contentDescription = null)
                 }
             }
 
-            // Programa oficial da semana, importado do jw.org.
-            // Delegado a shared: cada tela tinha a sua renderizacao e elas
-            // ja divergiram entre Android e Desktop.
-            if (meeting.theme.isNotBlank()) {
-                Text(
-                    "📖 ${meeting.theme}",
-                    fontWeight = FontWeight.SemiBold,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-            if (meeting.isMidweek && importError != null) {
-                // Erro em linha, sem AlertDialog: na maioria das vezes o bimestre
-                // ainda nao foi publicado no jw.org, o que e condicao normal e
-                // nao justifica interromper a tela.
-                Text(
-                    importError!!,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error
-                )
-            }
-
-            // Seção Expandida com as Designações e Trocas
             if (isExpanded) {
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
                 if (missing.isNotEmpty()) {
                     Card(
                         Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f))
                     ) {
-                        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text("Atenção: faltaram candidatos para:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onErrorContainer)
+                        Column(Modifier.padding(10.dp)) {
+                            Text(
+                                "Atenção: faltaram candidatos para:",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
                             missing.forEach {
-                                Text("• ${it.name} — ${it.quantity} necessário${if (it.quantity == 1) "" else "s"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
+                                Text(
+                                    "• " + it.name + " — " + it.quantity + " necessário" + if (it.quantity == 1) "" else "s",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
                             }
                         }
                     }
                 }
 
-                // Cabeçalho do bloco. Sem ele, a lista de privilégios e a de
-                // partes do programa leem como uma só: são duas naturezas
-                // diferentes — o mecânico é fixo, a parte muda toda semana.
-                // A separação no código veio no #51; na tela só veio agora.
                 if (meeting.program.isNotEmpty()) {
-                    SectionLabel("Programa da semana")
+                    MeetingProgramList(
+                        meeting = meeting,
+                        brothers = vm.brothers.value,
+                        privileges = vm.privileges.value,
+                        canAssign = vm.brothers.value.filter { it.active },
+                        onToggleAssignment = { position, brotherId ->
+                            vm.toggleProgramAssignment(meeting.id, position, brotherId)
+                        }
+                    )
                 }
-                MeetingProgramList(
-                    meeting = meeting,
-                    brothers = vm.brothers.value,
-                    privileges = vm.privileges.value,
-                    canAssign = vm.brothers.value.filter { it.active },
-                    onToggleAssignment = { position, brotherId ->
-                        vm.toggleProgramAssignment(meeting.id, position, brotherId)
-                    }
-                )
 
                 if (meeting.assignments.isNotEmpty()) {
-                    SectionLabel("Privilégios")
+                    Text(
+                        "DESIGNAÇÕES MECÂNICAS",
+                        modifier = Modifier.padding(top = 4.dp),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(top = 4.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                    )
                 }
+
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     meeting.assignments.forEach { assignment ->
                         val brother = vm.brothers.value.find { it.id == assignment.brotherId }
@@ -1089,12 +1058,11 @@ private fun MeetingCardView(
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.surface
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(Modifier.weight(1f)) {
                                     Text(
@@ -1109,27 +1077,21 @@ private fun MeetingCardView(
                                         fontWeight = FontWeight.SemiBold
                                     )
                                 }
-
-                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Row {
                                     if (brother?.phone?.isNotBlank() == true && privilege != null) {
                                         IconButton(
                                             onClick = {
                                                 val msg = WhatsAppHelper.buildSingleMessage(null, brother, privilege, meeting)
                                                 context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(WhatsAppHelper.buildUniversalLink(brother.phone, msg))))
                                             },
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            Icon(Icons.Filled.Share, contentDescription = "stringResource(R.string.avisar_via_whatsapp)", modifier = Modifier.size(16.dp))
-                                        }
+                                            modifier = Modifier.size(34.dp)
+                                        ) { Icon(Icons.Filled.Share, contentDescription = "Avisar via WhatsApp", modifier = Modifier.size(17.dp)) }
                                     }
-
                                     IconButton(
                                         enabled = vm.can(AppPermissions.GENERATE_ASSIGNMENTS),
                                         onClick = { replaceTarget = Triple(meeting.id, assignment.privilegeId, assignment.brotherId) },
-                                        modifier = Modifier.size(32.dp)
-                                    ) {
-                                        Icon(Icons.Filled.SwapHoriz, contentDescription = "stringResource(R.string.trocar)", modifier = Modifier.size(18.dp))
-                                    }
+                                        modifier = Modifier.size(34.dp)
+                                    ) { Icon(Icons.Filled.SwapHoriz, contentDescription = "Trocar", modifier = Modifier.size(18.dp)) }
                                 }
                             }
                         }
@@ -1146,15 +1108,14 @@ private fun MeetingCardView(
                         Spacer(Modifier.width(4.dp))
                         Text("Quem falta?", style = MaterialTheme.typography.labelMedium)
                     }
-
                     FilledTonalButton(
                         onClick = {
                             val ok = MeetingReminderHelper.notifyMeeting(context, meeting, vm.brothers.value, vm.privileges.value)
-                            if (ok) {
-                                Toast.makeText(context, "Lembrete enviado para a barra de notificações!", Toast.LENGTH_SHORT).show()
-                            } else {
-                                Toast.makeText(context, "Ative as notificações para o aplicativo nas configurações do aparelho.", Toast.LENGTH_LONG).show()
-                            }
+                            Toast.makeText(
+                                context,
+                                if (ok) "Lembrete enviado para a barra de notificações!" else "Ative as notificações para o aplicativo nas configurações do aparelho.",
+                                if (ok) Toast.LENGTH_SHORT else Toast.LENGTH_LONG
+                            ).show()
                         },
                         modifier = Modifier.weight(1f),
                         contentPadding = PaddingValues(vertical = 8.dp)
@@ -1183,50 +1144,13 @@ private fun MeetingCardView(
 
     replaceTarget?.let { target ->
         val candidates = vm.candidatesFor(meeting, target.second, target.third)
-        ReplaceDialog(
+        ReplaceAssignmentDialog(
+            vm = vm,
+            meeting = meeting,
+            privilegeId = target.second,
+            currentBrotherId = target.third,
             candidates = candidates,
-            onSelect = { newId ->
-                vm.replaceAssignment(target.first, target.second, target.third, newId)
-                replaceTarget = null
-            },
             onDismiss = { replaceTarget = null }
-        )
-    }
-
-    // O link do jw.org no **erro** de import (#50): e aqui que ele resolve
-    // alguma coisa. Se o app conseguiu baixar, ninguem precisa da pagina.
-    importError?.let { msg ->
-        AlertDialog(
-            onDismissRequest = { importError = null },
-            title = { Text("stringResource(R.string.nao_foi_possivel_importar_o_programa)") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(msg)
-                    vm.urlProgramaMwb?.let { url ->
-                        Text(
-                            "Você pode copiar o programa da página oficial:",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        val contexto = LocalContext.current
-                        OutlinedButton(onClick = {
-                            contexto.startActivity(
-                                android.content.Intent(
-                                    android.content.Intent.ACTION_VIEW,
-                                    android.net.Uri.parse(url)
-                                )
-                            )
-                        }, modifier = Modifier.fillMaxWidth()) {
-                            Icon(Icons.Default.OpenInNew, null, Modifier.size(18.dp))
-                            Spacer(Modifier.size(JwTheme.spacing.xs))
-                            Text("stringResource(R.string.abrir_no_navegador)")
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { importError = null }) { Text("stringResource(R.string.fechar)") }
-            }
         )
     }
 }
