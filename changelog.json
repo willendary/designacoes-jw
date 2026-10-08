@@ -1,4 +1,13 @@
 {
+  "0.10.3": {
+    "android": [
+      "Corrigida a exibição literal de stringResource(...) em títulos, botões e descrições acessíveis.",
+      "Melhorias na experiência de atualização do aplicativo."
+    ],
+    "desktop": [
+      "Versão alinhada com a release 0.10.3."
+    ]
+  },
   "0.10.2": {
     "android": [
       "Melhorias visuais na tela de Privilégios, com orientação mais clara.",
