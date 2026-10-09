@@ -79,7 +79,8 @@ jobs:
           path: app/build/outputs/apk/debug/designacoes-jw.apk
 
       - name: Publicar APK no GitHub Release
-        if: success()
+        # Pull requests must validate the build without publishing a release.
+        if: success() && github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

@@ -1,4 +1,13 @@
 {
+  "0.10.4": {
+    "android": [
+      "A tela Reuniões passa a usar uma apresentação editorial mais próxima da Biblioteca On-line: tipografia sem serifa, hierarquia de títulos, divisórias discretas e fundo sem cartões decorativos.",
+      "As designações continuam editáveis e visíveis em azul, mantendo os recursos existentes."
+    ],
+    "desktop": [
+      "Versão alinhada com a atualização visual 0.10.4."
+    ]
+  },
   "0.10.3": {
     "android": [
       "Reformulada a apresentação das reuniões para ficar mais próxima da organização visual do programa oficial: cabeçalho da semana, seções destacadas, itens numerados, duração e designados.",
