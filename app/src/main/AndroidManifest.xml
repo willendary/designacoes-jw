@@ -9,7 +9,7 @@
         android:roundIcon="@drawable/ic_logo"
         android:theme="@style/Theme.DesignacoesJW"
         android:label="Designações JW"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:supportsRtl="true">
         <provider
             android:name="androidx.core.content.FileProvider"
