@@ -2033,7 +2033,7 @@ private fun PrivilegesScreen(vm: AppViewModel) {
                             // Sem isso o app não distingue uma leitura de uma
                             // encenação, e o gerador não tem como tratá-las.
                             Text("Tipo de parte:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 PartKind.entries.forEach { kind ->
                                     FilterChip(
                                         selected = privilege.kind == kind,
@@ -2045,7 +2045,7 @@ private fun PrivilegesScreen(vm: AppViewModel) {
 
                             // Quem pode fazer: batizado, não batizado, ou ambos.
                             Text("Pode ser feito por:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 BrotherStatus.entries.forEach { status ->
                                     FilterChip(
                                         selected = status in privilege.allowedStatus,
@@ -2066,7 +2066,7 @@ private fun PrivilegesScreen(vm: AppViewModel) {
 
                             // Qual habilitação do irmão concede este privilégio.
                             Text("Concedido a quem é:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 ReaderGrant.entries.forEach { grant ->
                                     FilterChip(
                                         selected = privilege.readerGrant == grant,
@@ -2688,67 +2688,6 @@ private fun CalendarGridView(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun MeetingResult(vm: AppViewModel, meeting: Meeting, context: android.content.Context, onReplace: (Triple<Long, Long, Long>) -> Unit) {
-    val missing = vm.missingAssignments(meeting)
-    var replaceTarget by remember { mutableStateOf<Triple<Long, Long, Long>?>(null) }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Designações", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        if (missing.isNotEmpty()) {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp)) {
-                    Text(stringResource(R.string.atencao_faltaram_candidatos_para))
-                    missing.forEach {
-                        val n = it.quantity
-                        Text("• " + it.name + " — " + n + " necessário" + if (n == 1) "" else "s")
-                    }
-                }
-            }
-        }
-        meeting.assignments.forEach { assignment ->
-            val brother = vm.brothers.value.find { it.id == assignment.brotherId }
-            val privilege = vm.privileges.value.find { it.id == assignment.privilegeId }
-            Card(Modifier.fillMaxWidth()) {
-                Row(Modifier.padding(12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(privilege?.name ?: "Privilégio", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                        Text(brother?.name ?: "Irmão", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    }
-                    IconButton(enabled = vm.can(AppPermissions.GENERATE_ASSIGNMENTS), onClick = { replaceTarget = Triple(meeting.id, assignment.privilegeId, assignment.brotherId) }) {
-                        Icon(Icons.Filled.SwapHoriz, contentDescription = stringResource(R.string.trocar))
-                    }
-                }
-            }
-        }
-        Button({
-            val missing = vm.missingAssignments(meeting)
-            val msg = WhatsAppHelper.buildMeetingBroadcastMessage(
-                null, meeting, vm.brothers.value, vm.privileges.value, missing
-            )
-            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(WhatsAppHelper.buildUniversalLink("", msg))))
-        }, Modifier.fillMaxWidth()) { Text(stringResource(R.string.compartilhar_no_whatsapp)) }
-        FilledTonalButton(
-            onClick = {
-                val ok = MeetingReminderHelper.notifyMeeting(context, meeting, vm.brothers.value, vm.privileges.value)
-                if (ok) {
-                    Toast.makeText(context, "Lembrete enviado para as notificações do aparelho!", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(context, "Ative as notificações para o aplicativo nas configurações do aparelho.", Toast.LENGTH_LONG).show()
-                }
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Icon(Icons.Filled.Notifications, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.lembrete_na_barra_de_notificacoes))
-        }
-    }
-    replaceTarget?.let { target ->
-        val candidates = vm.candidatesFor(meeting, target.second, target.third)
-        ReplaceDialog(candidates, { newId -> vm.replaceAssignment(target.first, target.second, target.third, newId); replaceTarget = null }, { replaceTarget = null })
     }
 }
 

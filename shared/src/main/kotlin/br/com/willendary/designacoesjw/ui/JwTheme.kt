@@ -98,7 +98,7 @@ private fun JwPalette.cores(isDark: Boolean): CoresDoTema {
         darkColorScheme(
             primary = primaria,
             secondary = secundaria,
-            primaryContainer = primaria.copy(alpha = 0.16f),
+            primaryContainer = androidx.compose.ui.graphics.lerp(Color(0xFF12161C), primaria, 0.16f),
             onPrimaryContainer = primaria,
             surface = Color(0xFF12161C),
             background = Color(0xFF0B0E12),

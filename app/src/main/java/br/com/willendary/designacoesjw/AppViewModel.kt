@@ -269,7 +269,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         "Você não tem permissão para $action."
 
     fun setMeetingDays(first: Int, second: Int) {
-        if (first == second) return
+        if (first !in 1..7 || second !in 1..7 || first == second) return
         if (!can(AppPermissions.MANAGE_SETTINGS)) {
             lastActionError.value = denied(AppPermissions.MANAGE_SETTINGS, "alterar os dias de reunião")
             return
@@ -415,8 +415,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun generateMonth(yearMonth: YearMonth, recalculate: Boolean = false): List<Meeting> {
         if (!can(AppPermissions.GENERATE_ASSIGNMENTS)) { lastActionError.value = denied(AppPermissions.GENERATE_ASSIGNMENTS, "gerar designações"); return emptyList() }
-        val monthPrefix = yearMonth.format(DateTimeFormatter.ofPattern("MM/yyyy"))
-        val keep = meetings.value.filterNot { it.date.endsWith("/$monthPrefix") }
+        val days = schedule.value
+        if (days.firstDay !in 1..7 || days.secondDay !in 1..7 || days.firstDay == days.secondDay) {
+            lastActionError.value = "Configure dois dias diferentes nas configurações de reunião."
+            return emptyList()
+        }
         val generated = AssignmentGenerator.generateMonth(
             yearMonth = yearMonth,
             schedule = schedule.value,

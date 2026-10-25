@@ -684,7 +684,7 @@ class StoreController {
      * o "Salvar" gravaria por cima da edição.
      */
     fun setMeetingDays(first: Int, second: Int) {
-        if (first == second) {
+        if (first !in 1..7 || second !in 1..7 || first == second) {
             log("dias de reuniao ignorados: primeiro e segundo sao o mesmo ($first)")
             return
         }
@@ -692,8 +692,10 @@ class StoreController {
     }
 
     fun generateMonth(month: YearMonth, recalculate: Boolean = false) {
-        val prefix = month.format(DateTimeFormatter.ofPattern("MM/yyyy"))
-        val keep = data.meetings.filterNot { it.date.endsWith("/$prefix") }
+        if (data.firstDay !in 1..7 || data.secondDay !in 1..7 || data.firstDay == data.secondDay) {
+            reportError("Configure dois dias diferentes nas configurações de reunião.")
+            return
+        }
         val generated = AssignmentGenerator.generateMonth(
             yearMonth = month,
             schedule = MeetingSchedule(data.firstDay, data.secondDay),
@@ -1659,7 +1661,7 @@ private fun DesktopSidebar(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(10.dp),
-                color = superficieDeCartao(isSystemInDarkTheme())
+                color = MaterialTheme.colorScheme.surfaceVariant
             ) {
                 Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -2381,7 +2383,7 @@ private fun DesktopQuickUnavailabilityDialog(
                             },
                             shape = RoundedCornerShape(6.dp),
                             color = if (alreadyUnavailable) MaterialTheme.colorScheme.errorContainer
-                            else superficieDeCartao(isSystemInDarkTheme())
+                            else MaterialTheme.colorScheme.surfaceVariant
                         ) {
                             Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Text(b.name, fontWeight = FontWeight.Medium)
