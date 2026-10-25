@@ -1,5 +1,6 @@
 package br.com.willendary.designacoesjw.screens
 
+import br.com.willendary.designacoesjw.R
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -69,18 +70,22 @@ import br.com.willendary.designacoesjw.*
 @Composable
 fun ReplaceDialog(candidates: List<Brother>, onSelect: (Long) -> Unit, onDismiss: () -> Unit) {
     var search by remember { mutableStateOf("") }
-    val filtered = candidates.filter { it.name.contains(search.trim(), ignoreCase = true) }
+    val filtered = candidates.filter { AssignmentGenerator.normalizeName(it.name).contains(AssignmentGenerator.normalizeName(search)) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("stringResource(R.string.trocar_designacao)") },
+        title = { Text(stringResource(R.string.trocar_designacao)) },
         text = {
             Column {
-                OutlinedTextField(search, { search = it }, label = { Text("stringResource(R.string.buscar_irmao)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(search, { search = it }, label = { Text(stringResource(R.string.buscar_irmao)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
-                if (filtered.isEmpty()) Text("stringResource(R.string.nao_ha_outro_irmao_autorizado_e_disponiv)")
-                filtered.forEach { brother -> TextButton({ onSelect(brother.id) }, Modifier.fillMaxWidth()) { Text(brother.name) } }
+                if (filtered.isEmpty()) Text(stringResource(R.string.nao_ha_outro_irmao_autorizado_e_disponiv))
+                LazyColumn(Modifier.heightIn(max = 320.dp)) {
+                    items(filtered, key = { it.id }) { brother ->
+                        TextButton({ onSelect(brother.id) }, Modifier.fillMaxWidth()) { Text(brother.name) }
+                    }
+                }
             }
         },
-        confirmButton = { TextButton(onDismiss) { Text("stringResource(R.string.cancelar)") } }
+        confirmButton = { TextButton(onDismiss) { Text(stringResource(R.string.cancelar)) } }
     )
 }

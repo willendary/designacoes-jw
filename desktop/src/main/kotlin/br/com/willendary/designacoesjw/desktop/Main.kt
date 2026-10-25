@@ -1,5 +1,7 @@
 package br.com.willendary.designacoesjw.desktop
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -45,11 +47,14 @@ import br.com.willendary.designacoesjw.export.CsvDataHandler
 import br.com.willendary.designacoesjw.export.HtmlReportGenerator
 import br.com.willendary.designacoesjw.export.IcsExportHelper
 import br.com.willendary.designacoesjw.export.MwbProgramImporter
+import br.com.willendary.designacoesjw.generator.MeetingPlanner
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
 import br.com.willendary.designacoesjw.stats.EquityStatisticsHelper
 import br.com.willendary.designacoesjw.sync.CoalescingWorker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import br.com.willendary.designacoesjw.ui.AgendaOverview
+import br.com.willendary.designacoesjw.ui.MeetingReviewPanel
 import br.com.willendary.designacoesjw.ui.MeetingProgramList
 import br.com.willendary.designacoesjw.ui.JwCard
 import br.com.willendary.designacoesjw.ui.JwCardRail
@@ -117,7 +122,7 @@ private val avatarColors = listOf(
 )
 
 private fun getAvatarColor(name: String): Color {
-    val hash = kotlin.math.abs(name.hashCode())
+    val hash = name.hashCode() and Int.MAX_VALUE
     return avatarColors[hash % avatarColors.size]
 }
 
@@ -357,7 +362,7 @@ class StoreController {
                 result.fold(
                     onSuccess = { (program, items) ->
                         save(data.copy(meetings = data.meetings.map {
-                            if (it.id == meetingId) it.copy(theme = program.theme, program = items) else it
+                            if (it.id == meetingId) MeetingPlanner.updateProgram(it, program.theme, items) else it
                         }))
                         onResult(null)
                     },
@@ -686,7 +691,7 @@ class StoreController {
         save(data.copy(firstDay = first, secondDay = second))
     }
 
-    fun generateMonth(month: YearMonth) {
+    fun generateMonth(month: YearMonth, recalculate: Boolean = false) {
         val prefix = month.format(DateTimeFormatter.ofPattern("MM/yyyy"))
         val keep = data.meetings.filterNot { it.date.endsWith("/$prefix") }
         val generated = AssignmentGenerator.generateMonth(
@@ -694,9 +699,10 @@ class StoreController {
             schedule = MeetingSchedule(data.firstDay, data.secondDay),
             brothers = data.brothers,
             privileges = data.privileges,
-            existingMeetings = keep
+            existingMeetings = data.meetings,
+            recalculate = recalculate
         )
-        save(data.copy(meetings = (keep + generated).sortedBy { AssignmentGenerator.parseDate(it.date) }))
+        save(data.copy(meetings = (data.meetings.filterNot { old -> generated.any { it.id == old.id } } + generated).sortedBy { AssignmentGenerator.parseDate(it.date) }))
     }
 
     fun deleteMonth(month: YearMonth) {
@@ -705,9 +711,14 @@ class StoreController {
     }
 
     fun replaceAssignment(meetingId: Long, privilegeId: Long, oldBrotherId: Long, newBrotherId: Long) {
+        val target = data.meetings.firstOrNull { it.id == meetingId } ?: return
+        if (candidatesFor(target, privilegeId, oldBrotherId).none { it.id == newBrotherId }) {
+            reportError("Este participante não está disponível ou habilitado para a designação.")
+            return
+        }
         save(data.copy(meetings = data.meetings.map { m ->
             if (m.id != meetingId) m else m.copy(
-                assignments = m.assignments.map {
+                assignments = if (oldBrotherId == 0L) m.assignments + Assignment(privilegeId, newBrotherId) else m.assignments.map {
                     if (it.privilegeId == privilegeId && it.brotherId == oldBrotherId) it.copy(brotherId = newBrotherId) else it
                 }
             )
@@ -722,24 +733,13 @@ class StoreController {
      * conduz a reunião decide quem faz a parte.
      */
     fun toggleProgramAssignment(meetingId: Long, position: Int, brotherId: Long) {
-        save(data.copy(meetings = data.meetings.map { m ->
-            if (m.id != meetingId) m else m.copy(
-                programAssignments = togglePart(m.programAssignments, position, brotherId)
-            )
-        }))
-    }
-
-    /** Alterna um irmão numa parte, criando a parte se ainda não existir. */
-    private fun togglePart(
-        current: List<ProgramAssignment>,
-        position: Int,
-        brotherId: Long
-    ): List<ProgramAssignment> {
-        val ids = current.firstOrNull { it.item == position }?.brotherIds.orEmpty()
-        val next = if (brotherId in ids) ids - brotherId else ids + brotherId
-        // Parte sem ninguém sai da lista: é lixo e voltaria sozinho no próximo clique.
-        val others = current.filterNot { it.item == position }
-        return others + if (next.isEmpty()) emptyList() else listOf(ProgramAssignment(position, next))
+        val meeting = data.meetings.firstOrNull { it.id == meetingId } ?: return
+        MeetingPlanner.programAssignmentError(meeting, position, brotherId, data.brothers)?.let {
+            reportError(it)
+            return
+        }
+        val updated = MeetingPlanner.toggleProgramAssignment(meeting, position, brotherId)
+        save(data.copy(meetings = data.meetings.map { if (it.id == meetingId) updated else it }))
     }
 
     fun deleteMeeting(meetingId: Long) {
@@ -1181,7 +1181,7 @@ fun DesktopApp(c: StoreController, onShowUpdate: (WindowsUpdateInfo) -> Unit = {
                 c = c
             )
             VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-            Column(Modifier.fillMaxSize().padding(24.dp)) {
+            Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(24.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Icon(Icons.Default.CalendarMonth, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
                     Text("Designações JW", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
@@ -1752,18 +1752,32 @@ private fun Home(c: StoreController) {
     var viewMode by remember { mutableStateOf("LIST") } // "LIST" or "CALENDAR"
     var showEquityStats by remember { mutableStateOf(false) }
     var showDaysDialog by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+    var pendingOnly by remember { mutableStateOf(false) }
+    var showRecalculate by remember { mutableStateOf(false) }
 
     val allMeetings = c.data.meetings
     val prefix = month.format(DateTimeFormatter.ofPattern("MM/yyyy"))
     val meetings = allMeetings.filter { it.date.endsWith("/$prefix") }.sortedBy { AssignmentGenerator.parseDate(it.date) }
+    val reviews = meetings.associate { it.id to MeetingPlanner.review(it, c.data.brothers, c.data.privileges) }
+    val visibleMeetings = meetings.filter {
+        (!pendingOnly || reviews.getValue(it.id).pending) && MeetingPlanner.matches(it, query, c.data.brothers, c.data.privileges)
+    }
     val monthName = Datas.mesEAno(month)
 
     val nextMeetingInfo = remember(allMeetings) { getNextMeetingInfo(allMeetings) }
 
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
+        item {
         // Banner Inteligente da Próxima Reunião
         nextMeetingInfo?.let { (nextMeeting, daysUntil) ->
-            JwCard(destaque = true) {
+            JwCard(destaque = true, onClick = {
+                month = YearMonth.from(AssignmentGenerator.parseDate(nextMeeting.date))
+                selectedMeetingId = nextMeeting.id
+                viewMode = "LIST"
+                query = ""
+                pendingOnly = false
+            }) {
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1842,35 +1856,18 @@ private fun Home(c: StoreController) {
                         leadingIcon = { Icon(Icons.Default.CalendarMonth, null, modifier = Modifier.size(16.dp)) },
                         trailingIcon = { Icon(Icons.Default.Edit, null, modifier = Modifier.size(16.dp)) }
                     )
-                    AssistChip(
-                        onClick = {},
-                        enabled = false,
-                        label = { Text(contar(c.data.brothers.count { it.active }, "irmão ativo", "irmãos ativos")) },
-                        leadingIcon = { Icon(Icons.Default.Groups, null, modifier = Modifier.size(16.dp)) }
-                    )
-                    AssistChip(
-                        onClick = {},
-                        enabled = false,
-                        label = { Text(contar(c.data.privileges.count { it.active }, "privilégio", "privilégios")) },
-                        leadingIcon = { Icon(Icons.Default.Work, null, modifier = Modifier.size(16.dp)) }
-                    )
-                    AssistChip(
-                        onClick = {},
-                        enabled = false,
-                        label = { Text(contar(meetings.size, "reunião", "reuniões")) },
-                        leadingIcon = { Icon(Icons.Default.Event, null, modifier = Modifier.size(16.dp)) }
-                    )
+
                 }
             }
         }
 
         // Barra de Ações Rápidas
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Button({ c.generateMonth(month); selectedMeetingId = null }) {
                     Icon(Icons.Default.AutoAwesome, null)
                     Spacer(Modifier.width(6.dp))
-                    Text(if (meetings.isEmpty()) "Gerar designações do mês" else "Regenerar mês")
+                    Text(if (meetings.isEmpty()) "Gerar escala" else "Completar escala")
                 }
                 OutlinedButton(
                     enabled = meetings.isNotEmpty(),
@@ -1934,27 +1931,41 @@ private fun Home(c: StoreController) {
             }
         }
 
+        }
+        item { AgendaOverview(reviews.values.toList(), c.data.brothers.count { it.active }) }
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(query, { query = it }, modifier = Modifier.weight(1f), singleLine = true,
+                    label = { Text("Buscar pessoa, parte ou data") }, leadingIcon = { Icon(Icons.Default.Search, null) })
+                FilterChip(pendingOnly, { pendingOnly = !pendingOnly }, label = { Text("A revisar (${reviews.values.count { it.pending }})") })
+                TextButton(onClick = { month = YearMonth.now(); selectedMeetingId = null }) { Text("Mês atual") }
+                if (meetings.isNotEmpty()) TextButton(onClick = { showRecalculate = true }) { Text("Recalcular apoios") }
+            }
+        }
+        if (visibleMeetings.isEmpty()) item {
+            JwCard { Text(if (meetings.isEmpty()) "Nenhuma reunião neste mês. Gere a escala para começar." else "Nenhuma reunião corresponde aos filtros.") }
+        }
+
         if (viewMode == "CALENDAR") {
-            DesktopCalendarGrid(
+            item { DesktopCalendarGrid(
                 month = month,
-                meetings = meetings,
+                meetings = visibleMeetings,
                 selectedMeetingId = selectedMeetingId,
                 onSelectMeeting = { selectedMeetingId = if (selectedMeetingId == it) null else it }
-            )
+            ) }
 
-            val selectedMeeting = meetings.find { it.id == selectedMeetingId }
+            val selectedMeeting = visibleMeetings.find { it.id == selectedMeetingId }
             if (selectedMeeting != null) {
-                MeetingCardItem(
+                item { MeetingCardItem(
                     m = selectedMeeting,
                     isSelected = true,
                     c = c,
                     onToggleSelect = { selectedMeetingId = null },
                     onReplace = { target -> replaceTarget = target }
-                )
+                ) }
             }
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(meetings) { m ->
+                items(visibleMeetings, key = { it.id }) { m ->
                     MeetingCardItem(
                         m = m,
                         isSelected = m.id == selectedMeetingId,
@@ -1963,10 +1974,16 @@ private fun Home(c: StoreController) {
                         onReplace = { target -> replaceTarget = target }
                     )
                 }
-            }
         }
     }
 
+    if (showRecalculate) {
+        AlertDialog(onDismissRequest = { showRecalculate = false },
+            title = { Text("Recalcular designações de apoio?") },
+            text = { Text("Os apoios serão recalculados. Programas importados, participantes e datas serão preservados.") },
+            confirmButton = { TextButton(onClick = { c.generateMonth(month, recalculate = true); showRecalculate = false }) { Text("Recalcular") } },
+            dismissButton = { TextButton(onClick = { showRecalculate = false }) { Text("Cancelar") } })
+    }
     if (showDaysDialog) {
         DesktopMeetingDaysDialog(
             currentFirstDay = c.data.firstDay,
@@ -2085,6 +2102,9 @@ private fun MeetingCardItem(
     onReplace: (Triple<Long, Long, Long>) -> Unit
 ) {
     val missing = c.missingAssignments(m)
+    val review = MeetingPlanner.review(m, c.data.brothers, c.data.privileges)
+    var importing by remember { mutableStateOf(false) }
+    var importError by remember { mutableStateOf<String?>(null) }
     var showQuickUnavailability by remember { mutableStateOf(false) }
 
     val dateParts = m.date.split("/")
@@ -2134,7 +2154,7 @@ private fun MeetingCardItem(
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         JwCardTitle(m.type)
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            if (missing.isEmpty()) {
+                            if (!review.pending) {
                                 Badge(containerColor = JwTheme.colors.sucessoContainer) {
                                     Text(
                                         "✓ ${contar(m.assignments.size, "designação", "designações")}",
@@ -2145,7 +2165,7 @@ private fun MeetingCardItem(
                             } else {
                                 Badge(containerColor = MaterialTheme.colorScheme.errorContainer) {
                                     Text(
-                                        "⚠ Faltam candidatos",
+                                        "A revisar",
                                         color = MaterialTheme.colorScheme.onErrorContainer,
                                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
                                         fontWeight = FontWeight.Bold
@@ -2253,6 +2273,23 @@ private fun MeetingCardItem(
             }
 
             if (isSelected) {
+                MeetingReviewPanel(review)
+                if (m.isMidweek) {
+                    OutlinedButton(enabled = !importing, onClick = {
+                        importing = true
+                        importError = null
+                        c.importMwbProgram(m.id) { error -> importing = false; importError = error }
+                    }) { Text(if (importing) "Importando..." else if (m.program.isEmpty()) "Importar programa do jw.org" else "Atualizar programa") }
+                    importError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+                if (m.theme.isNotBlank()) Text(m.theme, style = MaterialTheme.typography.titleLarge)
+                if (m.program.isNotEmpty()) MeetingProgramList(m, c.data.brothers, c.data.privileges,
+                    canAssign = c.data.brothers.filter { it.active },
+                    onToggleAssignment = { position, brotherId -> c.toggleProgramAssignment(m.id, position, brotherId) })
+                JwSectionLabel("Apoio à reunião")
+                missing.forEach { privilege ->
+                    OutlinedButton(onClick = { onReplace(Triple(m.id, privilege.id, 0L)) }) { Text("Preencher vaga: ${privilege.name}") }
+                }
                 HorizontalDivider(Modifier.padding(vertical = 4.dp), color = corDeContorno())
                 // Cada designação é uma linha repetida dentro do cartão:
                 // divisória, não um cartão dentro do cartão.
@@ -3086,7 +3123,6 @@ private fun DesktopAddBrotherDialog(
 private fun Privileges(c: StoreController) {
     var searchPrivilege by remember { mutableStateOf("") }
     var showAddPrivilegeDialog by remember { mutableStateOf(false) }
-    var manageBrothersPrivilege by remember { mutableStateOf<Privilege?>(null) }
     var editingPrivilege by remember { mutableStateOf<Privilege?>(null) }
     var deletingPrivilege by remember { mutableStateOf<Privilege?>(null) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
@@ -3268,11 +3304,8 @@ private fun Privileges(c: StoreController) {
                                 color = MaterialTheme.colorScheme.primary
                             )
 
-                            Button(onClick = { manageBrothersPrivilege = p }) {
-                                Icon(Icons.Default.Groups, null, modifier = Modifier.size(22.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("Gerenciar Autorizações")
-                            }
+                            Text("Defina os privilégios no cadastro da pessoa.", style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -3287,14 +3320,6 @@ private fun Privileges(c: StoreController) {
                 if (errorMsg == null) showAddPrivilegeDialog = false
             },
             onDismiss = { showAddPrivilegeDialog = false }
-        )
-    }
-
-    manageBrothersPrivilege?.let { p ->
-        DesktopManagePrivilegeBrothersDialog(
-            c = c,
-            privilege = p,
-            onDismiss = { manageBrothersPrivilege = null }
         )
     }
 
@@ -3380,100 +3405,6 @@ private fun DesktopAddPrivilegeDialog(
             ) { Text("Salvar") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
-    )
-}
-
-@Composable
-private fun DesktopManagePrivilegeBrothersDialog(
-    c: StoreController,
-    privilege: Privilege,
-    onDismiss: () -> Unit
-) {
-    var search by remember { mutableStateOf("") }
-    val isBook = privilege.readerGrant == ReaderGrant.BOOK
-
-    val filteredBrothers = c.data.brothers.filter {
-        AssignmentGenerator.normalizeName(it.name).contains(AssignmentGenerator.normalizeName(search))
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Column {
-                Text("Autorizações — ${privilege.name}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                Text("Selecione os irmãos aptos para receber essa designação.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-            }
-        },
-        text = {
-            Column(Modifier.width(480.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = search,
-                    onValueChange = { search = it },
-                    label = { Text("Buscar irmão") },
-                    leadingIcon = { Icon(Icons.Default.Search, null) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                if (isBook) {
-                    JwCard(destaque = true) {
-                        Text(
-                            "Nota teocrática: Leitores da Sentinela já são qualificados automaticamente para o Livro.",
-                            style = MaterialTheme.typography.labelMedium
-                        )
-                    }
-                }
-
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    items(filteredBrothers) { brother ->
-                        val direct = privilege.id in brother.privileges
-                        // Herança: quem é leitor de A Sentinela também pode ler o livro.
-                        val inherited = !direct && isBook && brother.isSentinelReader
-
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable(enabled = !inherited) {
-                                    c.toggleBrotherPrivilege(brother.id, privilege.id)
-                                },
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (direct || inherited) MaterialTheme.colorScheme.primaryContainer
-                            else superficieDeCartao(isSystemInDarkTheme())
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column(Modifier.weight(1f)) {
-                                    Text(brother.name, fontWeight = FontWeight.Medium)
-                                    if (inherited) {
-                                        Text(
-                                            "Autorizado automaticamente (Leitor da Sentinela)",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    } else {
-                                        Text(brother.role.label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                                    }
-                                }
-                                Checkbox(
-                                    checked = direct || inherited,
-                                    onCheckedChange = {
-                                        if (!inherited) c.toggleBrotherPrivilege(brother.id, privilege.id)
-                                    },
-                                    enabled = !inherited
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = { Button(onClick = onDismiss) { Text("Concluir") } }
     )
 }
 

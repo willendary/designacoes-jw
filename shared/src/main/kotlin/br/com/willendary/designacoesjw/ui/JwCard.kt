@@ -54,12 +54,12 @@ fun JwCard(
         modifier = modifier
             .fillMaxWidth()
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (destaque) {
-                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+                MaterialTheme.colorScheme.primaryContainer
             } else {
-                superficieDeCartao(isSystemInDarkTheme())
+                MaterialTheme.colorScheme.surface
             }
         ),
         border = if (destaque) {

@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import br.com.willendary.designacoesjw.data.*
+import br.com.willendary.designacoesjw.generator.MeetingPlanner
 import br.com.willendary.designacoesjw.generator.AssignmentGenerator
 import br.com.willendary.designacoesjw.export.CsvDataHandler
 import br.com.willendary.designacoesjw.export.ListaDeNomes
@@ -412,7 +413,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         repo.saveBrothers(brothers.value)
     }
 
-    fun generateMonth(yearMonth: YearMonth): List<Meeting> {
+    fun generateMonth(yearMonth: YearMonth, recalculate: Boolean = false): List<Meeting> {
         if (!can(AppPermissions.GENERATE_ASSIGNMENTS)) { lastActionError.value = denied(AppPermissions.GENERATE_ASSIGNMENTS, "gerar designações"); return emptyList() }
         val monthPrefix = yearMonth.format(DateTimeFormatter.ofPattern("MM/yyyy"))
         val keep = meetings.value.filterNot { it.date.endsWith("/$monthPrefix") }
@@ -421,18 +422,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             schedule = schedule.value,
             brothers = brothers.value,
             privileges = privileges.value,
-            existingMeetings = keep
+            existingMeetings = meetings.value,
+            recalculate = recalculate
         )
-        meetings.value = (keep + generated).sortedBy { AssignmentGenerator.parseDate(it.date) }
+        meetings.value = (meetings.value.filterNot { old -> generated.any { it.id == old.id } } + generated).sortedBy { AssignmentGenerator.parseDate(it.date) }
         repo.saveMeetings(meetings.value)
         return generated
     }
 
     fun replaceAssignment(meetingId: Long, privilegeId: Long, oldBrotherId: Long, newBrotherId: Long) {
         if (!can(AppPermissions.GENERATE_ASSIGNMENTS)) { lastActionError.value = denied(AppPermissions.GENERATE_ASSIGNMENTS, "trocar designações"); return }
+        val target = meetings.value.firstOrNull { it.id == meetingId } ?: return
+        if (candidatesFor(target, privilegeId, oldBrotherId).none { it.id == newBrotherId }) {
+            lastActionError.value = "Este participante não está disponível ou habilitado para a designação."
+            return
+        }
         meetings.value = meetings.value.map { meeting ->
             if (meeting.id != meetingId) meeting else meeting.copy(
-                assignments = meeting.assignments.map {
+                assignments = if (oldBrotherId == 0L) meeting.assignments + Assignment(privilegeId, newBrotherId) else meeting.assignments.map {
                     if (it.privilegeId == privilegeId && it.brotherId == oldBrotherId) it.copy(brotherId = newBrotherId) else it
                 }
             )
@@ -460,26 +467,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 .also { lastActionError.value = it }
         }
         val meeting = meetings.value.firstOrNull { it.id == meetingId } ?: return "Reunião não encontrada."
-        val updated = meeting.copy(
-            programAssignments = togglePart(meeting.programAssignments, position, brotherId)
-        )
+        MeetingPlanner.programAssignmentError(meeting, position, brotherId, brothers.value)?.let {
+            lastActionError.value = it
+            return it
+        }
+        val updated = MeetingPlanner.toggleProgramAssignment(meeting, position, brotherId)
         meetings.value = meetings.value.map { if (it.id == meetingId) updated else it }
         repo.saveMeetings(meetings.value)
         lastActionError.value = programWarning(updated, position)
         return null
-    }
-
-    /** Alterna um irmão numa parte, criando a parte se ainda não existir. */
-    private fun togglePart(
-        current: List<ProgramAssignment>,
-        position: Int,
-        brotherId: Long
-    ): List<ProgramAssignment> {
-        val ids = current.firstOrNull { it.item == position }?.brotherIds.orEmpty()
-        val next = if (brotherId in ids) ids - brotherId else ids + brotherId
-        // Parte sem ninguém sai da lista: é lixo e voltaria sozinho no próximo clique.
-        val others = current.filterNot { it.item == position }
-        return others + if (next.isEmpty()) emptyList() else listOf(ProgramAssignment(position, next))
     }
 
     /** Aviso de não qualificados da parte, ou null quando não há o que avisar. */
@@ -618,7 +614,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             it.date == dateText && it.isMidweek
         }?.id
         val updated = if (targetId != null) {
-            current.map { if (it.id == targetId) it.copy(theme = theme, program = items) else it }
+            current.map { if (it.id == targetId) MeetingPlanner.updateProgram(it, theme, items) else it }
         } else {
             current + Meeting(
                 id = AssignmentGenerator.nextId(),

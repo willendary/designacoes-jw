@@ -6,6 +6,7 @@ import br.com.willendary.designacoesjw.data.BrotherStatus
 import br.com.willendary.designacoesjw.data.Gender
 import br.com.willendary.designacoesjw.data.Meeting
 import br.com.willendary.designacoesjw.data.MeetingSchedule
+import br.com.willendary.designacoesjw.data.MeetingType
 import br.com.willendary.designacoesjw.data.Privilege
 import br.com.willendary.designacoesjw.data.PartKind
 import br.com.willendary.designacoesjw.data.ProgramItem
@@ -15,19 +16,25 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
+import java.time.format.ResolverStyle
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicLong
 
 object AssignmentGenerator {
-    val DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
+    val DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/uuuu")
+        .withResolverStyle(ResolverStyle.STRICT)
 
     fun generateMonth(
         yearMonth: YearMonth,
         schedule: MeetingSchedule,
         brothers: List<Brother>,
         privileges: List<Privilege>,
-        existingMeetings: List<Meeting>
+        existingMeetings: List<Meeting>,
+        recalculate: Boolean = false
     ): List<Meeting> {
+        require(schedule.firstDay in 1..7 && schedule.secondDay in 1..7 && schedule.firstDay != schedule.secondDay) {
+            "Escolha dois dias de reunião diferentes."
+        }
         val meetingDays = listOf(schedule.firstDay, schedule.secondDay)
         val dates = (1..yearMonth.lengthOfMonth())
             .map { yearMonth.atDay(it) }
@@ -35,25 +42,39 @@ object AssignmentGenerator {
             .sorted()
 
         val generated = mutableListOf<Meeting>()
-        var history = existingMeetings.toList()
+        val currentMonth = existingMeetings.filter {
+            val date = parseDate(it.date)
+            date != LocalDate.MIN && YearMonth.from(date) == yearMonth
+        }
+        var history = existingMeetings.filterNot { it in currentMonth }
 
         dates.forEach { date ->
+            val existing = currentMonth.filter { parseDate(it.date) == date }
+            // Reuniões importadas e ajustes manuais mantêm identidade e conteúdo.
+            val original = existing.firstOrNull()
             val prevMeeting = history
                 .filter { val d = parseDate(it.date); d != LocalDate.MIN && d < date }
                 .maxByOrNull { parseDate(it.date) }
             val meeting = generateMeeting(
                 date = date,
-                blocked = emptySet(),
+                blocked = original?.blockedBrotherIds.orEmpty(),
                 brothers = brothers,
                 privileges = privileges,
                 history = history,
-                previousMeeting = prevMeeting
+                previousMeeting = prevMeeting,
+                initialAssignments = if (recalculate) emptyList() else original?.assignments.orEmpty(),
+                reservedBrotherIds = original?.programAssignments.orEmpty().flatMap { it.brotherIds }.toSet()
             )
-            generated += meeting
-            history = history + meeting
+            val updated = original?.copy(assignments = meeting.assignments) ?: meeting.copy(
+                type = if (date.dayOfWeek.value == schedule.firstDay) MeetingType.MIDWEEK.label else MeetingType.WEEKEND.label
+            )
+            generated += updated
+            generated += existing.drop(1)
+            history = history + updated
         }
-
-        return generated
+        // Uma reunião transferida para outra data não pode desaparecer ao completar o mês.
+        return (generated + currentMonth.filter { old -> generated.none { it.id == old.id } })
+            .sortedBy { parseDate(it.date) }
     }
 
     fun generateMeeting(
@@ -62,7 +83,9 @@ object AssignmentGenerator {
         brothers: List<Brother>,
         privileges: List<Privilege>,
         history: List<Meeting>,
-        previousMeeting: Meeting? = null
+        previousMeeting: Meeting? = null,
+        initialAssignments: List<Assignment> = emptyList(),
+        reservedBrotherIds: Set<Long> = emptySet()
     ): Meeting {
         val activePrivileges = privileges.filter {
             isPrivilegeApplicableToMeeting(it, date)
@@ -82,10 +105,12 @@ object AssignmentGenerator {
 
         val brothersInPreviousMeeting = previousMeeting?.assignments?.map { it.brotherId }?.toSet() ?: emptySet()
 
-        val result = mutableListOf<Assignment>()
-        val usedInMeeting = mutableSetOf<Long>()
+        val result = initialAssignments.toMutableList()
+        val usedInMeeting = (initialAssignments.map { it.brotherId } + reservedBrotherIds).toMutableSet()
 
         activePrivileges.forEach { privilege ->
+            val remaining = (privilege.quantity - result.count { it.privilegeId == privilege.id }).coerceAtLeast(0)
+            if (remaining == 0) return@forEach
             val candidates = activeBrothers
                 .filter { brother ->
                     brother.id !in usedInMeeting &&
@@ -111,8 +136,10 @@ object AssignmentGenerator {
             // No máximo um não qualificado por parte (quantity >= 2).
             val selected = mutableListOf<Brother>()
             for (candidate in candidates) {
-                if (selected.size >= privilege.quantity) break
-                if (candidate.isUnqualified() && selected.any { it.isUnqualified() }) continue
+                if (selected.size >= remaining) break
+                val existingUnqualified = result.any { a -> a.privilegeId == privilege.id &&
+                    brothers.firstOrNull { it.id == a.brotherId }?.isUnqualified() == true }
+                if (candidate.isUnqualified() && (existingUnqualified || selected.any { it.isUnqualified() })) continue
                 selected += candidate
             }
             selected.forEach { brother ->
@@ -144,13 +171,16 @@ object AssignmentGenerator {
         privileges: List<Privilege>
     ): List<Brother> {
         val meetingDate = parseDate(meeting.date)
+        if (meetingDate == LocalDate.MIN) return emptyList()
         val used = meeting.assignments
-            .filter { it.brotherId != currentBrotherId }
+            .filterNot { it.privilegeId == privilegeId && it.brotherId == currentBrotherId }
             .map { it.brotherId }
-            .toSet()
+            .toSet() + meeting.programAssignments.flatMap { it.brotherIds }
 
         val privilege = privileges.firstOrNull { it.id == privilegeId } ?: return emptyList()
         if (!isPrivilegeApplicableToMeeting(privilege, meetingDate)) return emptyList()
+        if (currentBrotherId == 0L && meeting.assignments.count { it.privilegeId == privilegeId } >= privilege.quantity) return emptyList()
+        if (currentBrotherId != 0L && meeting.assignments.none { it.privilegeId == privilegeId && it.brotherId == currentBrotherId }) return emptyList()
 
         // Já existe um não qualificado entre os demais designados desta parte?
         // Se sim, a troca manual não pode introduzir um segundo não qualificado.
@@ -183,7 +213,7 @@ object AssignmentGenerator {
     }
 
     fun isPrivilegeApplicableToMeeting(privilege: Privilege, date: LocalDate): Boolean {
-        if (!privilege.active) return false
+        if (!privilege.active || date == LocalDate.MIN) return false
         val meetingDay = date.dayOfWeek.value
 
         // Dia da semana agora é configurado por allowedDays, não pelo nome do privilégio.
