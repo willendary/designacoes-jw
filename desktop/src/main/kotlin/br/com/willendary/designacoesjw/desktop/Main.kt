@@ -1526,7 +1526,7 @@ private fun DesktopSidebar(
                 }
                 item {
                     DesktopSidebarItem(
-                        label = "Início (Quadro)",
+                        label = "Agenda",
                         icon = Icons.Default.Home,
                         selected = selectedTab == 0,
                         onClick = { onSelectTab(0) }
@@ -1542,7 +1542,7 @@ private fun DesktopSidebar(
                 }
                 item {
                     DesktopSidebarItem(
-                        label = "Modo Telão (Kiosk)",
+                        label = "Telão",
                         icon = Icons.Default.Tv,
                         selected = selectedTab == 2,
                         badge = "TV",
@@ -1581,7 +1581,7 @@ private fun DesktopSidebar(
                 }
                 item {
                     DesktopSidebarItem(
-                        label = "Relatório A4 / Imprimir",
+                        label = "Imprimir e exportar",
                         icon = Icons.Default.Print,
                         selected = selectedTab == 5,
                         onClick = { onSelectTab(5) }
@@ -1771,6 +1771,7 @@ private fun Home(c: StoreController) {
 
     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         // Banner Inteligente da Próxima Reunião
         nextMeetingInfo?.let { (nextMeeting, daysUntil) ->
             JwCard(destaque = true, onClick = {
@@ -1933,6 +1934,7 @@ private fun Home(c: StoreController) {
             }
         }
 
+            }
         }
         item { AgendaOverview(reviews.values.toList(), c.data.brothers.count { it.active }) }
         item {
@@ -2120,10 +2122,9 @@ private fun MeetingCardItem(
     // vira `destaque` — o realce é o que o usuário abriu, não um alfa no fundo.
     JwCard(destaque = isSelected) {
         Column(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.sm)) {
-            Row(
+            Column(
                 Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -2178,7 +2179,7 @@ private fun MeetingCardItem(
                     }
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     OutlinedButton(onClick = {
                         // Gerar o BufferedImage, copiar e salvar em disco leva
                         // centenas de ms a segundos. No onClick, sem try/catch:
@@ -2286,7 +2287,7 @@ private fun MeetingCardItem(
                 }
                 if (m.theme.isNotBlank()) Text(m.theme, style = MaterialTheme.typography.titleLarge)
                 if (m.program.isNotEmpty()) MeetingProgramList(m, c.data.brothers, c.data.privileges,
-                    canAssign = c.data.brothers.filter { it.active },
+                    canAssign = c.data.brothers.filter { it.active }, canEdit = true,
                     onToggleAssignment = { position, brotherId -> c.toggleProgramAssignment(m.id, position, brotherId) })
                 JwSectionLabel("Apoio à reunião")
                 missing.forEach { privilege ->
@@ -3498,7 +3499,7 @@ private fun History(c: StoreController) {
                                 meeting = m,
                                 brothers = c.data.brothers,
                                 privileges = c.data.privileges,
-                                canAssign = c.data.brothers.filter { it.active },
+                                canAssign = c.data.brothers.filter { it.active }, canEdit = true,
                                 onToggleAssignment = { position, brotherId ->
                                     c.toggleProgramAssignment(m.id, position, brotherId)
                                 }

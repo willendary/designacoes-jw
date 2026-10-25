@@ -54,7 +54,7 @@ class AgendaUiTest {
         var current by mutableStateOf(meeting)
         rule.setContent {
             JwThemeProvider(isDark = false) {
-                Surface(Modifier.width(390.dp)) {
+                Surface(Modifier.width(390.dp).testTag("preview")) {
                     MeetingProgramList(current, people, emptyList(), canAssign = people,
                         onToggleAssignment = { position, id -> current = MeetingPlanner.toggleProgramAssignment(current, position, id) })
                 }
@@ -64,7 +64,7 @@ class AgendaUiTest {
         rule.onNodeWithText("Buscar participante").performTextInput("joao")
         rule.onAllNodes(isToggleable())[1].performClick()
         rule.runOnIdle { assertEquals(listOf(2L), current.programAssignments.single().brotherIds) }
-        snapshot("seletor-homonimos")
+        snapshot("seletor-homonimos", "preview")
         rule.onAllNodes(isToggleable())[0].performClick()
         rule.runOnIdle { assertTrue(current.programAssignments.isEmpty()) }
     }
@@ -73,7 +73,7 @@ class AgendaUiTest {
         val unavailable = people[0].copy(unavailabilities = listOf(UnavailablePeriod(1, meeting.date, meeting.date)))
         rule.setContent {
             JwThemeProvider {
-                Surface(Modifier.width(390.dp)) {
+                Surface(Modifier.width(390.dp).testTag("preview")) {
                     MeetingProgramList(meeting, listOf(unavailable, people[1]), emptyList(), canAssign = listOf(unavailable, people[1]))
                 }
             }
@@ -81,6 +81,21 @@ class AgendaUiTest {
         rule.onNodeWithContentDescription("Editar participantes").performClick()
         rule.onAllNodes(isToggleable())[0].assertIsNotEnabled()
         rule.onAllNodes(isToggleable())[1].assertIsEnabled()
+    }
+
+    @Test fun removedParticipantCanBeClearedWhenNoCandidatesRemain() {
+        var current by mutableStateOf(meeting.copy(programAssignments = listOf(ProgramAssignment(1, listOf(99)))))
+        rule.setContent {
+            JwThemeProvider {
+                Surface(Modifier.width(390.dp).testTag("preview")) {
+                    MeetingProgramList(current, emptyList(), emptyList(), canEdit = true,
+                        onToggleAssignment = { position, id -> current = MeetingPlanner.toggleProgramAssignment(current, position, id) })
+                }
+            }
+        }
+        rule.onNodeWithContentDescription("Editar participantes").performClick()
+        rule.onNode(isToggleable()).performClick()
+        rule.runOnIdle { assertTrue(current.programAssignments.isEmpty()) }
     }
 
     @Test fun narrowLightTheme() = renderProgram(false, "programa-claro")
@@ -98,7 +113,7 @@ class AgendaUiTest {
             }
         }
         rule.onNodeWithText("A designar").assertIsDisplayed()
-        snapshot(name)
+        snapshot(name, "preview")
     }
 
     @Test fun desktopAgendaFiltersAndCompletesWithoutLosingProgram() {
@@ -114,11 +129,15 @@ class AgendaUiTest {
         rule.onNodeWithText("Completar escala").performScrollTo().performClick()
         rule.runOnIdle { assertEquals(current.program, controller.data.meetings.single { it.id == current.id }.program) }
         snapshot("agenda-desktop")
+        rule.onNodeWithText("Buscar pessoa, parte ou data").performScrollTo().performTextInput("Iniciando")
+        rule.onNodeWithText("Ver detalhes").performScrollTo().performClick()
+        rule.onNodeWithText("Iniciando conversas").performScrollTo().assertIsDisplayed()
+        snapshot("agenda-programa-desktop")
     }
 
-    private fun snapshot(name: String) {
+    private fun snapshot(name: String, tag: String? = null) {
         rule.waitForIdle()
-        val image = rule.onRoot().captureToImage()
+        val image = (if (tag == null) rule.onRoot() else rule.onNodeWithTag(tag)).captureToImage()
         val pixels = image.toPixelMap()
         val bitmap = BufferedImage(image.width, image.height, BufferedImage.TYPE_INT_ARGB)
         for (y in 0 until image.height) for (x in 0 until image.width) bitmap.setRGB(x, y, pixels[x, y].toArgb())

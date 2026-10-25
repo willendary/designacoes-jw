@@ -1050,6 +1050,7 @@ internal fun MeetingCardView(
                         brothers = vm.brothers.value,
                         privileges = vm.privileges.value,
                         canAssign = if (vm.can(AppPermissions.GENERATE_ASSIGNMENTS)) vm.brothers.value.filter { it.active } else emptyList(),
+                        canEdit = vm.can(AppPermissions.GENERATE_ASSIGNMENTS),
                         onToggleAssignment = { position, brotherId ->
                             vm.toggleProgramAssignment(meeting.id, position, brotherId)
                         }

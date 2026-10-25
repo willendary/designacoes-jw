@@ -57,7 +57,7 @@ object MeetingPlanner {
         privileges.filter { AssignmentGenerator.isPrivilegeApplicableToMeeting(it, date) }.forEach { p ->
             val assigned = meeting.assignments.filter { it.privilegeId == p.id }.map { it.brotherId }.distinct()
             val valid = assigned.count { id -> available(id) && byId[id]?.let {
-                it.role.ordinal >= p.minRole.ordinal && AssignmentGenerator.isAuthorized(it, p)
+                !it.trainee && it.role.ordinal >= p.minRole.ordinal && AssignmentGenerator.isAuthorized(it, p)
             } == true }
             val expected = p.quantity.coerceAtLeast(0)
             total += expected
@@ -72,6 +72,9 @@ object MeetingPlanner {
             total += expected
             filled += valid.coerceAtMost(expected)
             if (valid < expected) issues += "${item.title}: faltam ${expected - valid}."
+            if (item.kind in setOf(PartKind.INDIVIDUAL, PartKind.PAIR) && assigned.size > expected) {
+                issues += "${item.title}: há mais participantes que o previsto."
+            }
         }
         if (meeting.isMidweek && meeting.program.isEmpty()) issues += "Programa da semana ainda não importado."
         if (total == 0 && !meeting.isMidweek) issues += "Nenhuma designação configurada para esta reunião."

@@ -21,6 +21,8 @@ gradle assembleDebug
 python scripts/check_apk_desktop.py app/build/outputs/apk/debug/app-debug.apk
 ```
 
+O workflow de interface valida busca, preenchimento, seleção e remoção de homônimos, ausência e remoção de participantes excluídos. Produz capturas reais dos componentes em largura de celular, temas claro/escuro e da agenda desktop no artefato `agenda-interface`.
+
 A suíte compartilhada cobre preservação e idempotência, reuniões transferidas, dias configurados, bloqueios, ausências, homônimos, reimportação, busca e datas inválidas. O CI também produz APK assinado e instaladores Windows.
 
 Para homologação no aparelho: usar uma congregação de teste, alternar claro/escuro, filtrar a agenda, importar uma semana, designar duas pessoas homônimas, registrar ausência, completar duas vezes e conferir o compartilhamento. Validar login e sincronização entre dois aparelhos com contas reais autorizadas. Essas integrações dependem do Firebase e não são substituídas pelos testes de lógica.

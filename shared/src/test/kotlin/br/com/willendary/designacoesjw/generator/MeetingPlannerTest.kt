@@ -107,4 +107,12 @@ class MeetingPlannerTest {
             AssignmentGenerator.generateMonth(YearMonth.of(2026, 10), MeetingSchedule(3, 3), emptyList(), emptyList(), emptyList())
         }
     }
+    @Test fun `revisao sinaliza excesso em parte individual e aprendiz no apoio`() {
+        val assigned = meeting.copy(program = listOf(part.copy(kind = PartKind.INDIVIDUAL)),
+            programAssignments = listOf(ProgramAssignment(1, listOf(1, 2))))
+        val review = MeetingPlanner.review(assigned, listOf(person.copy(trainee = true), other), listOf(privilege))
+        assertTrue(review.issues.any { it.contains("mais participantes") })
+        assertTrue(review.issues.any { it.contains("Som: faltam 2") })
+    }
+
 }

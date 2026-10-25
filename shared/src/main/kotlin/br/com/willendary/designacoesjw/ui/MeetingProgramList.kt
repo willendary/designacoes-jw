@@ -26,7 +26,8 @@ fun MeetingProgramList(
     privileges: List<Privilege>,
     onToggleAssignment: (position: Int, brotherId: Long) -> Unit = { _, _ -> },
     canAssign: List<Brother> = emptyList(),
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    canEdit: Boolean = canAssign.isNotEmpty()
 ) {
     if (meeting.program.isEmpty()) {
         Text("Programa ainda não importado.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = modifier)
@@ -70,13 +71,14 @@ fun MeetingProgramList(
                                     }, Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodyMedium,
                                         color = if (ids.isEmpty()) JwTheme.colors.alerta else MaterialTheme.colorScheme.primary)
                                 }
-                                if (canAssign.isNotEmpty()) IconButton(onClick = { editing = !editing }) {
+                                if (canEdit) IconButton(onClick = { editing = !editing }) {
                                     Icon(Icons.Default.Edit, "Editar participantes", tint = MaterialTheme.colorScheme.primary)
                                 }
                             }
-                            if (editing) {
+                            if (editing && canEdit) {
                                 ProgramParticipantPicker(meeting, position, ids,
-                                    (canAssign + brothers.filter { it.id in ids }).distinctBy { it.id },
+                                    (canAssign + ids.map { id -> brothers.firstOrNull { it.id == id }
+                                        ?: Brother(id, "Participante removido", active = false) }).distinctBy { it.id },
                                     onToggle = { onToggleAssignment(position, it) }, onClose = { editing = false })
                             }
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
@@ -121,7 +123,7 @@ private fun ProgramParticipantPicker(
                 }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("${selectedIds.size} selecionado(s)", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
+                Text(if (selectedIds.size == 1) "1 selecionado" else "${selectedIds.size} selecionados", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
                 TextButton(onClick = onClose) { Text("Concluir") }
             }
         }

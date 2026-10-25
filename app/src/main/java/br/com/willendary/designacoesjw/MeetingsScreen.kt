@@ -70,9 +70,9 @@ fun MeetingsScreen(vm: AppViewModel) {
                     }
 
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(
+                        OutlinedIconButton(
                             onClick = { weekStart = weekStart.minusWeeks(1); message = null },
-                            modifier = Modifier.width(52.dp)
+                            modifier = Modifier.size(48.dp)
                         ) {
                             Icon(Icons.Filled.ChevronLeft, "Semana anterior")
 
@@ -86,11 +86,10 @@ fun MeetingsScreen(vm: AppViewModel) {
                         ) {
                             Text("Esta semana")
                         }
-                        OutlinedButton(
+                        OutlinedIconButton(
                             onClick = { weekStart = weekStart.plusWeeks(1); message = null },
-                            modifier = Modifier.width(52.dp)
+                            modifier = Modifier.size(48.dp)
                         ) {
-                            Spacer(Modifier.width(4.dp))
                             Icon(Icons.Filled.ChevronRight, "Próxima semana")
                         }
                     }
