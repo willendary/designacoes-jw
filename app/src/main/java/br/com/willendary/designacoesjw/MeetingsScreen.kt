@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import br.com.willendary.designacoesjw.data.AppPermissions
 import br.com.willendary.designacoesjw.data.Meeting
 import br.com.willendary.designacoesjw.ui.MeetingProgramList
 import java.time.DayOfWeek
@@ -69,13 +70,12 @@ fun MeetingsScreen(vm: AppViewModel) {
                     }
 
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(
+                        OutlinedIconButton(
                             onClick = { weekStart = weekStart.minusWeeks(1); message = null },
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.size(48.dp)
                         ) {
-                            Icon(Icons.Filled.ChevronLeft, null)
-                            Spacer(Modifier.width(4.dp))
-                            Text("Anterior")
+                            Icon(Icons.Filled.ChevronLeft, "Semana anterior")
+
                         }
                         OutlinedButton(
                             onClick = {
@@ -86,13 +86,11 @@ fun MeetingsScreen(vm: AppViewModel) {
                         ) {
                             Text("Esta semana")
                         }
-                        OutlinedButton(
+                        OutlinedIconButton(
                             onClick = { weekStart = weekStart.plusWeeks(1); message = null },
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.size(48.dp)
                         ) {
-                            Text("Próxima")
-                            Spacer(Modifier.width(4.dp))
-                            Icon(Icons.Filled.ChevronRight, null)
+                            Icon(Icons.Filled.ChevronRight, "Próxima semana")
                         }
                     }
 
@@ -107,7 +105,7 @@ fun MeetingsScreen(vm: AppViewModel) {
                                 message = result ?: "Programa da semana importado com sucesso."
                             }
                         },
-                        enabled = !importing,
+                        enabled = !importing && vm.can(AppPermissions.GENERATE_ASSIGNMENTS),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         if (importing) {
@@ -164,34 +162,6 @@ fun MeetingsScreen(vm: AppViewModel) {
 
 @Composable
 private fun WeeklyMeetingCard(meeting: Meeting, vm: AppViewModel) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(meeting.date, fontWeight = FontWeight.Bold)
-                Text(
-                    meeting.type,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-
-            if (meeting.theme.isNotBlank()) {
-                Text(meeting.theme, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            }
-
-            MeetingProgramList(
-                meeting = meeting,
-                brothers = vm.brothers.value,
-                privileges = vm.privileges.value,
-                canAssign = vm.brothers.value.filter { it.active },
-                onToggleAssignment = { position, brotherId ->
-                    vm.toggleProgramAssignment(meeting.id, position, brotherId)
-                }
-            )
-
-            if (meeting.assignments.isNotEmpty()) {
-                Text("${meeting.assignments.size} designações cadastradas.", style = MaterialTheme.typography.bodySmall)
-            }
-        }
-    }
+    var expanded by remember(meeting.id) { mutableStateOf(true) }
+    MeetingCardView(vm, meeting, expanded, onToggleExpand = { expanded = !expanded })
 }

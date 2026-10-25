@@ -38,8 +38,8 @@ enum class JwPalette(
     ),
     ROXO(
         "Roxo",
-        Color(0xFF6A1B9A) to Color(0xFFAB47BC),
-        Color(0xFFCE93D8) to Color(0xFFB39DDB)
+        Color(0xFF655080) to Color(0xFF79698D),
+        Color(0xFFD2BDE9) to Color(0xFFBDB0CE)
     ),
     LARANJA(
         "Laranja",
@@ -67,7 +67,7 @@ enum class JwPalette(
  */
 @Composable
 fun JwThemeProvider(
-    paleta: JwPalette = JwPalette.AZUL,
+    paleta: JwPalette = JwPalette.ROXO,
     isDark: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
@@ -98,6 +98,8 @@ private fun JwPalette.cores(isDark: Boolean): CoresDoTema {
         darkColorScheme(
             primary = primaria,
             secondary = secundaria,
+            primaryContainer = androidx.compose.ui.graphics.lerp(Color(0xFF12161C), primaria, 0.16f),
+            onPrimaryContainer = primaria,
             surface = Color(0xFF12161C),
             background = Color(0xFF0B0E12),
             surfaceVariant = Color(0xFF232B36)
@@ -106,9 +108,11 @@ private fun JwPalette.cores(isDark: Boolean): CoresDoTema {
         lightColorScheme(
             primary = primaria,
             secondary = secundaria,
-            surface = Color(0xFFFCFDFE),
-            background = Color(0xFFF4F6F9),
-            surfaceVariant = Color(0xFFE7EBF0)
+            primaryContainer = androidx.compose.ui.graphics.lerp(Color.White, primaria, 0.12f),
+            onPrimaryContainer = primaria,
+            surface = Color(0xFFFFFFFF),
+            background = Color(0xFFF4F3F6),
+            surfaceVariant = Color(0xFFECE9EF)
         )
     }
 

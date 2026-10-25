@@ -36,7 +36,7 @@ class MainActivity : ComponentActivity() {
         // visivel nas configuracoes nao ensina nada ao usuario.
         MeetingReminderHelper.createChannel(this)
         setContent {
-            val themeIndexState = remember { mutableIntStateOf(prefs.getInt("theme_index", 0)) }
+            val themeIndexState = remember { mutableIntStateOf(prefs.getInt("theme_index", JwPalette.ROXO.ordinal)) }
             val themeIndex = themeIndexState.intValue
 
             // Claro/escuro escolhido pela pessoa. Antes o Android so aceitava

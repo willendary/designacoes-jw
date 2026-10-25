@@ -1045,7 +1045,8 @@ class AppRepository(context: Context) {
                     section = raw["section"]?.toString() ?: "",
                     number = (raw["number"] as? Number)?.toInt() ?: 0,
                     title = raw["title"]?.toString() ?: "",
-                    minutes = (raw["minutes"] as? Number)?.toInt() ?: 0
+                    minutes = (raw["minutes"] as? Number)?.toInt() ?: 0,
+                    kind = runCatching { PartKind.valueOf(raw["kind"]?.toString() ?: "INDIVIDUAL") }.getOrDefault(PartKind.INDIVIDUAL)
                 )
                 is String -> parseLegacyProgramItem(raw)
                 else -> null

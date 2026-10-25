@@ -1,4 +1,18 @@
 {
+  "0.11.0": {
+    "android": [
+      "Agenda renovada com navegação inferior, paleta roxa e seções do programa. As cores escolhidas anteriormente são preservadas.",
+      "Busca por participante, parte ou data; filtro de reuniões a revisar e acompanhamento das vagas.",
+      "Completar escala mantém os programas importados e as escolhas existentes. Recalcular apoios exige confirmação.",
+      "Corrigidos textos que mostravam código, troca pelo calendário e seleção de pessoas com nomes iguais."
+    ],
+    "desktop": [
+      "Agenda com busca, filtro de pendências, resumo e programa editável nos detalhes da reunião.",
+      "Completar a escala preserva o trabalho existente; ausências e conflitos aparecem na revisão.",
+      "Autorizações concentradas no cadastro das pessoas; removida a tela redundante de seleção por privilégio.",
+      "Corrigida a versão exibida pelo atualizador do Windows."
+    ]
+  },
   "0.10.4": {
     "android": [
       "A tela Reuniões passa a usar uma apresentação editorial mais próxima da Biblioteca On-line: tipografia sem serifa, hierarquia de títulos, divisórias discretas e fundo sem cartões decorativos.",

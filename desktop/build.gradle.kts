@@ -71,6 +71,8 @@ dependencies {
     implementation(compose.material3)
     implementation(compose.materialIconsExtended)
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    testImplementation(kotlin("test"))
+    testImplementation(compose.desktop.uiTestJUnit4)
 }
 
 compose.desktop {
@@ -82,7 +84,13 @@ compose.desktop {
                 org.jetbrains.compose.desktop.application.dsl.TargetFormat.Msi
             )
             packageName = "DesignacoesJW"
-            packageVersion = "0.10.5"
+            packageVersion = "0.11.0"
         }
     }
+}
+
+// O renderizador de software permite validar a interface em CI sem GPU.
+tasks.test {
+    systemProperty("skiko.renderApi", "SOFTWARE")
+    maxParallelForks = 1
 }
