@@ -14,6 +14,32 @@ service cloud.firestore {
       return /databases/$(database)/documents/workspaces/designacoes-jw/settings/access;
     }
 
+    function invitationPath(invitationId) {
+      return /databases/$(database)/documents/workspaces/designacoes-jw/invitations/$(invitationId);
+    }
+
+    // Uma conta não obtém acesso só por estar autenticada.
+    // Somente convites pendentes para e-mail verificado podem conceder perfil.
+    function validInvitation(invitationId) {
+      return signedIn()
+        && request.auth.token.email_verified == true
+        && invitationId is string
+        && exists(invitationPath(invitationId))
+        && get(invitationPath(invitationId)).data.status == 'pending'
+        && get(invitationPath(invitationId)).data.email == request.auth.token.email.lower();
+    }
+
+    function invitedProfile(invitationId) {
+      return validInvitation(invitationId)
+        && request.resource.data.email == request.auth.token.email.lower()
+        && request.resource.data.role == 'custom'
+        && request.resource.data.active == true
+        && request.resource.data.invitationId == invitationId
+        && request.resource.data.permissions is list
+        && request.resource.data.permissions.size() == get(invitationPath(invitationId)).data.permissions.size()
+        && request.resource.data.permissions.hasAll(get(invitationPath(invitationId)).data.permissions);
+    }
+
     function hasProfile() {
       return signedIn() && exists(userPath(request.auth.uid));
     }
@@ -41,35 +67,28 @@ service cloud.firestore {
       allow get: if signedIn() && (request.auth.uid == userId || isAdmin());
       allow list: if isAdmin();
 
-      allow create: if isAdmin() || (signedIn() && request.auth.uid == userId && (
-        (
-          request.resource.data.role == 'viewer' &&
-          request.resource.data.permissions.hasAll(['view_assignments', 'export_reports']) &&
-          request.resource.data.permissions.size() == 2
-        ) ||
-        (
-          request.resource.data.role == 'custom' &&
-          request.resource.data.invitationId != null &&
-          exists(/databases/$(database)/documents/workspaces/designacoes-jw/invitations/$(request.resource.data.invitationId))
-        )
-      ));
+      allow create: if isAdmin() || (
+        signedIn() && request.auth.uid == userId
+        && invitedProfile(request.resource.data.invitationId)
+      );
 
+      // O usuário pode corrigir dados próprios, nunca elevar permissões.
+      // Convite válido pode transformar perfil preexistente não administrador.
       allow update: if isAdmin() || (
-        signedIn() && request.auth.uid == userId && (
+        signedIn() && request.auth.uid == userId
+        && (
           (
-            request.resource.data.role == resource.data.role &&
-            request.resource.data.permissions == resource.data.permissions &&
-            request.resource.data.active == resource.data.active
-          ) ||
-          (
-            // Permitir resgatar convite atribuindo role custom e permissões
-            request.resource.data.role == 'custom' &&
-            request.resource.data.invitationId != null &&
-            exists(/databases/$(database)/documents/workspaces/designacoes-jw/invitations/$(request.resource.data.invitationId))
+            request.resource.data.role == resource.data.role
+            && request.resource.data.permissions == resource.data.permissions
+            && request.resource.data.active == resource.data.active
+            && request.resource.data.invitationId == resource.data.invitationId
+            && request.resource.data.email == resource.data.email
+          ) || (
+            resource.data.role != 'admin'
+            && invitedProfile(request.resource.data.invitationId)
           )
         )
       );
-
       allow delete: if isAdmin();
     }
 
@@ -121,20 +140,28 @@ service cloud.firestore {
     }
 
     match /workspaces/designacoes-jw/invitations/{invitationId} {
-      allow get: if isAdmin() ||
-        (signedIn() &&
-         (resource.data.status == 'pending' ||
-          resource.data.email == request.auth.token.email));
-
+      allow get: if isAdmin() || (
+        signedIn() && request.auth.token.email_verified == true
+        && resource.data.email == request.auth.token.email.lower()
+      );
       allow list: if isAdmin();
 
       allow create, delete: if hasPermission('manage_users');
 
-      allow update: if isAdmin() ||
-        (signedIn() &&
-         resource.data.status == 'pending' &&
-         request.resource.data.status == 'accepted' &&
-         request.resource.data.acceptedBy == request.auth.uid);
+      // Quem aceita só pode marcar como aceito o próprio convite.
+      // Campos de e-mail, permissões e autoria são imutáveis neste fluxo.
+      allow update: if isAdmin() || (
+        signedIn() && request.auth.token.email_verified == true
+        && resource.data.status == 'pending'
+        && resource.data.email == request.auth.token.email.lower()
+        && request.resource.data.status == 'accepted'
+        && request.resource.data.acceptedBy == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'acceptedBy', 'acceptedAt'])
+        && exists(userPath(request.auth.uid))
+        && get(userPath(request.auth.uid)).data.role == 'custom'
+        && get(userPath(request.auth.uid)).data.invitationId == invitationId
+      );
     }
   }
 }
