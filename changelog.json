@@ -1,4 +1,8 @@
 {
+  "0.12.3": {
+    "android": ["Protege registros criados em outros aparelhos contra exclusão por listas locais desatualizadas."],
+    "desktop": ["Erros de gravação na nuvem passam a ser detectados e não são anunciados como sincronizados.", "Alterações locais são preservadas em falhas de envio."]
+  },
   "0.12.2": {
     "android": ["Cadastro sem convite deixa a conta pendente, sem acesso aos dados.", "Convites e alterações de permissões passam por validações mais restritivas no Firestore."],
     "desktop": ["Regras do Firestore reforçam permissões sem alterar dados existentes.", "Esta versão ainda depende da implantação das regras na nuvem."]

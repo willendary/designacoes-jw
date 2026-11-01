@@ -1,5 +1,13 @@
 # Histórico de versões — Designações JW
 
+## 0.12.3
+
+- Sincronização Android exclui somente os documentos removidos explicitamente do cache anterior, sem apagar itens criados em outros aparelhos.
+- Falhas de envio no Windows propagam erro e deixam alterações locais pendentes para nova tentativa.
+- A sincronização manual no Windows não informa sucesso quando uma escrita na nuvem falha.
+- Mantém formatos de dados existentes; conflito simultâneo sobre o mesmo documento ainda requer revisão específica.
+
+
 ## 0.12.2
 
 - Bloqueia criação automática de perfis de visualizador para contas sem convite.
