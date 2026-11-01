@@ -1,5 +1,12 @@
 # Histórico de versões — Designações JW
 
+## 0.12.1
+
+- Simplifica a navegação no Android e Windows com as áreas principais em primeiro plano.
+- Esconde ferramentas secundárias da escala atrás de «Mais ações», preservando exportação, estatísticas e recálculo.
+- Organiza o menu Windows com ferramentas recolhíveis e evita repetir o cadastro de irmãos.
+- Não altera permissões ou dados nesta versão; a revisão de segurança será separada.
+
 ## 0.12.0
 
 - Separa o programa das reuniões da escala e do histórico de privilégios em Android e Windows.
