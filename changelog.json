@@ -1,4 +1,8 @@
 {
+  "0.12.2": {
+    "android": ["Cadastro sem convite deixa a conta pendente, sem acesso aos dados.", "Convites e alterações de permissões passam por validações mais restritivas no Firestore."],
+    "desktop": ["Regras do Firestore reforçam permissões sem alterar dados existentes.", "Esta versão ainda depende da implantação das regras na nuvem."]
+  },
   "0.12.1": {
     "android": ["Menu principal simplificado e ações secundárias da escala acessíveis por Mais ações.", "Recalcular apoios e exportar preservam os mesmos comportamentos."],
     "desktop": ["Navegação principal destaca escala, reuniões, pessoas e histórico.", "Ferramentas secundárias recolhíveis e barra de ações simplificada."]
