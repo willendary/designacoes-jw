@@ -390,23 +390,31 @@ class StoreController {
             val res = DesktopFirestoreClient.fetchCloudStore(session.idToken)
             res.fold(
                 onSuccess = { cloudStore ->
-                    if (pendingLocalChange) {
-                        // Tem edição local que o push ainda não levou. O que
-                        // veio da nuvem é mais velho: aplicar aqui apagaria a
-                        // edição da tela (issue #17). Envia a local e preserva.
-                        log("sync: alteracao local pendente; enviando local em vez de sobrescrever")
-                        pushToCloud(session.idToken, lastStore)
-                    } else if (cloudStore.brothers.isNotEmpty() || cloudStore.meetings.isNotEmpty() || cloudStore.privileges.isNotEmpty()) {
-                        val merged = cloudStore.copy(themeMode = data.themeMode)
-                        data = merged
-                        lastStore = merged
-                        saveLocal(merged)
-                    } else {
-                        pushToCloud(session.idToken, lastStore)
-                    }
-                    syncStatus = "Sincronizado"
-                    isSyncing = false
-                    onComplete?.invoke(true, null)
+                    runCatching {
+                        if (pendingLocalChange) {
+                            log("sync: alteração local pendente; enviar antes de aplicar dados remotos")
+                            pushToCloud(session.idToken, lastStore)
+                            pendingLocalChange = false
+                        } else if (cloudStore.brothers.isNotEmpty() || cloudStore.meetings.isNotEmpty() || cloudStore.privileges.isNotEmpty()) {
+                            val merged = cloudStore.copy(themeMode = data.themeMode)
+                            data = merged
+                            lastStore = merged
+                            saveLocal(merged)
+                        } else {
+                            pushToCloud(session.idToken, lastStore)
+                        }
+                    }.fold(
+                        onSuccess = {
+                            syncStatus = "Sincronizado"
+                            isSyncing = false
+                            onComplete?.invoke(true, null)
+                        },
+                        onFailure = { error ->
+                            syncStatus = "Erro de sincronização — alteração local preservada"
+                            isSyncing = false
+                            onComplete?.invoke(false, error.message)
+                        }
+                    )
                 },
                 onFailure = { err ->
                     syncStatus = "Erro de sincronização"
@@ -424,13 +432,13 @@ class StoreController {
      * antigo e metade do novo.
      */
     private fun pushToCloud(token: String, snapshot: Store) {
-        DesktopFirestoreClient.pushBrothers(token, snapshot.brothers)
-        DesktopFirestoreClient.pushPrivileges(token, snapshot.privileges)
-        DesktopFirestoreClient.pushMeetings(token, snapshot.meetings)
-        DesktopFirestoreClient.pushPublicTalks(token, snapshot.publicTalks)
-        DesktopFirestoreClient.pushFieldServiceGroups(token, snapshot.fieldServiceGroups)
-        DesktopFirestoreClient.pushCleaningSchedules(token, snapshot.cleaningSchedules)
-        DesktopFirestoreClient.pushScheduleSettings(token, snapshot.firstDay, snapshot.secondDay)
+        DesktopFirestoreClient.pushBrothers(token, snapshot.brothers).getOrThrow()
+        DesktopFirestoreClient.pushPrivileges(token, snapshot.privileges).getOrThrow()
+        DesktopFirestoreClient.pushMeetings(token, snapshot.meetings).getOrThrow()
+        DesktopFirestoreClient.pushPublicTalks(token, snapshot.publicTalks).getOrThrow()
+        DesktopFirestoreClient.pushFieldServiceGroups(token, snapshot.fieldServiceGroups).getOrThrow()
+        DesktopFirestoreClient.pushCleaningSchedules(token, snapshot.cleaningSchedules).getOrThrow()
+        DesktopFirestoreClient.pushScheduleSettings(token, snapshot.firstDay, snapshot.secondDay).getOrThrow()
     }
 
     fun addBrother(name: String, phone: String, role: BrotherRole = BrotherRole.PUBLISHER, gender: Gender = Gender.MALE, groupId: Long? = null): String? {
