@@ -49,15 +49,13 @@ class UserAccessRepository {
                     return@addSnapshotListener
                 }
 
-                val profile = UserProfile(
-                    uid = uid,
-                    email = email,
-                    name = "",
-                    role = "viewer",
-                    permissions = setOf(AppPermissions.VIEW_ASSIGNMENTS, AppPermissions.EXPORT_REPORTS)
-                )
-                users.document(uid).set(toMap(profile), SetOptions.merge())
-                onProfile(profile)
+                // Sem convite, a conta fica sem acesso. Não escrever perfil viewer
+                // automaticamente: isso permitia ler a congregação inteira.
+                onProfile(UserProfile(
+                    uid = uid, email = email, name = "", role = "pending",
+                    permissions = emptySet(), active = false
+                ))
+                onError("Acesso pendente. Peça ao administrador um convite para esta conta.")
             }
         }.addOnFailureListener {
             // Sem documento de bootstrap, segue o fluxo normal de criação do perfil.
@@ -70,15 +68,13 @@ class UserAccessRepository {
                     onProfile(fromUser(snapshot.data ?: emptyMap(), uid))
                     return@addSnapshotListener
                 }
-                val profile = UserProfile(
-                    uid = uid,
-                    email = email,
-                    name = "",
-                    role = "viewer",
-                    permissions = setOf(AppPermissions.VIEW_ASSIGNMENTS, AppPermissions.EXPORT_REPORTS)
-                )
-                users.document(uid).set(toMap(profile), SetOptions.merge())
-                onProfile(profile)
+                // Sem convite, a conta fica sem acesso. Não escrever perfil viewer
+                // automaticamente: isso permitia ler a congregação inteira.
+                onProfile(UserProfile(
+                    uid = uid, email = email, name = "", role = "pending",
+                    permissions = emptySet(), active = false
+                ))
+                onError("Acesso pendente. Peça ao administrador um convite para esta conta.")
             }
         }
     }

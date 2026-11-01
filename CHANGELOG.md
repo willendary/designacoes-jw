@@ -1,5 +1,13 @@
 # Histórico de versões — Designações JW
 
+## 0.12.2
+
+- Bloqueia criação automática de perfis de visualizador para contas sem convite.
+- Valida convite pendente, destinatário e e-mail verificado antes de atribuir permissões.
+- Impede autoelevação de privilégios e alteração indevida dos campos de convites.
+- Preserva perfis já cadastrados; regras do Firebase precisam ser implantadas separadamente para valer na nuvem.
+
+
 ## 0.12.1
 
 - Simplifica a navegação no Android e Windows com as áreas principais em primeiro plano.

@@ -1,0 +1,27 @@
+name: Verificação das regras do Firestore
+on:
+  pull_request:
+    paths: ["firestore.rules", "scripts/test-firestore-rules.mjs", "package.json", ".github/workflows/firestore-rules.yml"]
+  push:
+    branches: ["main"]
+    paths: ["firestore.rules", "scripts/test-firestore-rules.mjs", "package.json", ".github/workflows/firestore-rules.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  firestore-rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install --no-audit --no-fund
+      - name: Testar permissões com o emulador
+        run: npx firebase emulators:exec --only firestore --project demo-designacoes-jw "npm run test:rules"

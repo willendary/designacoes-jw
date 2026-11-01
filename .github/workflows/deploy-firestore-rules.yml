@@ -1,0 +1,42 @@
+name: Aplicar regras de acesso do Firestore
+
+# Execução manual: o deploy de regras não pode ser consequência automática
+# de um build do APK, pois pode bloquear usuários se houver erro de permissão.
+on:
+  workflow_dispatch:
+    inputs:
+      confirmacao:
+        description: "Digite APLICAR para implantar as regras de acesso"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  implantar:
+    if: ${{ inputs.confirmacao == 'APLICAR' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Credenciais Firebase
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DESIGNACOES_JW }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "::error::Configure o secret FIREBASE_SERVICE_ACCOUNT_DESIGNACOES_JW."
+            exit 1
+          fi
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
+      - name: Implantar regras
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
+        run: npx firebase-tools@latest deploy --only firestore:rules --project designacoes-jw

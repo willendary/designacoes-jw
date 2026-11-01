@@ -224,7 +224,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             onError = {}
                         )
                     }
-                }
+                },
+                onError = { lastActionError.value = it }
             )
         }
         repo.onSyncError = { lastActionError.value = it }
