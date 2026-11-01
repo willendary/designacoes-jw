@@ -1463,6 +1463,7 @@ private fun DesktopSidebar(
     onSelectTab: (Int) -> Unit,
     c: StoreController
 ) {
+    var showTools by remember { mutableStateOf(selectedTab !in setOf(0, 1, 6, 11)) }
     Surface(
         modifier = Modifier.width(260.dp).fillMaxHeight(),
         color = MaterialTheme.colorScheme.surface,
@@ -1513,7 +1514,7 @@ private fun DesktopSidebar(
                 // Seção 1: REUNIÕES
                 item {
                     Text(
-                        "REUNIÕES & ESCALAS",
+                        "PRINCIPAL",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
@@ -1550,6 +1551,20 @@ private fun DesktopSidebar(
                     )
                 }
 
+                item {
+                    DesktopSidebarItem(
+                        label = "Irmãos & Irmãs",
+                        icon = Icons.Default.Groups,
+                        selected = selectedTab == 6,
+                        onClick = { onSelectTab(6) }
+                    )
+                }
+                item {
+                    TextButton(onClick = { showTools = !showTools }, modifier = Modifier.fillMaxWidth()) {
+                        Text(if (showTools) "Ocultar ferramentas" else "Mais ferramentas")
+                    }
+                }
+                if (showTools) {
                 // Seção 2: PROGRAMAÇÃO ESPECIAL
                 item {
                     Spacer(Modifier.height(6.dp))
@@ -1603,14 +1618,6 @@ private fun DesktopSidebar(
                 }
                 item {
                     DesktopSidebarItem(
-                        label = "Irmãos & Irmãs",
-                        icon = Icons.Default.Groups,
-                        selected = selectedTab == 6,
-                        onClick = { onSelectTab(6) }
-                    )
-                }
-                item {
-                    DesktopSidebarItem(
                         label = "Férias & Ausências",
                         icon = Icons.Default.EventBusy,
                         selected = selectedTab == 7,
@@ -1654,6 +1661,7 @@ private fun DesktopSidebar(
                         selected = selectedTab == 10,
                         onClick = { onSelectTab(10) }
                     )
+                }
                 }
             }
 
@@ -1757,6 +1765,7 @@ private fun Home(c: StoreController) {
     var query by remember { mutableStateOf("") }
     var pendingOnly by remember { mutableStateOf(false) }
     var showRecalculate by remember { mutableStateOf(false) }
+    var showSecondaryActions by remember { mutableStateOf(false) }
 
     val allMeetings = c.data.meetings
     val prefix = month.format(DateTimeFormatter.ofPattern("MM/yyyy"))
@@ -1872,6 +1881,10 @@ private fun Home(c: StoreController) {
                     Spacer(Modifier.width(6.dp))
                     Text(if (meetings.isEmpty()) "Gerar escala" else "Completar escala")
                 }
+                TextButton(onClick = { showSecondaryActions = !showSecondaryActions }) {
+                    Text(if (showSecondaryActions) "Menos opções" else "Mais ações")
+                }
+                if (showSecondaryActions) {
                 OutlinedButton(
                     enabled = meetings.isNotEmpty(),
                     onClick = {
@@ -1902,6 +1915,7 @@ private fun Home(c: StoreController) {
                     Icon(Icons.Default.BarChart, null)
                     Spacer(Modifier.width(6.dp))
                     Text("Equidade")
+                }
                 }
             }
 
