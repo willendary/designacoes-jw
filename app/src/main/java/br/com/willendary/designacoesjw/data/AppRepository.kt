@@ -12,6 +12,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import br.com.willendary.designacoesjw.sync.CloudGuard
+import br.com.willendary.designacoesjw.sync.CloudDeletionPolicy
 import br.com.willendary.designacoesjw.sync.ContadorSincronizacao
 import br.com.willendary.designacoesjw.sync.EstadoSincronizacao
 
@@ -108,23 +109,23 @@ class AppRepository(context: Context) {
         writes: List<Task<Void>>,
         keep: Set<String>,
         label: String,
-        query: Query
+        query: Query,
+        previousIds: Set<String>
     ) {
+        // Nunca apaga registros que não constavam do cache ANTES desta edição.
+        // Assim um segundo aparelho não elimina itens recém-criados por outro.
+        val locallyRemoved = CloudDeletionPolicy.removedIds(previousIds, keep)
         val prune: () -> Unit = {
-            query.get().addOnSuccessListener { snapshot ->
-                val stale = snapshot.documents.filter { it.id !in keep }
-                when {
-                    stale.isEmpty() -> Unit
-                    // Lista local vazia sobre coleção populada é quase sempre
-                    // cache incompleto, não remoção intencional.
-                    keep.isEmpty() -> reportError(
-                        "Não apaguei $label do servidor: a lista local está vazia, " +
-                            "o que normalmente é falha de sincronização. Confira a lista antes de salvar de novo."
-                    )
-                    else -> stale.forEach { it.reference.delete() }
+            if (locallyRemoved.isNotEmpty()) {
+                query.get().addOnSuccessListener { snapshot ->
+                    snapshot.documents.filter { it.id in locallyRemoved }.forEach { doc ->
+                        doc.reference.delete().addOnFailureListener { error ->
+                            reportError("Não foi possível excluir $label: ${error.message}")
+                        }
+                    }
+                }.addOnFailureListener { e ->
+                    reportError("Falha ao conferir exclusões de $label: ${e.message}")
                 }
-            }.addOnFailureListener { e ->
-                reportError("Falha ao ler $label do servidor: ${e.message}")
             }
         }
 
@@ -505,11 +506,12 @@ class AppRepository(context: Context) {
     }
 
     fun saveBrothers(items: List<Brother>) {
+        val previousIds = runCatching { loadBrothers().map { it.id.toString() }.toSet() }.getOrDefault(emptySet())
         saveBrothersLocal(items)
         val writes = items.map { brother ->
             brothersCollection.document(brother.id.toString()).set(brother.toMap(), SetOptions.merge())
         }
-        pushAndPrune(writes, items.map { it.id.toString() }.toSet(), "os irmãos", brothersCollection)
+        pushAndPrune(writes, items.map { it.id.toString() }.toSet(), "os irmãos", brothersCollection, previousIds)
     }
 
     fun loadPrivileges(): List<Privilege> {
@@ -531,11 +533,12 @@ class AppRepository(context: Context) {
     }
 
     fun savePrivileges(items: List<Privilege>) {
+        val previousIds = runCatching { loadPrivileges().map { it.id.toString() }.toSet() }.getOrDefault(emptySet())
         savePrivilegesLocal(items)
         val writes = items.map { privilege ->
             privilegesCollection.document(privilege.id.toString()).set(privilege.toMap(), SetOptions.merge())
         }
-        pushAndPrune(writes, items.map { it.id.toString() }.toSet(), "os privilégios", privilegesCollection)
+        pushAndPrune(writes, items.map { it.id.toString() }.toSet(), "os privilégios", privilegesCollection, previousIds)
     }
 
     fun loadMeetings(): List<Meeting> {
@@ -579,11 +582,12 @@ class AppRepository(context: Context) {
     }
 
     fun saveMeetings(items: List<Meeting>) {
+        val previousIds = runCatching { loadMeetings().map { it.id.toString() }.toSet() }.getOrDefault(emptySet())
         saveMeetingsLocal(items)
         val writes = items.map { meeting ->
             meetingsCollection.document(meeting.id.toString()).set(meeting.toMap(), SetOptions.merge())
         }
-        pushAndPrune(writes, items.map { it.id.toString() }.toSet(), "as reuniões", meetingsCollection)
+        pushAndPrune(writes, items.map { it.id.toString() }.toSet(), "as reuniões", meetingsCollection, previousIds)
     }
 
     fun loadPublicTalks(): List<PublicTalk> {
@@ -607,11 +611,12 @@ class AppRepository(context: Context) {
     }
 
     fun savePublicTalks(items: List<PublicTalk>) {
+        val previousIds = runCatching { loadPublicTalks().map { it.id.toString() }.toSet() }.getOrDefault(emptySet())
         savePublicTalksLocal(items)
         val writes = items.map { talk ->
             publicTalksCollection.document(talk.id.toString()).set(talk.toMap(), SetOptions.merge())
         }
-        pushAndPrune(writes, items.map { it.id.toString() }.toSet(), "os discursos", publicTalksCollection)
+        pushAndPrune(writes, items.map { it.id.toString() }.toSet(), "os discursos", publicTalksCollection, previousIds)
     }
 
     fun loadFieldServiceGroups(): List<FieldServiceGroup> {
@@ -629,11 +634,12 @@ class AppRepository(context: Context) {
     }
 
     fun saveFieldServiceGroups(items: List<FieldServiceGroup>) {
+        val previousIds = runCatching { loadFieldServiceGroups().map { it.id.toString() }.toSet() }.getOrDefault(emptySet())
         saveFieldServiceGroupsLocal(items)
         val writes = items.map { group ->
             groupsCollection.document(group.id.toString()).set(group.toMap(), SetOptions.merge())
         }
-        pushAndPrune(writes, items.map { it.id.toString() }.toSet(), "os grupos", groupsCollection)
+        pushAndPrune(writes, items.map { it.id.toString() }.toSet(), "os grupos", groupsCollection, previousIds)
     }
 
     fun loadCleaningSchedules(): List<CleaningSchedule> {
@@ -651,11 +657,12 @@ class AppRepository(context: Context) {
     }
 
     fun saveCleaningSchedules(items: List<CleaningSchedule>) {
+        val previousIds = runCatching { loadCleaningSchedules().map { it.id.toString() }.toSet() }.getOrDefault(emptySet())
         saveCleaningSchedulesLocal(items)
         val writes = items.map { sched ->
             cleaningCollection.document(sched.id.toString()).set(sched.toMap(), SetOptions.merge())
         }
-        pushAndPrune(writes, items.map { it.id.toString() }.toSet(), "a limpeza", cleaningCollection)
+        pushAndPrune(writes, items.map { it.id.toString() }.toSet(), "a limpeza", cleaningCollection, previousIds)
     }
 
     fun loadSchedule(): MeetingSchedule {
