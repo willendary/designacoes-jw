@@ -1,0 +1,13 @@
+{
+  "name": "designacoes-jw-security-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:rules": "node scripts/test-firestore-rules.mjs"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "firebase": "^11.10.0",
+    "firebase-tools": "^14.18.0"
+  }
+}
