@@ -1,4 +1,18 @@
 {
+  "0.12.0": {
+    "android": [
+      "Reuniões e escala de privilégios agora ficam em telas separadas, inclusive nas buscas e pendências.",
+      "Importação preserva parágrafos, perguntas, referências, durações, cânticos, imagens e legendas da publicação.",
+      "Apresentação editorial com seções, links de pesquisa e edição dos participantes das partes.",
+      "Atualizar o programa preserva os participantes de partes com títulos repetidos."
+    ],
+    "desktop": [
+      "Reuniões e escala de privilégios agora ficam em telas separadas, inclusive nas buscas e pendências.",
+      "Importação preserva parágrafos, perguntas, referências, durações, cânticos, imagens e legendas da publicação.",
+      "Apresentação editorial com seções, links de pesquisa e edição dos participantes das partes.",
+      "Atualizar o programa preserva os participantes de partes com títulos repetidos."
+    ]
+  },
   "0.11.0": {
     "android": [
       "Agenda renovada com navegação inferior, paleta roxa e seções do programa. As cores escolhidas anteriormente são preservadas.",

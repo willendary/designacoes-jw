@@ -98,9 +98,9 @@ data class MenuItem(
  */
 val MENU: List<MenuEntry> = listOf(
     MenuSection("REUNIÕES"),
-    MenuItem(Tela.QUADRO_DO_MES, "Quadro do Mês", Icons.Filled.CalendarMonth),
-    MenuItem(Tela.REUNIAO_DA_SEMANA, "Reunião da Semana", Icons.Filled.Event),
-    MenuItem(Tela.HISTORICO, "Histórico", Icons.Filled.History),
+    MenuItem(Tela.QUADRO_DO_MES, "Escala de Privilégios", Icons.Filled.CalendarMonth),
+    MenuItem(Tela.REUNIAO_DA_SEMANA, "Reuniões", Icons.Filled.Event),
+    MenuItem(Tela.HISTORICO, "Histórico de Privilégios", Icons.Filled.History),
 
     MenuSection("IMPRIMIR E RELATÓRIOS"),
     MenuItem(Tela.IMPRIMIR, "Quadro e Imagens do Mês", Icons.Filled.Print),

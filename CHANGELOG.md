@@ -1,5 +1,13 @@
 # Histórico de versões — Designações JW
 
+## 0.12.0
+
+- Separa o programa das reuniões da escala e do histórico de privilégios em Android e Windows.
+- Preserva o conteúdo editorial importado, incluindo referências clicáveis, imagens e legendas.
+- Lê durações abaixo dos títulos e mantém cânticos/comentários sem criar posições extras de designação.
+- Reimportação mantém participantes em partes numeradas de título repetido; HTML não reconhecido não apaga o programa anterior.
+- Conteúdo adicional sincronizado entre Android e Windows, com leitura compatível com dados anteriores.
+
 ## 0.11.0
 
 - Agenda com busca, filtro de pendências, progresso de preenchimento e navegação inferior no Android.

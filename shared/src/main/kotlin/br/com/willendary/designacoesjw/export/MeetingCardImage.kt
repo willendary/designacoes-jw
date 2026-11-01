@@ -125,12 +125,9 @@ fun MeetingCardImage(
                 }
             }
 
-            if (meeting.program.isNotEmpty()) {
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                MeetingProgramList(meeting, brothers, privileges)
-            }
 
-            if (meeting.assignments.isNotEmpty() && meeting.program.isEmpty()) {
+
+            if (meeting.assignments.isNotEmpty()) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     meeting.assignments.forEach { a ->

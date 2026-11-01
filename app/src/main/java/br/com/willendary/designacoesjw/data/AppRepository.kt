@@ -766,6 +766,7 @@ class AppRepository(context: Context) {
                         // Sem isto, `programItemFromJson` volta em INDIVIDUAL a
                         // cada recarga local e a encenação perde o agrupamento.
                         put("kind", item.kind.name)
+                        put("contentJson", ProgramContentCodec.encode(item.content))
                     })
                 }
                 put("program", pa)
@@ -887,7 +888,8 @@ class AppRepository(context: Context) {
         minutes = o.optInt("minutes", 0),
         // Programa gravado antes do campo existir: cai em INDIVIDUAL.
         kind = runCatching { PartKind.valueOf(o.optString("kind", "INDIVIDUAL")) }
-            .getOrDefault(PartKind.INDIVIDUAL)
+            .getOrDefault(PartKind.INDIVIDUAL),
+        content = ProgramContentCodec.decode(o.optString("contentJson"))
     )
 
     private fun Brother.toMap(): Map<String, Any?> = mutableMapOf<String, Any?>(
@@ -927,7 +929,8 @@ class AppRepository(context: Context) {
                 "title" to it.title, "minutes" to it.minutes,
                 // Sem o kind gravado, toda parte volta a INDIVIDUAL ao
                 // recarregar e a encenacao perde o agrupamento e o aviso.
-                "kind" to it.kind.name
+                "kind" to it.kind.name,
+                "contentJson" to ProgramContentCodec.encode(it.content)
             )
         },
         // Contrato com o Firestore: a chave é "programAssignments".
@@ -1046,7 +1049,8 @@ class AppRepository(context: Context) {
                     number = (raw["number"] as? Number)?.toInt() ?: 0,
                     title = raw["title"]?.toString() ?: "",
                     minutes = (raw["minutes"] as? Number)?.toInt() ?: 0,
-                    kind = runCatching { PartKind.valueOf(raw["kind"]?.toString() ?: "INDIVIDUAL") }.getOrDefault(PartKind.INDIVIDUAL)
+                    kind = runCatching { PartKind.valueOf(raw["kind"]?.toString() ?: "INDIVIDUAL") }.getOrDefault(PartKind.INDIVIDUAL),
+                    content = ProgramContentCodec.decode(raw["contentJson"] as? String)
                 )
                 is String -> parseLegacyProgramItem(raw)
                 else -> null

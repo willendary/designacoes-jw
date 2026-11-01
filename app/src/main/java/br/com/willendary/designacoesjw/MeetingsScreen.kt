@@ -51,8 +51,8 @@ fun MeetingsScreen(vm: AppViewModel) {
         contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp)
     ) {
         item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(
                         Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -162,6 +162,19 @@ fun MeetingsScreen(vm: AppViewModel) {
 
 @Composable
 private fun WeeklyMeetingCard(meeting: Meeting, vm: AppViewModel) {
-    var expanded by remember(meeting.id) { mutableStateOf(true) }
-    MeetingCardView(vm, meeting, expanded, onToggleExpand = { expanded = !expanded })
+    Column(Modifier.widthIn(max = 760.dp).fillMaxWidth().padding(vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(meeting.date + " — " + meeting.typeCanonical, style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold)
+        if (meeting.theme.isNotBlank()) Text(meeting.theme, style = MaterialTheme.typography.titleMedium)
+        if (meeting.isMidweek) {
+            MeetingProgramList(meeting, vm.brothers.value, emptyList(),
+                canAssign = if (vm.can(AppPermissions.GENERATE_ASSIGNMENTS)) vm.brothers.value.filter { it.active } else emptyList(),
+                canEdit = vm.can(AppPermissions.GENERATE_ASSIGNMENTS),
+                decodeImage = AndroidPublicationImageDecoder,
+                onToggleAssignment = { position, id -> vm.toggleProgramAssignment(meeting.id, position, id) })
+        } else {
+            Text("O programa de fim de semana ainda não tem importação automática.", style = MaterialTheme.typography.bodyMedium)
+        }
+    }
 }

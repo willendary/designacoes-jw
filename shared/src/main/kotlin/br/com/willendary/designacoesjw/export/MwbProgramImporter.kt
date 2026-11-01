@@ -1,5 +1,11 @@
 package br.com.willendary.designacoesjw.export
 
+import br.com.willendary.designacoesjw.data.*
+import org.jsoup.Jsoup
+import org.jsoup.nodes.Element
+import org.jsoup.nodes.Node
+import org.jsoup.nodes.TextNode
+
 import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URI
@@ -28,7 +34,8 @@ object MwbProgramImporter {
         /** Título do item, já sem o número ("Iniciando conversas"). */
         val title: String,
         /** Duração em minutos, quando o programa informa. 0 quando não informa. */
-        val minutes: Int
+        val minutes: Int,
+        val content: ProgramContent = ProgramContent()
     ) {
         /** Texto pronto para virar nome de privilégio no gerador. */
         val label: String get() = if (minutes > 0) "$title ($minutes min)" else title
@@ -271,59 +278,118 @@ object MwbProgramImporter {
         return ym.atDay(day.coerceIn(1, ym.lengthOfMonth()))
     }
 
-    /** Extrai tema e itens do programa semanal. */
+    /** DOM, não regex: parágrafos e listas aninhadas mantêm a ordem editorial. */
     internal fun parse(html: String, weekStart: LocalDate, weekEnd: LocalDate, url: String): Program {
-        val body = sliceBody(html)
-
+        val doc = Jsoup.parse(html, url)
+        val article = doc.selectFirst("article") ?: doc.body()
+        article.select("script, style, nav, footer, input, textarea, button, .pageNum, .gen-field, [aria-hidden=true]").remove()
         var theme = ""
-        var currentSection = ""
+        var section = ""
         val parts = mutableListOf<Part>()
+        val pending = mutableListOf<ProgramBlock>()
+        var partIndex = -1
 
-        for (m in RE_HEADING.findAll(body)) {
-            val level = m.groupValues[1]
-            val text = plain(m.groupValues[3])
-            if (text.isEmpty()) continue
-
-            val numbered = RE_NUMBERED_ITEM.find(text)
-            if (numbered != null) {
-                val minutes = RE_MINUTES
-                    .find(text)?.groupValues?.get(1)?.toIntOrNull() ?: 0
-                // A duração entra em Part.minutes; não deve sobrar no título.
-                val title = RE_MINUTES_IN_TITLE
-                    .replace(numbered.groupValues[2], "")
-                    .trim()
-                    .trimEnd('.')
-                parts += Part(
-                    section = currentSection,
-                    number = numbered.groupValues[1].toInt(),
-                    title = title,
-                    minutes = minutes
-                )
-                continue
+        fun append(block: ProgramBlock) {
+            if (block.text.isBlank() && block.imageUrl.isBlank()) return
+            if (partIndex < 0) pending += block
+            else {
+                val part = parts[partIndex]
+                parts[partIndex] = part.copy(content = part.content.copy(body = part.content.body + block))
             }
-
-            // Leitura do dia / tema: caixa alta COM números ("JEREMIAS 40-41").
-            // Precisa vir antes do teste de seção, senão o título do tema vira seção.
-            if (theme.isEmpty() && level == "2" && looksLikeScripture(text)) {
-                theme = text
-                continue
-            }
-
-            // Cabeçalho de seção: caixa alta sem números ("TESOUROS DA PALAVRA DE DEUS").
-            val isAllCaps = text.length > 3 && text == text.uppercase(Locale.ROOT) &&
-                text.count { it.isLetter() } >= 3 && text.none { it.isDigit() }
-            if (isAllCaps) currentSection = text
         }
 
+        fun visit(element: Element) {
+            val tag = element.normalName()
+            val text = element.text().replace('\u00a0', ' ').trim()
+            if (tag in listOf("h2", "h3", "h4")) {
+                val numbered = RE_NUMBERED_ITEM.find(text)
+                if (numbered != null) {
+                    val title = RE_MINUTES_IN_TITLE.replace(numbered.groupValues[2], "").trim().trimEnd('.')
+                    parts += Part(section, numbered.groupValues[1].toInt(), title,
+                        RE_MINUTES.find(text)?.groupValues?.get(1)?.toIntOrNull() ?: 0,
+                        ProgramContent(before = pending.toList(), sourceUrl = url))
+                    pending.clear()
+                    partIndex = parts.lastIndex
+                } else if (theme.isEmpty() && tag == "h2" && looksLikeScripture(text)) {
+                    theme = text
+                } else if (tag == "h2" && text.length > 3 && text == text.uppercase(Locale.ROOT) &&
+                    text.count { it.isLetter() } >= 3 && text.none { it.isDigit() }) {
+                    section = text
+                    // Antes da próxima parte; não vira nova posição designável.
+                    partIndex = -1
+                    pending += ProgramBlock("section", richText(element))
+                } else {
+                    append(ProgramBlock("heading", richText(element)))
+                }
+                return
+            }
+            when (tag) {
+                "h1" -> return
+                "img" -> {
+                    val imageUrl = listOf("data-src", "src", "data-img-small-src")
+                        .firstNotNullOfOrNull { attr -> safeUrl(url, element.attr(attr)).takeIf { it.isNotEmpty() } }.orEmpty()
+                    if (imageUrl.isNotBlank()) append(ProgramBlock("image", imageUrl = imageUrl,
+                        imageDescription = element.attr("alt")))
+                    return
+                }
+                "figcaption" -> { append(ProgramBlock("caption", richText(element))); return }
+                "p" -> {
+                    // Campos de resposta da página não são instruções da parte.
+                    if (text.equals("Sua resposta", true)) return
+                    val type = if (element.parents().any { it.normalName() == "li" }) "bullet" else "paragraph"
+                    append(ProgramBlock(type, richText(element)))
+                    if (partIndex >= 0 && parts[partIndex].minutes == 0) {
+                        val minutes = RE_MINUTES.find(text)?.takeIf { it.range.first == 0 }?.groupValues?.get(1)?.toIntOrNull()
+                        if (minutes != null) parts[partIndex] = parts[partIndex].copy(minutes = minutes)
+                    }
+                    return
+                }
+                "li" -> if (element.selectFirst("p, h2, h3, h4, ul, ol, figure") == null) {
+                    append(ProgramBlock("bullet", richText(element))); return
+                }
+            }
+            element.children().forEach(::visit)
+        }
+        article.children().forEach(::visit)
+        require(parts.isNotEmpty()) {
+            "Não foi possível reconhecer as partes do programa. Suas designações foram mantidas. Abra a publicação original ou tente novamente mais tarde."
+        }
+        if (pending.isNotEmpty()) {
+            val last = parts.last()
+            parts[parts.lastIndex] = last.copy(content = last.content.copy(body = last.content.body + pending))
+        }
         return Program(weekStart, weekEnd, theme, parts, url)
     }
 
-    private fun sliceBody(html: String): String {
-        val start = html.indexOf("<h1")
-        if (start < 0) return html
-        val marker = html.indexOf("Selecione seu idioma")
-        val end = if (marker > start) marker else html.length
-        return html.substring(start, end)
+    /** Só links web podem ser abertos pelo visualizador, nunca esquemas executáveis. */
+    internal fun safeUrl(base: String, value: String): String = runCatching {
+        if (value.isBlank()) return ""
+        URI(base).resolve(value.trim()).takeIf { it.scheme in listOf("https", "http") }?.toString().orEmpty()
+    }.getOrDefault("")
+
+    private fun richText(element: Element): List<ProgramText> {
+        val runs = mutableListOf<ProgramText>()
+        fun visit(node: Node, bold: Boolean = false, italic: Boolean = false, url: String = "") {
+            when (node) {
+                is TextNode -> {
+                    val text = node.wholeText.replace(Regex("[\\s\\u00a0]+"), " ")
+                    if (text.isNotEmpty()) runs += ProgramText(text, bold, italic, url)
+                }
+                is Element -> {
+                    if (node.normalName() == "br") runs += ProgramText("\n")
+                    else node.childNodes().forEach { child -> visit(child,
+                        bold || node.normalName() in listOf("strong", "b"),
+                        italic || node.normalName() in listOf("em", "i"),
+                        if (node.normalName() == "a") safeUrl(node.baseUri(), node.attr("href")) else url) }
+                }
+            }
+        }
+        visit(element)
+        if (runs.isNotEmpty()) {
+            runs[0] = runs[0].copy(text = runs[0].text.trimStart())
+            runs[runs.lastIndex] = runs.last().copy(text = runs.last().text.trimEnd())
+        }
+        return runs.filter { it.text.isNotEmpty() }
     }
 
     /** "JEREMIAS 40-41", "SALMOS 1-8" — sem marcadores como "(10 min)". */

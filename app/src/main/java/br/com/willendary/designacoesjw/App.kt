@@ -351,8 +351,8 @@ fun App(
             bottomBar = {
                 NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
                     listOf(
-                        Triple(Tela.QUADRO_DO_MES, "Agenda", Icons.Filled.CalendarMonth),
-                        Triple(Tela.REUNIAO_DA_SEMANA, "Semana", Icons.Filled.Event),
+                        Triple(Tela.QUADRO_DO_MES, "Escala", Icons.Filled.CalendarMonth),
+                        Triple(Tela.REUNIAO_DA_SEMANA, "Reuniões", Icons.Filled.Event),
                         Triple(Tela.IRMAOS, "Pessoas", Icons.Filled.People)
                     ).forEach { (destination, label, icon) ->
                         NavigationBarItem(selected = tela == destination, onClick = { tela = destination },
@@ -506,9 +506,9 @@ private fun HomeScreen(vm: AppViewModel) {
         }.getOrDefault(false)
     }.sortedBy { it.date }
 
-    val reviews = monthMeetings.associate { it.id to MeetingPlanner.review(it, vm.brothers.value, vm.privileges.value) }
+    val reviews = monthMeetings.associate { it.id to MeetingPlanner.reviewSupport(it, vm.brothers.value, vm.privileges.value) }
     val visibleMeetings = monthMeetings.filter {
-        (!pendingOnly || reviews.getValue(it.id).pending) && MeetingPlanner.matches(it, query, vm.brothers.value, vm.privileges.value)
+        (!pendingOnly || reviews.getValue(it.id).pending) && MeetingPlanner.matchesSupport(it, query, vm.brothers.value, vm.privileges.value)
     }
     val nextMeetingInfo = remember(allMeetings) { getNextMeetingInfo(allMeetings) }
 
@@ -655,7 +655,6 @@ private fun HomeScreen(vm: AppViewModel) {
                             )
                         }
 
-
                     }
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
@@ -752,7 +751,7 @@ private fun HomeScreen(vm: AppViewModel) {
         item { AgendaOverview(reviews.values.toList(), vm.brothers.value.count { it.active }) }
         item {
             OutlinedTextField(query, { query = it }, modifier = Modifier.fillMaxWidth(), singleLine = true,
-                label = { Text("Buscar pessoa, parte ou data") }, leadingIcon = { Icon(Icons.Filled.Search, null) },
+                label = { Text("Buscar pessoa, privilégio ou data") }, leadingIcon = { Icon(Icons.Filled.Search, null) },
                 trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Filled.Close, "Limpar busca") } })
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(!pendingOnly, { pendingOnly = false }, label = { Text("Todas") })
@@ -858,7 +857,7 @@ private fun HomeScreen(vm: AppViewModel) {
     if (showEquityDialog) {
         EquityStatisticsDialog(
             month = month,
-            meetings = vm.meetings.value,
+            meetings = vm.meetings.value.map { it.copy(theme = "", program = emptyList(), programAssignments = emptyList()) },
             brothers = vm.brothers.value,
             privileges = vm.privileges.value,
             onDismiss = { showEquityDialog = false }
@@ -875,11 +874,9 @@ internal fun MeetingCardView(
 ) {
     val context = LocalContext.current
     val missing = vm.missingAssignments(meeting)
-    val review = MeetingPlanner.review(meeting, vm.brothers.value, vm.privileges.value)
+    val review = MeetingPlanner.reviewSupport(meeting, vm.brothers.value, vm.privileges.value)
     var replaceTarget by remember { mutableStateOf<Triple<Long, Long, Long>?>(null) }
     var showQuickUnavailability by remember { mutableStateOf(false) }
-    var importing by remember { mutableStateOf(false) }
-    var importError by remember { mutableStateOf<String?>(null) }
     var exportingImage by remember { mutableStateOf(false) }
     val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
 
@@ -939,32 +936,6 @@ internal fun MeetingCardView(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
-            if (meeting.theme.isNotBlank()) {
-                Surface(
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Column(Modifier.fillMaxWidth().padding(12.dp)) {
-                        Text(
-                            "LEITURA DA BÍBLIA",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            meeting.theme,
-                            modifier = Modifier.padding(top = 2.dp),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
-
-            if (meeting.isMidweek && importError != null) {
-                Text(importError!!, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-            }
-
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -1004,29 +975,9 @@ internal fun MeetingCardView(
                     else Icon(Icons.Filled.Image, contentDescription = "Exportar imagem")
                 }
 
-                if (meeting.isMidweek) {
-                    IconButton(
-                        onClick = {
-                            importing = true
-                            importError = null
-                            vm.importMwbProgram(meeting.id) { err ->
-                                importing = false
-                                if (err != null) importError = err
-                            }
-                        },
-                        enabled = !importing && vm.can(AppPermissions.GENERATE_ASSIGNMENTS)
-                    ) {
-                        if (importing) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                        else Icon(
-                            if (meeting.theme.isBlank()) Icons.Filled.CloudDownload else Icons.Filled.CloudDone,
-                            contentDescription = if (meeting.theme.isBlank()) "Importar programa do jw.org" else "Atualizar programa do jw.org"
-                        )
-                    }
-                }
-
                 Spacer(Modifier.weight(1f))
                 OutlinedButton(onClick = onToggleExpand) {
-                    Text(if (isExpanded) "Recolher" else "Ver programa")
+                    Text(if (isExpanded) "Recolher" else "Ver escala")
                     Spacer(Modifier.width(4.dp))
                     Icon(if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, contentDescription = null)
                 }
@@ -1042,19 +993,6 @@ internal fun MeetingCardView(
                             Text("Preencher vaga: ${privilege.name}")
                         }
                     }
-                }
-
-                if (meeting.program.isNotEmpty()) {
-                    MeetingProgramList(
-                        meeting = meeting,
-                        brothers = vm.brothers.value,
-                        privileges = vm.privileges.value,
-                        canAssign = if (vm.can(AppPermissions.GENERATE_ASSIGNMENTS)) vm.brothers.value.filter { it.active } else emptyList(),
-                        canEdit = vm.can(AppPermissions.GENERATE_ASSIGNMENTS),
-                        onToggleAssignment = { position, brotherId ->
-                            vm.toggleProgramAssignment(meeting.id, position, brotherId)
-                        }
-                    )
                 }
 
                 if (meeting.assignments.isNotEmpty()) {
@@ -2125,7 +2063,6 @@ private fun PrivilegesScreen(vm: AppViewModel) {
                                     color = MaterialTheme.colorScheme.primary
                                 )
 
-
                             }
                         }
                     }
@@ -2232,7 +2169,7 @@ private fun HistoryScreen(vm: AppViewModel) {
     val filtradas = remember(busca, vm.meetings.value, vm.brothers.value, vm.privileges.value) {
         BuscaHistorico.filtrar(
             termo = busca,
-            meetings = vm.meetings.value,
+            meetings = vm.meetings.value.map { it.copy(theme = "", program = emptyList(), programAssignments = emptyList()) },
             brothers = vm.brothers.value,
             privileges = vm.privileges.value
         ).sortedByDescending { parseDateForSort(it.date) }
@@ -2242,7 +2179,7 @@ private fun HistoryScreen(vm: AppViewModel) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.Filled.History, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                Text("Histórico", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text("Histórico de Privilégios", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             }
             OutlinedTextField(
                 value = busca,
@@ -2294,9 +2231,6 @@ private fun HistoryScreen(vm: AppViewModel) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(meeting.date, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(meeting.type, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                    if (meeting.theme.isNotBlank()) {
-                        Text(meeting.theme, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                    }
 
                     // Privilegios mecanicos.
                     if (meeting.assignments.isNotEmpty()) {
@@ -2310,28 +2244,6 @@ private fun HistoryScreen(vm: AppViewModel) {
                             val brother = vm.brothers.value.find { it.id == a.brotherId }
                             val privilege = vm.privileges.value.find { it.id == a.privilegeId }
                             Text("• ${privilege?.name}: ${brother?.name ?: "Irmão removido"}", style = MaterialTheme.typography.bodyMedium)
-                        }
-                    }
-
-                    // Partes do programa. O histórico mostrava so `assignments`
-                    // e por isso a maior parte do que a congregacao fez estava
-                    // invisivel aqui -- a mesma confusao que o #51 corrigiu na
-                    // tela de reunioes.
-                    if (meeting.programAssignments.isNotEmpty()) {
-                        Text(
-                            if (meeting.programAssignments.size == 1) "1 parte" else "${meeting.programAssignments.size} partes",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        meeting.programAssignments.forEach { parte ->
-                            val nomes = parte.brotherIds.map { id ->
-                                vm.brothers.value.find { it.id == id }?.name ?: "Irmão removido"
-                            }
-                            Text(
-                                "• Item ${parte.item}: ${nomes.joinToString(", ")}",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
                         }
                     }
 

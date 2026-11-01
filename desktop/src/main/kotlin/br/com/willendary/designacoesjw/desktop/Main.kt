@@ -344,30 +344,26 @@ class StoreController {
      */
     fun importMwbProgram(meetingId: Long, onResult: (error: String?) -> Unit) {
         val meeting = data.meetings.firstOrNull { it.id == meetingId }
-        if (meeting == null) {
-            onResult("Reunião não encontrada.")
-            return
-        }
-        val date = meeting.date
+        if (meeting == null) { onResult("Reunião não encontrada."); return }
+        importMwb(AssignmentGenerator.parseDate(meeting.date), meetingId, onResult)
+    }
+
+    fun importMwbWeek(date: LocalDate, onResult: (String?) -> Unit) = importMwb(date, null, onResult)
+
+    private fun importMwb(date: LocalDate, meetingId: Long?, onResult: (String?) -> Unit) {
         kotlin.concurrent.thread {
-            // Rede fora da EDT; save() e o callback voltam para a EDT — escrever
-            // estado do Compose (data, importingId) de thread crua não recompoe.
-            val result = runCatching {
-                val program = MwbProgramImporter.fetch(AssignmentGenerator.parseDate(date))
-                program to program.parts.map { p ->
-                    ProgramItem(section = p.section, number = p.number, title = p.title, minutes = p.minutes)
-                }
-            }
+            val result = runCatching { MwbProgramImporter.fetch(date) }
             java.awt.EventQueue.invokeLater {
-                result.fold(
-                    onSuccess = { (program, items) ->
-                        save(data.copy(meetings = data.meetings.map {
-                            if (it.id == meetingId) MeetingPlanner.updateProgram(it, program.theme, items) else it
-                        }))
-                        onResult(null)
-                    },
-                    onFailure = { onResult(it.message ?: "Não foi possível ler o programa no jw.org.") }
-                )
+                result.fold(onSuccess = { program ->
+                    val dateText = date.format(AssignmentGenerator.DATE_FORMATTER)
+                    val target = meetingId ?: data.meetings.firstOrNull { it.date == dateText && it.isMidweek }?.id
+                    val items = program.parts.map { p -> ProgramItem(p.section, p.number, p.title, p.minutes, content = p.content) }
+                    val updated = if (target == null) data.meetings + Meeting(AssignmentGenerator.nextId(), dateText,
+                        MeetingType.MIDWEEK.label, theme = program.theme, program = items)
+                    else data.meetings.map { if (it.id == target) MeetingPlanner.updateProgram(it, program.theme, items) else it }
+                    save(data.copy(meetings = updated))
+                    onResult(null)
+                }, onFailure = { onResult(it.message ?: "Não foi possível ler o programa no jw.org.") })
             }
         }
     }
@@ -1194,6 +1190,7 @@ fun DesktopApp(c: StoreController, onShowUpdate: (WindowsUpdateInfo) -> Unit = {
                 }
                 Spacer(Modifier.height(16.dp))
                 when (tab) {
+                    11 -> DesktopMeetingsScreen(c)
                     0 -> Home(c)
                     1 -> History(c)
                     3 -> PublicTalksScreen(c)
@@ -1526,15 +1523,19 @@ private fun DesktopSidebar(
                 }
                 item {
                     DesktopSidebarItem(
-                        label = "Agenda",
+                        label = "Escala de Privilégios",
                         icon = Icons.Default.Home,
                         selected = selectedTab == 0,
                         onClick = { onSelectTab(0) }
                     )
                 }
                 item {
+                    DesktopSidebarItem(label = "Reuniões", icon = Icons.Default.Event,
+                        selected = selectedTab == 11, onClick = { onSelectTab(11) })
+                }
+                item {
                     DesktopSidebarItem(
-                        label = "Histórico",
+                        label = "Histórico de Privilégios",
                         icon = Icons.Default.History,
                         selected = selectedTab == 1,
                         onClick = { onSelectTab(1) }
@@ -1761,9 +1762,9 @@ private fun Home(c: StoreController) {
     val allMeetings = c.data.meetings
     val prefix = month.format(DateTimeFormatter.ofPattern("MM/yyyy"))
     val meetings = allMeetings.filter { it.date.endsWith("/$prefix") }.sortedBy { AssignmentGenerator.parseDate(it.date) }
-    val reviews = meetings.associate { it.id to MeetingPlanner.review(it, c.data.brothers, c.data.privileges) }
+    val reviews = meetings.associate { it.id to MeetingPlanner.reviewSupport(it, c.data.brothers, c.data.privileges) }
     val visibleMeetings = meetings.filter {
-        (!pendingOnly || reviews.getValue(it.id).pending) && MeetingPlanner.matches(it, query, c.data.brothers, c.data.privileges)
+        (!pendingOnly || reviews.getValue(it.id).pending) && MeetingPlanner.matchesSupport(it, query, c.data.brothers, c.data.privileges)
     }
     val monthName = Datas.mesEAno(month)
 
@@ -1940,7 +1941,7 @@ private fun Home(c: StoreController) {
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(query, { query = it }, modifier = Modifier.weight(1f), singleLine = true,
-                    label = { Text("Buscar pessoa, parte ou data") }, leadingIcon = { Icon(Icons.Default.Search, null) })
+                    label = { Text("Buscar pessoa, privilégio ou data") }, leadingIcon = { Icon(Icons.Default.Search, null) })
                 FilterChip(pendingOnly, { pendingOnly = !pendingOnly }, label = { Text("A revisar (${reviews.values.count { it.pending }})") })
                 TextButton(onClick = { month = YearMonth.now(); selectedMeetingId = null }) { Text("Mês atual") }
                 if (meetings.isNotEmpty()) TextButton(onClick = { showRecalculate = true }) { Text("Recalcular apoios") }
@@ -2000,7 +2001,7 @@ private fun Home(c: StoreController) {
     if (showEquityStats) {
         DesktopEquityDialog(
             month = month,
-            meetings = c.data.meetings,
+            meetings = c.data.meetings.map { it.copy(theme = "", program = emptyList(), programAssignments = emptyList()) },
             brothers = c.data.brothers,
             privileges = c.data.privileges,
             onDismiss = { showEquityStats = false }
@@ -2106,9 +2107,7 @@ private fun MeetingCardItem(
     onReplace: (Triple<Long, Long, Long>) -> Unit
 ) {
     val missing = c.missingAssignments(m)
-    val review = MeetingPlanner.review(m, c.data.brothers, c.data.privileges)
-    var importing by remember { mutableStateOf(false) }
-    var importError by remember { mutableStateOf<String?>(null) }
+    val review = MeetingPlanner.reviewSupport(m, c.data.brothers, c.data.privileges)
     var showQuickUnavailability by remember { mutableStateOf(false) }
 
     val dateParts = m.date.split("/")
@@ -2277,18 +2276,6 @@ private fun MeetingCardItem(
 
             if (isSelected) {
                 MeetingReviewPanel(review)
-                if (m.isMidweek) {
-                    OutlinedButton(enabled = !importing, onClick = {
-                        importing = true
-                        importError = null
-                        c.importMwbProgram(m.id) { error -> importing = false; importError = error }
-                    }) { Text(if (importing) "Importando..." else if (m.program.isEmpty()) "Importar programa do jw.org" else "Atualizar programa") }
-                    importError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                }
-                if (m.theme.isNotBlank()) Text(m.theme, style = MaterialTheme.typography.titleLarge)
-                if (m.program.isNotEmpty()) MeetingProgramList(m, c.data.brothers, c.data.privileges,
-                    canAssign = c.data.brothers.filter { it.active }, canEdit = true,
-                    onToggleAssignment = { position, brotherId -> c.toggleProgramAssignment(m.id, position, brotherId) })
                 JwSectionLabel("Apoio à reunião")
                 missing.forEach { privilege ->
                     OutlinedButton(onClick = { onReplace(Triple(m.id, privilege.id, 0L)) }) { Text("Preencher vaga: ${privilege.name}") }
@@ -3422,7 +3409,7 @@ private fun History(c: StoreController) {
     val filtradas = remember(busca, c.data.meetings, c.data.brothers, c.data.privileges) {
         BuscaHistorico.filtrar(
             termo = busca,
-            meetings = c.data.meetings,
+            meetings = c.data.meetings.map { it.copy(theme = "", program = emptyList(), programAssignments = emptyList()) },
             brothers = c.data.brothers,
             privileges = c.data.privileges
         )
@@ -3432,11 +3419,11 @@ private fun History(c: StoreController) {
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(JwTheme.spacing.md)) {
-        Text("Histórico de Reuniões", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text("Histórico de Privilégios", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         OutlinedTextField(
             value = busca,
             onValueChange = { busca = it },
-            label = { Text("Buscar por irmão, privilégio, tema ou data") },
+            label = { Text("Buscar por irmão, privilégio ou data") },
             leadingIcon = { Icon(Icons.Default.Search, null) },
             trailingIcon = {
                 if (busca.isNotEmpty()) {
@@ -3486,44 +3473,12 @@ private fun History(c: StoreController) {
                                 IconButton({ confirmDelete = m }) { Icon(Icons.Default.Delete, "Excluir", modifier = Modifier.size(22.dp), tint = JwTheme.colors.perigo) }
                             }
 
-                            if (m.theme.isNotBlank()) {
-                                Text(
-                                    "📖 ${m.theme}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.SemiBold
-                                )
+                            m.assignments.forEach { assignment ->
+                                val person = c.data.brothers.firstOrNull { it.id == assignment.brotherId }
+                                val privilege = c.data.privileges.firstOrNull { it.id == assignment.privilegeId }
+                                Text("${privilege?.name ?: "Privilégio removido"}: ${person?.name ?: "Participante removido"}")
                             }
-                            // Delegado a shared: cada tela tinha a sua
-                            // renderizacao e elas ja divergiram.
-                            MeetingProgramList(
-                                meeting = m,
-                                brothers = c.data.brothers,
-                                privileges = c.data.privileges,
-                                canAssign = c.data.brothers.filter { it.active }, canEdit = true,
-                                onToggleAssignment = { position, brotherId ->
-                                    c.toggleProgramAssignment(m.id, position, brotherId)
-                                }
-                            )
 
-                            if (m.isMidweek) {
-                                TextButton(
-                                    onClick = {
-                                        importingId = m.id
-                                        importError = null
-                                        c.importMwbProgram(m.id) { err ->
-                                            importingId = null
-                                            if (err != null) importError = err
-                                        }
-                                    },
-                                    enabled = importingId == null
-                                ) {
-                                    if (importingId == m.id) {
-                                        CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
-                                        Spacer(Modifier.width(6.dp))
-                                    }
-                                    Text(if (m.theme.isBlank()) "Importar programa do jw.org" else "Atualizar programa do jw.org")
-                                }
-                            }
                         }
                     }
                 }

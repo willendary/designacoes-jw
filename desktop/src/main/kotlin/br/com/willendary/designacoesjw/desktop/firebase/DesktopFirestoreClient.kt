@@ -207,6 +207,7 @@ object DesktopFirestoreClient {
                                                 put("title", buildJsonObject { put("stringValue", p.title) })
                                                 put("minutes", buildJsonObject { put("integerValue", p.minutes.toString()) })
                                                 put("kind", buildJsonObject { put("stringValue", p.kind.name) })
+                                                put("contentJson", buildJsonObject { put("stringValue", ProgramContentCodec.encode(p.content)) })
                                             })
                                         })
                                     })
@@ -447,7 +448,8 @@ object DesktopFirestoreClient {
                         PartKind.valueOf(
                             mapFields["kind"]?.jsonObject?.get("stringValue")?.jsonPrimitive?.content ?: "INDIVIDUAL"
                         )
-                    }.getOrDefault(PartKind.INDIVIDUAL)
+                    }.getOrDefault(PartKind.INDIVIDUAL),
+                    content = ProgramContentCodec.decode(mapFields["contentJson"]?.jsonObject?.get("stringValue")?.jsonPrimitive?.content)
                 )
             } else {
                 pVal.jsonObject["stringValue"]?.jsonPrimitive?.content?.let { parseLegacyProgramItem(it) }

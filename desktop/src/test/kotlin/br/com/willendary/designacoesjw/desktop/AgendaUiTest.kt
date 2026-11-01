@@ -123,16 +123,46 @@ class AgendaUiTest {
         File(testHome, ".designacoes-jw/dados.json").apply { parentFile.mkdirs(); writeText(Json.encodeToString(data)) }
         val controller = StoreController()
         rule.setContent { JwThemeProvider { Surface { DesktopApp(controller) } } }
-        rule.onNodeWithText("Buscar pessoa, parte ou data").performScrollTo().performTextInput("inexistente")
+        rule.onNodeWithText("Buscar pessoa, privilégio ou data").performScrollTo().performTextInput("inexistente")
         rule.onNodeWithText("Nenhuma reunião corresponde aos filtros.").assertExists()
-        rule.onNodeWithText("Buscar pessoa, parte ou data").performTextClearance()
+        rule.onNodeWithText("Buscar pessoa, privilégio ou data").performTextClearance()
         rule.onNodeWithText("Completar escala").performScrollTo().performClick()
         rule.runOnIdle { assertEquals(current.program, controller.data.meetings.single { it.id == current.id }.program) }
         snapshot("agenda-desktop")
-        rule.onNodeWithText("Buscar pessoa, parte ou data").performScrollTo().performTextInput("Iniciando")
+        rule.onNodeWithText("Buscar pessoa, privilégio ou data").performScrollTo().performTextInput(current.date)
         rule.onNodeWithText("Ver detalhes").performScrollTo().performClick()
-        rule.onNodeWithText("Iniciando conversas").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("1. Iniciando conversas").assertDoesNotExist()
+        rule.onNode(hasText("Reuniões") and hasClickAction()).performClick()
+        rule.onNodeWithText("1. Iniciando conversas").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Apoio à reunião").assertDoesNotExist()
         snapshot("agenda-programa-desktop")
+    }
+
+
+    @Test fun editorialContentOnMobileHasNoSupportPrivileges() {
+        val content = ProgramContent(
+            before = listOf(ProgramBlock("heading", listOf(ProgramText("Cântico inicial e oração"))),
+                ProgramBlock("section", listOf(ProgramText("TESOUROS DA PALAVRA DE DEUS")))),
+            body = listOf(ProgramBlock(runs = listOf(ProgramText("(10 min)"))),
+                ProgramBlock(runs = listOf(ProgramText("Leia o texto e destaque a ideia principal.", bold = true))),
+                ProgramBlock("bullet", listOf(ProgramText("Como podemos aplicar esta lição?"))),
+                ProgramBlock("caption", listOf(ProgramText("Legenda da ilustração de exemplo.")))),
+            sourceUrl = "https://wol.jw.org")
+        val editorial = meeting.copy(program = listOf(ProgramItem("TESOUROS DA PALAVRA DE DEUS", 1,
+            "Tema da primeira parte", 10, content = content)), assignments = listOf(Assignment(9, 1)))
+        rule.setContent {
+            JwThemeProvider(isDark = false) {
+                Surface(Modifier.width(390.dp).testTag("preview")) {
+                    Column(Modifier.padding(16.dp)) {
+                        MeetingProgramList(editorial, people, listOf(Privilege(9, "Microfone")), canEdit = false)
+                    }
+                }
+            }
+        }
+        rule.onNodeWithText("1. Tema da primeira parte").assertIsDisplayed()
+        rule.onNodeWithText("Microfone").assertDoesNotExist()
+        rule.onNodeWithText("•  Como podemos aplicar esta lição?").assertIsDisplayed()
+        snapshot("reuniao-editorial-mobile", "preview")
     }
 
     private fun snapshot(name: String, tag: String? = null) {
