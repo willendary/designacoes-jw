@@ -37,13 +37,24 @@ object MeetingPlanner {
         val assignments = meeting.programAssignments.mapNotNull { assignment ->
             val old = meeting.program.getOrNull(assignment.item - 1) ?: return@mapNotNull null
             val matches = program.indices.filter { key(program[it]) == key(old) }
-            if (matches.size != 1 || meeting.program.count { key(it) == key(old) } != 1) null
-            else assignment.copy(item = matches.single() + 1)
+            val sameNumber = matches.filter { program[it].number == old.number && old.number > 0 }
+            val target = when {
+                sameNumber.size == 1 && meeting.program.count { key(it) == key(old) && it.number == old.number } == 1 -> sameNumber.single()
+                matches.size == 1 && meeting.program.count { key(it) == key(old) } == 1 -> matches.single()
+                else -> null
+            }
+            target?.let { assignment.copy(item = it + 1) }
         }
         return meeting.copy(theme = theme, program = program, programAssignments = assignments)
     }
 
-    fun review(meeting: Meeting, brothers: List<Brother>, privileges: List<Privilege>): MeetingReview {
+    fun reviewSupport(meeting: Meeting, brothers: List<Brother>, privileges: List<Privilege>): MeetingReview =
+        review(meeting.copy(program = emptyList(), programAssignments = emptyList()), brothers, privileges, false)
+
+    fun matchesSupport(meeting: Meeting, query: String, brothers: List<Brother>, privileges: List<Privilege>): Boolean =
+        matches(meeting.copy(theme = "", program = emptyList(), programAssignments = emptyList()), query, brothers, privileges)
+
+    fun review(meeting: Meeting, brothers: List<Brother>, privileges: List<Privilege>, includeProgram: Boolean = true): MeetingReview {
         val date = AssignmentGenerator.parseDate(meeting.date)
         val issues = mutableListOf<String>()
         if (date == LocalDate.MIN) issues += "Data inválida."
@@ -76,8 +87,8 @@ object MeetingPlanner {
                 issues += "${item.title}: há mais participantes que o previsto."
             }
         }
-        if (meeting.isMidweek && meeting.program.isEmpty()) issues += "Programa da semana ainda não importado."
-        if (total == 0 && !meeting.isMidweek) issues += "Nenhuma designação configurada para esta reunião."
+        if (includeProgram && meeting.isMidweek && meeting.program.isEmpty()) issues += "Programa da semana ainda não importado."
+        if (total == 0 && (!includeProgram || !meeting.isMidweek)) issues += "Nenhuma designação configurada para esta reunião."
         val allIds = meeting.assignments.map { it.brotherId } + meeting.programAssignments.flatMap { it.brotherIds }
         allIds.distinct().filterNot(::available).forEach { id -> issues += "${byId[id]?.name ?: "Participante removido"}: revise a disponibilidade." }
         allIds.groupingBy { it }.eachCount().filterValues { it > 1 }.keys.forEach { id ->

@@ -9,6 +9,7 @@ plugins {
 }
 
 dependencies {
+    implementation("org.jsoup:jsoup:1.18.3")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation(compose.runtime)
     implementation(compose.foundation)

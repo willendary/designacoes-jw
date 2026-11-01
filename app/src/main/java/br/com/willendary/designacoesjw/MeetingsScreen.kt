@@ -1,6 +1,9 @@
 package br.com.willendary.designacoesjw
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import br.com.willendary.designacoesjw.ui.PublicationLink
+import br.com.willendary.designacoesjw.export.MwbProgramImporter
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -46,13 +49,13 @@ fun MeetingsScreen(vm: AppViewModel) {
         }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp)
     ) {
         item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(
                         Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -120,6 +123,7 @@ fun MeetingsScreen(vm: AppViewModel) {
                         )
                     }
 
+                    if (error) PublicationLink("Abrir publicação original", MwbProgramImporter.urlPublica(meetingDate))
                     message?.let {
                         Text(
                             it,
@@ -154,14 +158,27 @@ fun MeetingsScreen(vm: AppViewModel) {
             }
         } else {
             items(weekMeetings, key = { it.id }) { meeting ->
-                WeeklyMeetingCard(meeting, vm)
+                WeeklyMeetingProgram(meeting, vm)
             }
         }
     }
 }
 
 @Composable
-private fun WeeklyMeetingCard(meeting: Meeting, vm: AppViewModel) {
-    var expanded by remember(meeting.id) { mutableStateOf(true) }
-    MeetingCardView(vm, meeting, expanded, onToggleExpand = { expanded = !expanded })
+private fun WeeklyMeetingProgram(meeting: Meeting, vm: AppViewModel) {
+    Column(Modifier.widthIn(max = 760.dp).fillMaxWidth().padding(vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(meeting.date + " — " + meeting.typeCanonical, style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold)
+        if (meeting.theme.isNotBlank()) Text(meeting.theme, style = MaterialTheme.typography.titleMedium)
+        if (meeting.isMidweek) {
+            MeetingProgramList(meeting, vm.brothers.value, emptyList(),
+                canAssign = if (vm.can(AppPermissions.GENERATE_ASSIGNMENTS)) vm.brothers.value.filter { it.active } else emptyList(),
+                canEdit = vm.can(AppPermissions.GENERATE_ASSIGNMENTS),
+                decodeImage = AndroidPublicationImageDecoder,
+                onToggleAssignment = { position, id -> vm.toggleProgramAssignment(meeting.id, position, id) })
+        } else {
+            Text("O programa de fim de semana ainda não tem importação automática.", style = MaterialTheme.typography.bodyMedium)
+        }
+    }
 }

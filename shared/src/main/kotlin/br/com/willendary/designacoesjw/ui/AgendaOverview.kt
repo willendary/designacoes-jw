@@ -26,7 +26,7 @@ fun AgendaOverview(reviews: List<MeetingReview>, people: Int) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Text(if (reviews.isEmpty()) "Gere a escala para começar o planejamento."
-             else if (pending > 0) "Revise as vagas, os programas e a disponibilidade antes de compartilhar."
+             else if (pending > 0) "Revise as vagas e a disponibilidade antes de compartilhar a escala."
              else "Tudo revisado para compartilhar a programação.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }

@@ -199,7 +199,8 @@ data class ProgramItem(
      * define isto é o programa da semana, e o app usa para agrupar na tela e
      * para lembrar quantas pessoas a parte leva.
      */
-    val kind: PartKind = PartKind.INDIVIDUAL
+    val kind: PartKind = PartKind.INDIVIDUAL,
+    val content: ProgramContent = ProgramContent()
 ) {
     /**
      * `Titulo (M min)`, ou so o titulo quando nao ha duracao.

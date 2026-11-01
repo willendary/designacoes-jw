@@ -576,7 +576,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val result = runCatching {
                 val program = MwbProgramImporter.fetch(date)
                 program to program.parts.map { p ->
-                    ProgramItem(section = p.section, number = p.number, title = p.title, minutes = p.minutes)
+                    ProgramItem(section = p.section, number = p.number, title = p.title, minutes = p.minutes, content = p.content)
                 }
             }
             Handler(Looper.getMainLooper()).post {
