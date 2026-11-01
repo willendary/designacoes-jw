@@ -48,7 +48,6 @@ import br.com.willendary.designacoesjw.ui.AgendaOverview
 import br.com.willendary.designacoesjw.ui.MeetingReviewPanel
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.activity.compose.BackHandler
-import br.com.willendary.designacoesjw.ui.MeetingProgramList
 import br.com.willendary.designacoesjw.export.MonthBoardPrint
 import br.com.willendary.designacoesjw.sync.Changelog
 import br.com.willendary.designacoesjw.ui.JwCard

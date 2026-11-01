@@ -1,6 +1,9 @@
 package br.com.willendary.designacoesjw.desktop
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import br.com.willendary.designacoesjw.ui.PublicationLink
+import br.com.willendary.designacoesjw.export.MwbProgramImporter
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
@@ -25,7 +28,7 @@ internal fun DesktopMeetingsScreen(c: StoreController) {
         val day = AssignmentGenerator.parseDate(it.date)
         day >= week && day <= week.plusDays(6)
     }.sortedBy { AssignmentGenerator.parseDate(it.date) }
-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    LazyColumn(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             Column(Modifier.widthIn(max = 760.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Reuniões", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
@@ -40,7 +43,10 @@ internal fun DesktopMeetingsScreen(c: StoreController) {
                     error = null
                     c.importMwbWeek(date) { importing = false; error = it }
                 }) { Text(if (importing) "Importando…" else "Importar programa de ${date.format(AssignmentGenerator.DATE_FORMATTER)}") }
-                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                error?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error)
+                    PublicationLink("Abrir publicação original", MwbProgramImporter.urlPublica(date))
+                }
             }
         }
         if (meetings.isEmpty()) item { Text("Nenhuma reunião cadastrada nesta semana. Importe o programa para começar.") }

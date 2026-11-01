@@ -54,7 +54,7 @@ fun MeetingProgramList(
                     Text((if (part.number > 0) "${part.number}. " else "") + part.title,
                         style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
                         color = publicationAccent(part.section))
-                    if (part.content.body.isEmpty() && part.minutes > 0) Text("${part.minutes} min",
+                    if (part.minutes > 0 && part.content.body.none { it.text.trimStart().startsWith("(${part.minutes} min") }) Text("${part.minutes} min",
                         style = MaterialTheme.typography.bodyMedium)
                     // As designações continuam ligadas à posição da parte, nunca aos blocos editoriais.
                     Row(verticalAlignment = Alignment.CenterVertically) {

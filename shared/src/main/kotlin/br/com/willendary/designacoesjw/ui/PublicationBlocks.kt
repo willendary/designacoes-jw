@@ -41,7 +41,8 @@ internal fun PublicationSection(title: String) {
 }
 
 @Composable
-internal fun PublicationLink(label: String, url: String) {
+fun PublicationLink(label: String, url: String) {
+    if (!url.startsWith("https://") && !url.startsWith("http://")) return
     val handler = LocalUriHandler.current
     var failed by remember(url) { mutableStateOf(false) }
     TextButton(onClick = { failed = runCatching { handler.openUri(url) }.isFailure }) { Text(label) }

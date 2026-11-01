@@ -55,7 +55,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import br.com.willendary.designacoesjw.ui.AgendaOverview
 import br.com.willendary.designacoesjw.ui.MeetingReviewPanel
-import br.com.willendary.designacoesjw.ui.MeetingProgramList
 import br.com.willendary.designacoesjw.ui.JwCard
 import br.com.willendary.designacoesjw.ui.JwCardRail
 import br.com.willendary.designacoesjw.ui.JwCardTitle
@@ -3401,8 +3400,6 @@ private fun DesktopAddPrivilegeDialog(
 @Composable
 private fun History(c: StoreController) {
     var confirmDelete by remember { mutableStateOf<Meeting?>(null) }
-    var importingId by remember { mutableStateOf<Long?>(null) }
-    var importError by remember { mutableStateOf<String?>(null) }
     var busca by remember { mutableStateOf("") }
 
     // Mesma função do Android: uma regra de busca, dois lugares que a usam.
@@ -3484,15 +3481,6 @@ private fun History(c: StoreController) {
                 }
             }
         }
-    }
-
-    importError?.let { msg ->
-        AlertDialog(
-            onDismissRequest = { importError = null },
-            title = { Text("Não foi possível importar o programa") },
-            text = { Text(msg) },
-            confirmButton = { TextButton({ importError = null }) { Text("Fechar") } }
-        )
     }
 
     confirmDelete?.let { m ->
