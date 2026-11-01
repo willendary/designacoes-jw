@@ -1,0 +1,32 @@
+name: Testar importação da publicação original
+
+# Dependente de serviço externo; não bloqueia builds regulares.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 9 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  importar-publicacao:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+      - name: Baixar publicação de referência
+        run: |
+          curl --fail --location --retry 2 --max-time 40 \
+            -A "Mozilla/5.0 (compatible; DesignacoesJWImportTest/1.0)" \
+            -o reference.html "https://wol.jw.org/pt/wol/d/r5/lp-t/202026256"
+      - name: Validar parser com HTML real
+        env:
+          JW_REFERENCE_HTML: ${{ github.workspace }}/reference.html
+        run: gradle :shared:test --tests '*EditorialProgramTest*'
