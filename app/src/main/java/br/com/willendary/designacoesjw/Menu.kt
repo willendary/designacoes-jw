@@ -97,27 +97,20 @@ data class MenuItem(
  * um irmao procura "Irmaos".
  */
 val MENU: List<MenuEntry> = listOf(
-    MenuSection("REUNIÕES"),
-    MenuItem(Tela.QUADRO_DO_MES, "Escala de Privilégios", Icons.Filled.CalendarMonth),
+    MenuSection("PRINCIPAL"),
+    MenuItem(Tela.QUADRO_DO_MES, "Escala", Icons.Filled.CalendarMonth),
     MenuItem(Tela.REUNIAO_DA_SEMANA, "Reuniões", Icons.Filled.Event),
-    MenuItem(Tela.HISTORICO, "Histórico de Privilégios", Icons.Filled.History),
-
-    MenuSection("IMPRIMIR E RELATÓRIOS"),
-    MenuItem(Tela.IMPRIMIR, "Quadro e Imagens do Mês", Icons.Filled.Print),
-    MenuItem(Tela.ESTATISTICAS, "Estatísticas de Equidade", Icons.Filled.EventAvailable),
-
-    MenuSection("PESSOAS"),
     MenuItem(Tela.IRMAOS, "Irmãos & Irmãs", Icons.Filled.People),
+    MenuItem(Tela.HISTORICO, "Histórico de Privilégios", Icons.Filled.History),
+    MenuSection("FERRAMENTAS"),
+    MenuItem(Tela.IMPRIMIR, "Imprimir e exportar", Icons.Filled.Print),
+    MenuItem(Tela.ESTATISTICAS, "Estatísticas", Icons.Filled.EventAvailable),
     MenuItem(Tela.PRIVILEGIOS, "Privilégios", Icons.Filled.Star),
     MenuItem(Tela.FERIAS, "Férias & Ausências", Icons.Filled.PersonOff),
-    MenuItem(Tela.USUARIOS, "Usuários & Acesso", Icons.Filled.Security),
-
-    MenuSection("CONGREGAÇÃO"),
+    MenuItem(Tela.USUARIOS, "Usuários e acesso", Icons.Filled.Security),
     MenuItem(Tela.DISCURSOS, "Discursos Públicos", Icons.Filled.MenuBook),
     MenuItem(Tela.GRUPOS_LIMPEZA, "Grupos & Limpeza", Icons.Filled.CleaningServices),
     MenuItem(Tela.TELAO, "Modo Telão", Icons.Filled.Tv),
-
-    MenuSection("AJUSTES"),
     MenuItem(Tela.CONFIGURACOES, "Configurações", Icons.Filled.Settings)
 )
 

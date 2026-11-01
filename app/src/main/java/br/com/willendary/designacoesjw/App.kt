@@ -494,6 +494,7 @@ private fun HomeScreen(vm: AppViewModel) {
     var showEquityDialog by remember { mutableStateOf(false) }
     var showMeetingDaysDialog by remember { mutableStateOf(false) }
     var showExportMenu by remember { mutableStateOf(false) }
+    var showSecondaryActions by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var pendingOnly by rememberSaveable { mutableStateOf(false) }
 
@@ -682,6 +683,13 @@ private fun HomeScreen(vm: AppViewModel) {
                             )
                         }
 
+                        TextButton(onClick = { showSecondaryActions = !showSecondaryActions }) {
+                            Text(if (showSecondaryActions) "Menos opções" else "Mais ações")
+                        }
+                        if (showSecondaryActions) {
+                            if (monthMeetings.isNotEmpty() && vm.can(AppPermissions.GENERATE_ASSIGNMENTS)) {
+                                TextButton(onClick = { showRegenerateConfirm = true }) { Text("Recalcular apoios") }
+                            }
                         // Botão Equidade
                         OutlinedButton(
                             onClick = { showEquityDialog = true },
@@ -731,6 +739,8 @@ private fun HomeScreen(vm: AppViewModel) {
                             }
                         }
 
+                        }
+
                         // Alternador de Visualização
                         IconButton(
                             onClick = { viewMode = if (viewMode == "LIST") "CALENDAR" else "LIST" },
@@ -756,9 +766,6 @@ private fun HomeScreen(vm: AppViewModel) {
                 FilterChip(!pendingOnly, { pendingOnly = false }, label = { Text("Todas") })
                 FilterChip(pendingOnly, { pendingOnly = true }, label = { Text("A revisar (${reviews.values.count { it.pending }})") })
                 TextButton(onClick = { month = YearMonth.now(); selectedMeetingId = null }) { Text("Mês atual") }
-                if (monthMeetings.isNotEmpty() && vm.can(AppPermissions.GENERATE_ASSIGNMENTS)) {
-                    TextButton(onClick = { showRegenerateConfirm = true }) { Text("Recalcular apoios") }
-                }
             }
         }
         if (monthMeetings.isNotEmpty() && visibleMeetings.isEmpty()) {
