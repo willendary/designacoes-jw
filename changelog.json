@@ -1,4 +1,8 @@
 {
+  "0.12.4": {
+    "android": ["APK agora é gerado da variante release.", "Geração e assinatura de AAB para testes na Google Play.", "SDK de destino atualizado para Android 16/API 36."],
+    "desktop": ["Builds Windows atualizados e validados com Gradle 8.13."]
+  },
   "0.12.3": {
     "android": ["Protege registros criados em outros aparelhos contra exclusão por listas locais desatualizadas."],
     "desktop": ["Erros de gravação na nuvem passam a ser detectados e não são anunciados como sincronizados.", "Alterações locais são preservadas em falhas de envio."]

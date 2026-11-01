@@ -1,4 +1,4 @@
-name: Android APK
+name: Android Release APK e AAB
 # CI: rebuild on every update to main.
 
 on:
@@ -30,16 +30,18 @@ jobs:
           java-version: "17"
 
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
 
       - name: Run Unit Tests
         shell: bash
         run: gradle :shared:test
 
-      - name: Build APK
+      - name: Compilar APK e AAB release
         shell: bash
         run: |
           set -o pipefail
-          gradle assembleDebug 2>&1 | tee build.log || { echo "=== BUILD FAILED ==="; tail -n 150 build.log; exit 1; }
+          gradle :app:assembleRelease :app:bundleRelease 2>&1 | tee build.log || { echo "=== BUILD FAILED ==="; tail -n 150 build.log; exit 1; }
 
       - name: Conferir que o APK não referencia Compose Desktop
         # shared é kotlin("jvm") e compila contra o Compose desktop. API de
@@ -48,7 +50,7 @@ jobs:
         # os testes passam, e o Android morre em runtime ao desenhar a tela —
         # aconteceu na 0.4.2 e só o dex denuncia.
         shell: bash
-        run: python scripts/check_apk_desktop.py app/build/outputs/apk/debug/app-debug.apk
+        run: python scripts/check_apk_desktop.py app/build/outputs/apk/release/app-release-unsigned.apk
 
       - name: Upload build log
         if: always()
@@ -65,20 +67,40 @@ jobs:
             exit 1
           fi
 
-      - name: Assinar APK para atualizações futuras
+      - name: Assinar APK e AAB com a mesma chave de lançamento
         shell: bash
         run: |
+          set -euo pipefail
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > designacoes-release.jks
           BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -n 1)
-          "$BUILD_TOOLS/apksigner" sign             --ks designacoes-release.jks             --ks-key-alias "$ANDROID_KEY_ALIAS"             --ks-pass "pass:$ANDROID_KEYSTORE_PASSWORD"             --key-pass "pass:$ANDROID_KEYSTORE_PASSWORD"             --out app/build/outputs/apk/debug/designacoes-jw.apk             app/build/outputs/apk/debug/app-debug.apk
-          "$BUILD_TOOLS/apksigner" verify --verbose app/build/outputs/apk/debug/designacoes-jw.apk
+          "$BUILD_TOOLS/apksigner" sign \
+            --ks designacoes-release.jks \
+            --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --ks-pass "pass:$ANDROID_KEYSTORE_PASSWORD" \
+            --key-pass "pass:$ANDROID_KEYSTORE_PASSWORD" \
+            --out app/build/outputs/apk/release/designacoes-jw.apk \
+            app/build/outputs/apk/release/app-release-unsigned.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose app/build/outputs/apk/release/designacoes-jw.apk
+          jarsigner \
+            -keystore designacoes-release.jks \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+            -keypass "$ANDROID_KEYSTORE_PASSWORD" \
+            -signedjar app/build/outputs/bundle/release/designacoes-jw.aab \
+            app/build/outputs/bundle/release/app-release.aab "$ANDROID_KEY_ALIAS"
+          jarsigner -verify app/build/outputs/bundle/release/designacoes-jw.aab
+          rm -f designacoes-release.jks
 
       - uses: actions/upload-artifact@v4
         with:
           name: designacoes-jw-apk
-          path: app/build/outputs/apk/debug/designacoes-jw.apk
+          path: app/build/outputs/apk/release/designacoes-jw.apk
 
-      - name: Publicar APK no GitHub Release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: designacoes-jw-aab
+          path: app/build/outputs/bundle/release/designacoes-jw.aab
+
+      - name: Publicar APK e AAB no GitHub Release
         # Pull requests must validate the build without publishing a release.
         if: success() && github.event_name != 'pull_request'
         env:
@@ -89,6 +111,6 @@ jobs:
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" --title "Designações JW $TAG" --generate-notes || true
           fi
-          gh release upload "$TAG" app/build/outputs/apk/debug/designacoes-jw.apk --clobber
+          gh release upload "$TAG" app/build/outputs/apk/release/designacoes-jw.apk app/build/outputs/bundle/release/designacoes-jw.aab --clobber
 
 # Invitation flow validation build.

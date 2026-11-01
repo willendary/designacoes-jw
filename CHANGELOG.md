@@ -1,5 +1,13 @@
 # Histórico de versões — Designações JW
 
+## 0.12.4
+
+- Implementa variante Android release e assina APK e Android App Bundle (.aab).
+- Atualiza compileSdk/targetSdk para API 36 com Gradle/AGP compatíveis.
+- Acrescenta smoke test instrumentado Android e rotina de validação manual do importador real.
+- Adiciona checklist de produção e pendências explícitas antes da Play Store.
+
+
 ## 0.12.3
 
 - Sincronização Android exclui somente os documentos removidos explicitamente do cache anterior, sem apagar itens criados em outros aparelhos.

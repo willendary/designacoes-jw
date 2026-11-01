@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "br.com.willendary.designacoesjw"
-    compileSdk = 35
+    compileSdk = 36
 
     buildFeatures {
         // App.kt precisa ler a versao instalada para saber o que falta mostrar.
@@ -16,9 +16,10 @@ android {
     defaultConfig {
         applicationId = "br.com.willendary.designacoesjw"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 58
-        versionName = "0.12.3"
+        targetSdk = 36
+        versionCode = 59
+        versionName = "0.12.4"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     // ── Assinatura ──────────────────────────────────────────────────────────
@@ -67,4 +68,7 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.5")
     implementation("androidx.core:core-ktx:1.15.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:core:1.6.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
 }
