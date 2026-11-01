@@ -1,4 +1,8 @@
 {
+  "0.12.1": {
+    "android": ["Menu principal simplificado e ações secundárias da escala acessíveis por Mais ações.", "Recalcular apoios e exportar preservam os mesmos comportamentos."],
+    "desktop": ["Navegação principal destaca escala, reuniões, pessoas e histórico.", "Ferramentas secundárias recolhíveis e barra de ações simplificada."]
+  },
   "0.12.0": {
     "android": [
       "Reuniões e escala de privilégios agora ficam em telas separadas, inclusive nas buscas e pendências.",
