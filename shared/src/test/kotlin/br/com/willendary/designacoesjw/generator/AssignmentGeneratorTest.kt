@@ -674,4 +674,25 @@ class AssignmentGeneratorTest {
         assertTrue(msg.contains("Indicador"), msg)
         assertTrue(msg.contains("Quarta"), msg)
     }
+    @Test
+    fun testSentinelaDesmarcadaNaoEhCandidata() {
+        for (grant in listOf(ReaderGrant.SENTINEL, ReaderGrant.NONE)) {
+            val p = Privilege(70, "Leitor de A Sentinela", allowedDays = setOf(6, 7), readerGrant = grant)
+            val antigo = Brother(1, "Sem habilitacao", privileges = setOf(70), isReader = true)
+            val habilitado = Brother(2, "Habilitado", isSentinelReader = true)
+            assertFalse(AssignmentGenerator.isAuthorized(antigo, p))
+            assertTrue(AssignmentGenerator.isAuthorized(habilitado, p))
+            val meeting = AssignmentGenerator.generateMeeting(
+                LocalDate.of(2026, 10, 10), emptySet(), listOf(antigo, habilitado),
+                listOf(p), emptyList()
+            )
+            assertEquals(listOf(2L), meeting.assignments.map { it.brotherId })
+            val candidates = AssignmentGenerator.candidatesFor(
+                Meeting(5, "10/10/2026", "Fim de semana"), p.id, 0L,
+                listOf(antigo, habilitado), listOf(p)
+            )
+            assertEquals(listOf(2L), candidates.map { it.id })
+        }
+    }
+
 }
