@@ -256,6 +256,8 @@ object AssignmentGenerator {
         val status = if (brother.baptized) BrotherStatus.BAPTIZED else BrotherStatus.UNBAPTIZED
         if (status !in privilege.allowedStatus) return false
 
+        if (privilege.readerGrant == ReaderGrant.SENTINEL) return brother.isSentinelReader
+        if (privilege.readerGrant == ReaderGrant.BOOK) return brother.isReader || brother.isSentinelReader
         if (privilege.id in brother.privileges) return true
 
         // isReader / isSentinelReader concedem a leitura, por dado (readerGrant),
