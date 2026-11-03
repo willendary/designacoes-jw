@@ -46,7 +46,7 @@ object ImageExport {
     private const val TAG = "ImageExport"
     private const val ALBUM = "Designações JW"
     private const val AUTHORITY_SUFFIX = ".fileprovider"
-    private const val CACHE_DIR = "shared_images"
+    private const val CACHE_DIR = "reports/images"
 
     /**
      * Desenha o card e devolve o bitmap.
