@@ -256,18 +256,25 @@ object AssignmentGenerator {
         val status = if (brother.baptized) BrotherStatus.BAPTIZED else BrotherStatus.UNBAPTIZED
         if (status !in privilege.allowedStatus) return false
 
-        if (privilege.readerGrant == ReaderGrant.SENTINEL) return brother.isSentinelReader
-        if (privilege.readerGrant == ReaderGrant.BOOK) return brother.isReader || brother.isSentinelReader
-        if (privilege.id in brother.privileges) return true
-
-        // isReader / isSentinelReader concedem a leitura, por dado (readerGrant),
-        // não por nome do privilégio. Leitor de A Sentinela também pode ler o
-        // livro — herança que antes só funcionava se os dois nomes fossem
-        // reconhecidos por string.
-        if (privilege.readerGrant == ReaderGrant.SENTINEL && brother.isSentinelReader) return true
-        if (privilege.readerGrant == ReaderGrant.BOOK && (brother.isReader || brother.isSentinelReader)) return true
-
-        return false
+        // Para leitores, a opção do cadastro prevalece sobre os IDs
+        // antigos de privilégios associados ao irmão.
+        val grant = if (privilege.readerGrant != ReaderGrant.NONE) {
+            privilege.readerGrant
+        } else {
+            // Privilégios criados antes do campo readerGrant precisam seguir
+            // a mesma regra, mesmo que tenham permanecido no conjunto de IDs.
+            val name = normalizeName(privilege.name)
+            when {
+                ("leitor" in name || "leitura" in name) && "sentinela" in name -> ReaderGrant.SENTINEL
+                name.startsWith("leitor") && "livro" in name -> ReaderGrant.BOOK
+                else -> ReaderGrant.NONE
+            }
+        }
+        return when (grant) {
+            ReaderGrant.SENTINEL -> brother.isSentinelReader
+            ReaderGrant.BOOK -> brother.isReader || brother.isSentinelReader
+            ReaderGrant.NONE -> privilege.id in brother.privileges
+        }
     }
 
     fun isBrotherAuthorizedForPrivilege(
