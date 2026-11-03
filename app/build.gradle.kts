@@ -17,8 +17,8 @@ android {
         applicationId = "br.com.willendary.designacoesjw"
         minSdk = 26
         targetSdk = 36
-        versionCode = 59
-        versionName = "0.12.4"
+        versionCode = 60
+        versionName = "0.12.5"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
