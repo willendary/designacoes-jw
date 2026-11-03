@@ -2972,10 +2972,15 @@ private fun ImagensDoMesDialog(vm: AppViewModel, mes: YearMonth, onDismiss: () -
                     val bitmap = withContext(Dispatchers.Main) {
                         ImageExport.render(context, reuniao, vm.brothers.value, vm.privileges.value)
                     } ?: throw IllegalStateException("render devolveu null")
-                    val uri = withContext(Dispatchers.IO) {
-                        ImageExport.saveToGallery(context, bitmap, ImageExport.fileNameFor(reuniao))
-                    } ?: throw IllegalStateException("saveToGallery devolveu null")
-                    salvas++
+                    try {
+                        withContext(Dispatchers.IO) {
+                            ImageExport.saveToGallery(context, bitmap, ImageExport.fileNameFor(reuniao))
+                        } ?: throw IllegalStateException("saveToGallery devolveu null")
+                        salvas++
+                    } finally {
+                        // Não segurar todos os bitmaps do mês na memória.
+                        bitmap.recycle()
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG_IMAGENS_MES, "Falha ao gerar a imagem de ${reuniao.date}", e)
                     falhas++
