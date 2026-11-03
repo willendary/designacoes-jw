@@ -970,6 +970,7 @@ internal fun MeetingCardView(
                             val fileName = ImageExport.fileNameFor(meeting)
                             val uri = withContext(Dispatchers.IO) { ImageExport.saveToGallery(context, bitmap, fileName) }
                             val share = ImageExport.shareIntent(context, bitmap, fileName)
+                            bitmap.recycle()
                             if (share != null) context.startActivity(Intent.createChooser(share, "Enviar designações"))
                             else if (uri != null) Toast.makeText(context, "Salvo em Imagens/Designações JW.", Toast.LENGTH_LONG).show()
                             else Toast.makeText(context, "Não consegui salvar a imagem.", Toast.LENGTH_LONG).show()
