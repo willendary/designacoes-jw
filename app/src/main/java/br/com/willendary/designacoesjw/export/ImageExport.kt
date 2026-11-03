@@ -24,7 +24,6 @@ import android.util.Log
 import android.view.View
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.compose.ui.unit.Density
 import androidx.core.content.FileProvider
 import br.com.willendary.designacoesjw.data.Brother
 import br.com.willendary.designacoesjw.data.CleaningSchedule
@@ -52,13 +51,9 @@ object ImageExport {
     /**
      * Desenha o card e devolve o bitmap.
      *
-     * Técnica: `ComposeView` fora da árvore de views, com `measure`/`layout`
-     * manuais e `View.draw(Canvas)`. É o caminho que funciona em qualquer
-     * combinação de Compose do projeto — ao contrário de `GraphicsLayer`, cuja
-     * API de rasterização mudou entre versões.
-     *
-     * `Context.createConfigurationContext` é necessário: sem um tema
-     * resolvido, o ComposeView não consegue criar a composição.
+     * Anexa temporariamente o ComposeView à Activity: sem uma árvore com
+     * LifecycleOwner e recompositor, a imagem pode ser vazia ou falhar.
+     * Aguarda a primeira composição e só então desenha o bitmap.
      */
     suspend fun render(
         context: Context, meeting: Meeting, brothers: List<Brother>,
