@@ -60,63 +60,55 @@ object ImageExport {
      * `Context.createConfigurationContext` é necessário: sem um tema
      * resolvido, o ComposeView não consegue criar a composição.
      */
-    fun render(
-        context: Context,
-        meeting: Meeting,
-        brothers: List<Brother>,
-        privileges: List<Privilege>,
-        publicTalk: PublicTalk? = null,
-        cleaningSchedule: CleaningSchedule? = null,
-        cleaningGroup: FieldServiceGroup? = null
-    ): Bitmap? {
-        return try {
-            val themed = context.createConfigurationContext(
-                android.content.res.Configuration(context.resources.configuration)
-            )
-            val density: Density = Density(context.resources.displayMetrics.density)
-
-            val view = ComposeView(themed).apply {
-                // O bitmap é tirado uma vez; não faz sentido recompor.
-                setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
-                setBackgroundColor(AndroidColor.WHITE)
-                setContent {
-                    MeetingCardImage(
-                        meeting = meeting,
-                        brothers = brothers,
-                        privileges = privileges,
-                        publicTalk = publicTalk,
-                        cleaningSchedule = cleaningSchedule,
-                        cleaningGroup = cleaningGroup
-                    )
+    suspend fun render(
+        context: Context, meeting: Meeting, brothers: List<Brother>,
+        privileges: List<Privilege>, publicTalk: PublicTalk? = null,
+        cleaningSchedule: CleaningSchedule? = null, cleaningGroup: FieldServiceGroup? = null
+    ): Bitmap? = withContext(Dispatchers.Main.immediate) {
+        var base: Context = context
+        while (base !is Activity && base is ContextWrapper) base = base.baseContext
+        val activity = base as? Activity ?: return@withContext null
+        val root = activity.findViewById<ViewGroup>(android.R.id.content) ?: return@withContext null
+        val width = (900 * activity.resources.displayMetrics.density).toInt()
+        val view = ComposeView(activity).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+            translationX = -width.toFloat() - 64f
+            setContent {
+                MaterialTheme(colorScheme = lightColorScheme()) {
+                    MeetingCardImage(meeting, brothers, privileges, publicTalk, cleaningSchedule, cleaningGroup)
                 }
             }
-
-            val widthPx = (900 * density.density).toInt()
-            // Altura inicial generosa; o wrap_content do conteudo resolve o resto.
-            var heightPx = (1200 * density.density).toInt()
-            var bitmap: Bitmap
-
-            var tentativas = 0
-            do {
-                view.measure(
-                    View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY),
-                    View.MeasureSpec.makeMeasureSpec(heightPx, View.MeasureSpec.AT_MOST)
-                )
-                val h = view.measuredHeight.coerceAtLeast(1)
-                view.layout(0, 0, widthPx, h)
-                bitmap = Bitmap.createBitmap(widthPx, h, Bitmap.Config.ARGB_8888)
-                // O Compose desenha com alpha; sem pintar de branco o PNG sai
-                // com fundo transparente e o WhatsApp mostra preto.
-                Canvas(bitmap).drawColor(AndroidColor.WHITE)
-                view.draw(Canvas(bitmap))
-                heightPx = h
-                tentativas++
-            } while (view.measuredHeight >= heightPx && tentativas < 3)
-
-            bitmap
+        }
+        val completed = CompletableDeferred<Bitmap?>()
+        try {
+            root.addView(view, FrameLayout.LayoutParams(width, ViewGroup.LayoutParams.WRAP_CONTENT))
+            view.doOnPreDraw {
+                view.post {
+                    if (!completed.isCompleted) {
+                        val bitmap = runCatching {
+                            view.measure(
+                                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+                            )
+                            val height = view.measuredHeight
+                            require(height > 0) { "Imagem sem altura" }
+                            view.layout(0, 0, width, height)
+                            Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also {
+                                Canvas(it).apply { drawColor(AndroidColor.WHITE); view.draw(this) }
+                            }
+                        }.onFailure { Log.e(TAG, "Falha ao renderizar imagem", it) }.getOrNull()
+                        completed.complete(bitmap)
+                    }
+                }
+            }
+            withTimeoutOrNull(8000L) { completed.await() }
         } catch (e: Exception) {
-            Log.e(TAG, "Falha ao gerar a imagem da reunião", e)
+            Log.e(TAG, "Falha ao gerar imagem", e)
             null
+        } finally {
+            completed.cancel()
+            root.removeView(view)
+            view.disposeComposition()
         }
     }
 
