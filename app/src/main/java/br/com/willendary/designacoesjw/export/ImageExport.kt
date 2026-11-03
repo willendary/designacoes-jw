@@ -132,14 +132,21 @@ object ImageExport {
                 val resolver = context.contentResolver
                 val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
                     ?: return null
-                resolver.openOutputStream(uri)?.use { out ->
-                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                try {
+                    val gravou = resolver.openOutputStream(uri)?.use { out ->
+                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    } ?: false
+                    check(gravou) { "Não foi possível gravar o PNG." }
+                    values.clear()
+                    values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                    check(resolver.update(uri, values, null, null) > 0) {
+                        "Não foi possível finalizar a imagem na galeria."
+                    }
+                    uri
+                } catch (e: Exception) {
+                    resolver.delete(uri, null, null)
+                    throw e
                 }
-                // Sem IS_PENDING = 1 a imagem fica invisível para o usuário.
-                values.clear()
-                values.put(MediaStore.Images.Media.IS_PENDING, 0)
-                resolver.update(uri, values, null, null)
-                uri
             } else {
                 @Suppress("DEPRECATION")
                 val dir = File(
