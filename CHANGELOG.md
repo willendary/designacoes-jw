@@ -1,5 +1,12 @@
 # Histórico de versões — Designações JW
 
+## 0.12.5
+
+- Corrige a geração automática de leitores de A Sentinela: opção desmarcada exclui o irmão, mesmo que um ID de privilégio antigo ainda esteja associado.
+- Aplica a mesma validação às sugestões de substituição e aos cadastros anteriores ao campo de habilitação.
+- Corrige o exportador de imagens: o cartão Compose passa a ser renderizado em uma Activity ativa.
+- Verifica a gravação dos PNGs, descarta arquivos incompletos e libera memória entre as imagens do mês.
+
 ## 0.12.4
 
 - Implementa variante Android release e assina APK e Android App Bundle (.aab).
