@@ -1,6 +1,16 @@
 package br.com.willendary.designacoesjw.export
 
 import android.app.Activity
+import android.content.ContextWrapper
+import android.view.ViewGroup
+import android.widget.FrameLayout
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.lightColorScheme
+import androidx.core.view.doOnPreDraw
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
