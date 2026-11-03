@@ -1,4 +1,8 @@
 {
+  "0.12.5": {
+    "android": ["Corrigida a designação automática de A Sentinela: somente irmãos marcados como leitores de A Sentinela podem ser escolhidos, inclusive em cadastros antigos.", "Corrigida a exportação de imagens das reuniões e do mês: renderização anexada à tela ativa, validação de gravação e liberação de memória entre imagens."],
+    "desktop": ["A designação automática respeita a habilitação de leitor de A Sentinela, inclusive em registros antigos."]
+  },
   "0.12.4": {
     "android": ["APK agora é gerado da variante release.", "Geração e assinatura de AAB para testes na Google Play.", "SDK de destino atualizado para Android 16/API 36."],
     "desktop": ["Builds Windows atualizados e validados com Gradle 8.13."]
